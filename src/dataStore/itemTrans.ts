@@ -82,15 +82,20 @@ export class ItemTrans {
                     reviewDecks[deckname] = new ReviewDeck(deckname);
                 }
                 // update single note deck data, only tagged reviewnote
-                if (store.getTrackedFile(note.path)?.tags?.[0] !== RPITEMTYPE.NOTE) {
+                let noteItem = store.getNoteItem(note.path);
+                if (
+                    store.getTrackedFile(note.path)?.tags?.[0] !== RPITEMTYPE.NOTE ||
+                    noteItem == null
+                ) {
                     store.trackFile(note.path, deckname, false);
+                    noteItem = store.getNoteItem(note.path);
                 }
                 if (
                     settings.algorithm === algorithmNames.Anki ||
                     settings.algorithm === algorithmNames.Default ||
                     settings.algorithm === algorithmNames.SM2
                 ) {
-                    const sched = store.getNoteItem(note.path).getSched();
+                    const sched = noteItem?.getSched() ?? null;
                     if (sched != null) {
                         const ease: number = parseFloat(sched[3]);
                         if (!isNaN(ease)) {

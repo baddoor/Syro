@@ -438,6 +438,9 @@ export class Queue implements IQueue {
                     return store.getItembyID(id);
                 })
                 .forEach((item) => {
+                    if (item == null) {
+                        return;
+                    }
                     if (item.nextReview - Date.now() < 0) {
                         delete this.toDayLaterQueue[item.ID];
                     }
@@ -446,6 +449,9 @@ export class Queue implements IQueue {
     }
 
     remove(item: RepetitionItem, queue?: number[]) {
+        if (item == null) {
+            return;
+        }
         if (queue == undefined) {
             if (this.isQueued(this.queue[item.deckName], item.ID)) {
                 this.remove(item, this.queue[item.deckName]);

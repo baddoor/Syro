@@ -3,11 +3,15 @@ import { setDueDates } from "src/algorithms/balance/balance";
 import { DefaultAlgorithm } from "src/algorithms/scheduling_default";
 import { DataStore } from "src/dataStore/data";
 import { DataLocation } from "src/dataStore/dataLocation";
+import { ItemTrans } from "src/dataStore/itemTrans";
 import { RPITEMTYPE } from "src/dataStore/repetitionItem";
 import { TrackedItem } from "src/dataStore/trackedFile";
+import { DEFAULT_DECKNAME } from "src/constants";
+import { NoteEaseList } from "src/NoteEaseList";
 import { CardType } from "src/Question";
 import { DEFAULT_SETTINGS, SRSettings } from "src/settings";
 import { Stats } from "src/stats";
+import { Tags } from "src/tags";
 
 const settings_tkfile = Object.assign({}, DEFAULT_SETTINGS);
 settings_tkfile.dataLocation = DataLocation.PluginFolder;
@@ -140,5 +144,38 @@ describe("pruneDate", () => {
         expect(tkfileResult).toBe(true);
         expect(check).toBe(true);
         expect(checkcard).toBe(true);
+    });
+
+    it("unTrackItem ignores missing item ids", () => {
+        expect(() => store.unTrackItem(-1)).not.toThrow();
+
+        const existing = store.items.find((item) => item?.isTracked);
+        expect(existing).toBeDefined();
+
+        store.unTrackItem(existing.ID);
+        expect(() => store.unTrackItem(existing.ID)).not.toThrow();
+    });
+
+    it("itemToReviewDecks recreates missing note items from tracked files", () => {
+        const path = "ghost-note-path";
+        store.trackFile(path, DEFAULT_DECKNAME, false);
+
+        const trackedFile = store.getTrackedFile(path);
+        const missingId = trackedFile.items.file;
+        store.data.items = store.data.items.filter((item) => item?.ID !== missingId);
+        (store as any).markItemByIdIndexDirty();
+
+        const note = { path } as any;
+        const reviewDecks: Record<string, any> = {};
+        const easeByPath = new NoteEaseList(settings_tkfile);
+        const getDeckNameSpy = jest.spyOn(Tags, "getNoteDeckName").mockReturnValue(null);
+
+        expect(() =>
+            ItemTrans.create(settings_tkfile).itemToReviewDecks(reviewDecks, [note], easeByPath),
+        ).not.toThrow();
+        expect(store.getNoteItem(path)).not.toBeNull();
+        expect(reviewDecks[DEFAULT_DECKNAME]).toBeDefined();
+
+        getDeckNameSpy.mockRestore();
     });
 });

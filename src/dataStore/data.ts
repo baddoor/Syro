@@ -999,6 +999,10 @@ export class DataStore {
 
     unTrackItem(id: number) {
         const item = this.getItembyID(id);
+        if (item == null) {
+            this.reviewItemOverlayById.delete(id);
+            return;
+        }
         this.data.queues.remove(item);
         item.setUntracked();
         this.reviewItemOverlayById.delete(id);
@@ -1082,9 +1086,11 @@ export class DataStore {
         let removed = 0;
 
         const newItems: Record<string, number> = {};
-        if ("file" in trackedFile.items && trackedFile.items.file > 0) {
+        const existingFileItem =
+            "file" in trackedFile.items ? this.getItembyID(trackedFile.items.file) : null;
+        if (existingFileItem != null) {
             newItems["file"] = trackedFile.items["file"];
-            this.getItembyID(trackedFile.items.file).setTracked(fileID);
+            existingFileItem.setTracked(fileID);
         } else if (type === RPITEMTYPE.NOTE) {
             const ID = this._updateItem(undefined, fileID, type, dname);
             newItems["file"] = ID;

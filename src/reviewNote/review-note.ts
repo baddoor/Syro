@@ -173,13 +173,13 @@ export class RNonTrackfiles extends IReviewNote {
             return false;
         }
         if (deckName == null) {
-            deckName = store.getTrackedFile(note.path).lastTag;
+            deckName = store.getTrackedFile(note.path)?.lastTag ?? null;
         }
         if (deckName == null) return false;
         return true;
     }
     isNew(note: TFile): boolean {
-        return this.store.getNoteItem(note.path).isNew;
+        return this.store.getNoteItem(note.path)?.isNew ?? true;
     }
     async responseProcess(note: TFile, response: ReviewResponse, ease?: number) {
         const store = this.store;
@@ -191,8 +191,25 @@ export class RNonTrackfiles extends IReviewNote {
         const option = algorithm.srsOptions()[response];
         const now = Date.now();
 
-        const itemId = store.getTrackedFile(note.path).items.file;
-        const item = store.getItembyID(itemId);
+        const trackedFile = store.getTrackedFile(note.path);
+        let itemId = trackedFile?.items?.file ?? -1;
+        let item = store.getItembyID(itemId);
+        if (item == null) {
+            const deckName = IReviewNote.getDeckName(this.settings, note);
+            if (deckName != null) {
+                store.trackFile(note.path, deckName, false);
+                item = store.getNoteItem(note.path);
+                itemId = item?.ID ?? -1;
+            }
+        }
+        if (item == null) {
+            return {
+                buryList: [],
+                sNote: {
+                    note,
+                },
+            };
+        }
         if (item.isNew && ease != null) {
             // new note
             item.updateAlgorithmData("ease", ease);
