@@ -1,0 +1,91 @@
+/**
+ * UI-specific settings types used by the settings screens.
+ */
+
+// Re-export full plugin settings types for adapter code.
+export type { SRSettings, DeckOptionsPreset, ProgressBarStyle } from "../../settings";
+
+/**
+ * Subset of settings exposed to the settings UI.
+ */
+export interface UISettingsState {
+    // Flashcards
+    flashcardTags: string[];
+    convertFoldersToDecks: boolean;
+    burySiblingCards: boolean;
+    flashcardCardOrder: string;
+    singleLineCardSeparator: string;
+    multilineCardSeparator: string;
+    convertHighlightsToClozes: boolean;
+    convertBoldTextToClozes: boolean;
+    convertCurlyBracketsToClozes: boolean;
+    convertAnkiClozesToClozes: boolean;
+    enableNoteCachePersistence: boolean;
+    autoIncrementalSync: boolean;
+    syncProgressDisplayMode: "always" | "full-only" | "never";
+    parseClozesInCodeBlocks: boolean; // Parse {{c1::...}} cloze syntax in code blocks
+    enableLatexPopover: boolean; // Enable the LaTeX cloze popover
+    codeContextLines: number; // code context lines
+    clozeContextMode: string;
+    clozeContextPerformanceMode: string;
+    clozeContextSoftLimitLines: number;
+    showOtherAnkiClozeVisual: boolean;
+    showOtherHighlightClozeVisual: boolean;
+    showOtherBoldClozeVisual: boolean;
+
+    // Notes
+    tagsToReview: string[];
+    autoNextNote: boolean;
+    openRandomNote: boolean;
+    sidebarIgnoredTags: string[]; // Ignored tags
+    hideNoteReviewSidebarFilters: boolean; // Hide the sidebar filter header
+    showScrollPercentage: boolean; // Show saved scroll percentage in timeline items
+    autoExpandTimeline: boolean; // Auto-expand the timeline when opening a reviewed note
+
+    // Algorithm
+    cardAlgorithm: string;
+    noteAlgorithm: string;
+    baseEase: number;
+    easyBonus: number;
+
+    // Weighted Multiplier Algorithm Settings
+    wmsImpMin: string;
+    wmsImpMax: string;
+    wmsAgainInterval: number;
+    wmsHardFactor: number;
+    wmsGoodFactor: number;
+    wmsEasyFactor: number;
+
+    // UI
+    showStatusBar: boolean;
+    openViewInNewTab: boolean;
+    progressBarStyle: {
+        color: string;
+        warningColor: string;
+        height: number;
+        rightToLeft: boolean;
+    };
+    // Status bar styling
+    noteStatusBarColor: string;
+    noteStatusBarAnimation: string;
+    noteStatusBarPeriod: number;
+    flashcardStatusBarColor: string;
+    flashcardStatusBarAnimation: StatusBarAnimationStyle;
+    flashcardStatusBarPeriod: number;
+    showStatusBarDueNotification: boolean;
+
+    // Advanced & Debug
+    showRuntimeDebugMessages: boolean;
+    enableCardLevelTrace: boolean;
+
+    // Storage
+    dataLocation: string; // DataLocation enum value
+    trackedNoteToDecks: boolean; // Put tracked notes into deck assignments
+    disableFileMenuReviewOptions: boolean; // Disable review options in the file menu
+
+    // License
+    licenseKey: string; // User-entered license key
+    isPro: boolean; // Whether the current vault is Pro-enabled
+}
+
+// The remaining settings component props are defined alongside their React components.

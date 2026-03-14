@@ -1,0 +1,164 @@
+/* Obsidian 风格容器 */
+.ob-container {
+    background-color: #1e1e1e;
+    color: #dcddde;
+    min-height: 100vh;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.6;
+    padding: 40px 60px;
+    max-width: 900px;
+    margin: 0 auto;
+}
+
+.ob-h1 {
+    font-size: 28px;
+    font-weight: 700;
+    margin-bottom: 24px;
+    color: #ffffff;
+}
+
+.ob-p {
+    margin-bottom: 16px;
+    color: #a1a1aa;
+}
+
+.ob-hr {
+    border: none;
+    border-top: 1px solid #333;
+    margin: 32px 0;
+}
+
+/* 公式列表 */
+.formula-list {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.formula-item {
+    padding: 16px 20px;
+    background: #252526;
+    border: 1px solid #333;
+    border-radius: 8px;
+}
+
+/* 公式预览（可点击） */
+.formula-preview {
+    display: inline-block;
+    padding: 8px 12px;
+    background: #1a1a1c;
+    border: 1px solid #3f3f46;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.formula-preview:hover {
+    border-color: #818cf8;
+    background: #27272a;
+}
+
+/* 编辑区域 */
+.editing-area {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+/* 源码编辑器 */
+.source-code-editor {
+    background: #141416;
+    border: 1px solid #3f3f46;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.source-code-label {
+    padding: 8px 12px;
+    background: #27272a;
+    border-bottom: 1px solid #3f3f46;
+    font-size: 11px;
+    color: #71717a;
+    letter-spacing: 0.5px;
+}
+
+.source-code-textarea {
+    width: 100%;
+    min-height: 80px;
+    padding: 12px 16px;
+    background: transparent;
+    border: none;
+    outline: none;
+    resize: vertical;
+    font-family: "JetBrains Mono", "Fira Code", monospace;
+    font-size: 15px;
+    line-height: 1.6;
+    color: #a5f3fc;
+    caret-color: #818cf8;
+}
+
+.source-code-textarea::selection {
+    background: rgba(129, 140, 248, 0.3);
+}
+
+/* 保存按钮 */
+.save-btn {
+    align-self: flex-end;
+    padding: 8px 16px;
+    background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+    border: none;
+    border-radius: 6px;
+    color: white;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.save-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+}
+
+/* 模式切换器 */
+.mode-switcher {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background: #1e1e20;
+    border: 1px solid #3f3f46;
+    border-radius: 8px;
+    z-index: 100;
+}
+
+.mode-switcher span {
+    font-size: 12px;
+    color: #71717a;
+}
+
+.mode-switcher button {
+    padding: 4px 12px;
+    background: transparent;
+    border: 1px solid #3f3f46;
+    border-radius: 4px;
+    color: #a1a1aa;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.mode-switcher button:hover {
+    border-color: #818cf8;
+    color: #e4e4e7;
+}
+
+.mode-switcher button.active {
+    background: rgba(129, 140, 248, 0.15);
+    border-color: #818cf8;
+    color: #a5b4fc;
+}

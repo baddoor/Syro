@@ -1,0 +1,143 @@
+/* LaTeX Cloze Popover 样式 */
+
+.sr-latex-popover {
+    position: fixed;
+    background: var(--background-primary, #1e1e1e);
+    border: 1px solid var(--background-modifier-border, #333);
+    border-radius: 8px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+    padding: 16px;
+    min-width: 280px;
+    max-width: 90vw;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    animation: sr-latex-popover-in 0.15s ease-out;
+}
+
+@keyframes sr-latex-popover-in {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* 预览框 */
+.sr-latex-preview-box {
+    background: #0a0a0a;
+    border-radius: 6px;
+    padding: 24px 32px;
+    text-align: center;
+    overflow-x: auto;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    min-height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.sr-latex-preview-box:hover {
+    border-color: rgba(96, 165, 250, 0.3);
+    box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.2);
+}
+
+/* KaTeX 样式覆盖 */
+.sr-latex-preview-box .katex {
+    font-size: 1.3em;
+}
+
+/* 控制栏 */
+.sr-latex-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 8px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.sr-latex-id-badges {
+    display: flex;
+    gap: 6px;
+}
+
+.sr-latex-id-badge {
+    font-size: 11px;
+    font-weight: 600;
+    color: #71717a;
+    background: rgba(255, 255, 255, 0.05);
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-family: monospace;
+    transition: all 0.15s ease;
+}
+
+.sr-latex-id-badge.active {
+    color: #60a5fa;
+    background: rgba(96, 165, 250, 0.15);
+}
+
+.sr-latex-actions {
+    display: flex;
+    gap: 4px;
+}
+
+.sr-icon-btn {
+    background: transparent;
+    border: none;
+    color: #71717a;
+    cursor: pointer;
+    padding: 6px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+}
+
+.sr-icon-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: #e4e4e7;
+}
+
+.sr-icon-btn.active {
+    color: #60a5fa;
+    background: rgba(96, 165, 250, 0.15);
+}
+
+/* Cloze 遮罩样式 (KaTeX htmlClass) */
+.sr-cloze-mask {
+    color: #60a5fa !important;
+    font-weight: 700;
+}
+
+.sr-cloze-mask::before {
+    content: "[";
+}
+
+.sr-cloze-mask::after {
+    content: "]";
+}
+
+/* Cloze 显示样式 */
+.sr-cloze-reveal {
+    color: #60a5fa !important;
+    background: rgba(96, 165, 250, 0.12);
+    padding: 0 4px;
+    border-radius: 3px;
+}
+
+/* 编辑器中的显示 */
+.sr-cloze-editor {
+    color: #60a5fa !important;
+    text-decoration: underline;
+    text-decoration-style: dotted;
+    text-underline-offset: 3px;
+}
