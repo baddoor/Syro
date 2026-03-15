@@ -260,7 +260,7 @@ export default {
     or a plugin reload. Are you sure you want to switch algorithms?
     `,
     ALGORITHMS_DESC:
-        'The algorithm used for spaced repetition. For more information see the <a href="https://github.com/baddoor/Syro/blob/main/docs/usage.md#algorithms">Syro algorithm notes</a>.',
+        "The algorithm used for spaced repetition.",
     ALGORITHM_SWITCH_SUCCESS: "Switch successful",
     ALGORITHM_SWITCH_FAILED: "Switch failed, restored",
 
@@ -450,7 +450,7 @@ export default {
 
     // scheduling_default.ts
     DEFAULT_ALGORITHM_DESC:
-        'The algorithm used for spaced repetition. For more information see the <a href="https://github.com/baddoor/Syro/blob/main/docs/usage.md#algorithms">Syro algorithm notes</a>.',
+        "The algorithm used for spaced repetition.",
 
     // supermemo.ts
     SM2_ALGORITHM_DESC:

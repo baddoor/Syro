@@ -62,7 +62,6 @@ export default {
     STATUS_BAR_NOTE_DUE_SINGULAR: "${dueNotesCount} 笔记已到期",
     NOTICE_TEXT_SELECTION_REQUIRED: "请先选中要挖空的文本",
     NOTICE_CLOZE_CREATED: "已创建挖空 c${nextId}",
-
     // scheduling.ts
     DAYS_STR_IVL: "${interval}天",
     MONTHS_STR_IVL: "${interval}月",
@@ -237,7 +236,7 @@ export default {
     ALGORITHMS_CONFIRM:
         "切换算法可能导致日期排程重置，这个修改不可撤销，当重启软件或重新加载插件切换算法才会生效。你确定要切换算法么?",
     ALGORITHMS_DESC:
-        '用于间隔重复的算法. 更多信息请查阅 <a href="https://github.com/baddoor/Syro/blob/main/docs/usage.md#algorithms">Syro 算法说明</a>.',
+        "用于间隔重复的算法。",
     ALGORITHM_SWITCH_SUCCESS: "切换成功",
     ALGORITHM_SWITCH_FAILED: "切换失败，已恢复",
 

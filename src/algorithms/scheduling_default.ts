@@ -230,10 +230,7 @@ export class DefaultAlgorithm extends SrsAlgorithm {
         containerEl: HTMLElement,
         update: (settings: DefaultAlgoSettings, refresh?: boolean) => void,
     ): void {
-        containerEl.createDiv().innerHTML = t("CHECK_ALGORITHM_WIKI", {
-            algo_url: "https://github.com/baddoor/Syro/blob/main/docs/usage.md#algorithms",
-        });
-        containerEl.createDiv().innerHTML = t("DEFAULT_ALGORITHM_DESC");
+        containerEl.createDiv().setText(t("DEFAULT_ALGORITHM_DESC"));
 
         const DEFAULTSETTINGS = this.defaultSettings();
 

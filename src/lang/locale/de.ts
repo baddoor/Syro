@@ -243,7 +243,7 @@ export default {
     or a plugin reload. Are you sure you want to switch algorithms?
     `,
     ALGORITHMS_DESC:
-        'The algorithm used for spaced repetition. For more information see the <a href="https://github.com/baddoor/Syro/blob/main/docs/usage.md#algorithms">Syro algorithm notes</a>.',
+        "The algorithm used for spaced repetition.",
     CONVERT_TRACKED_TO_DECK: "Convert Tracked Notes to decks?",
     REVIEW_FLOATBAR: "Review Response FloatBar",
     REVIEW_FLOATBAR_DESC:
