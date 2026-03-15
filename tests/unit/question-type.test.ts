@@ -106,3 +106,63 @@ test("CardType.Cloze", () => {
         ),
     ]);
 });
+
+describe("CardType.AnkiCloze with LaTeX switch", () => {
+    test("skips pure LaTeX clozes when disabled", () => {
+        const settings: SRSettings = {
+            ...DEFAULT_SETTINGS,
+            isPro: true,
+            enableLatexClozes: false,
+            convertAnkiClozesToClozes: true,
+        };
+
+        expect(
+            CardFrontBackUtil.expand(CardType.AnkiCloze, "Formula only ${{c1::x}}$", settings),
+        ).toEqual([]);
+    });
+
+    test("keeps non-LaTeX clozes and strips LaTeX wrappers when disabled", () => {
+        const settings: SRSettings = {
+            ...DEFAULT_SETTINGS,
+            isPro: true,
+            enableLatexClozes: false,
+            convertAnkiClozesToClozes: true,
+        };
+
+        const result = CardFrontBackUtil.expand(
+            CardType.AnkiCloze,
+            "Outside {{c1::word}} and $E={{c2::mc^2}}$",
+            settings,
+        );
+
+        expect(result).toHaveLength(1);
+        expect(result[0].front).toContain("SR_H:");
+        expect(result[0].back).toContain("SR_S:");
+        expect(result[0].front).toContain("$E=mc^2$");
+        expect(result[0].back).toContain("$E=mc^2$");
+        expect(result[0].front).not.toContain("{{c2::");
+        expect(result[0].back).not.toContain("{{c2::");
+    });
+
+    test("keeps LaTeX clozes when enabled", () => {
+        const settings: SRSettings = {
+            ...DEFAULT_SETTINGS,
+            isPro: true,
+            enableLatexClozes: true,
+            convertAnkiClozesToClozes: true,
+        };
+
+        const result = CardFrontBackUtil.expand(
+            CardType.AnkiCloze,
+            "Formula only ${{c1::x}}$",
+            settings,
+        );
+
+        expect(result).toHaveLength(1);
+        expect(result[0].front).toContain("$");
+        expect(result[0].back).toContain("$");
+        expect(result[0].front).toContain("SR_H:");
+        expect(result[0].back).toContain("SR_S:");
+        expect(result[0].back).toContain("x");
+    });
+});

@@ -21,6 +21,7 @@ import { ClozeCrafter, IClozeFormatter } from "clozecraft";
 import { CardType } from "src/Question";
 import { SRSettings } from "src/settings";
 import { resolveClozeReviewContext } from "src/util/cloze-review-context";
+import { stripLatexAnkiClozeSyntax } from "src/util/latex-formula";
 import { findLineIndexOfSearchStringIgnoringWs } from "src/util/utils";
 
 export class CardFrontBack {
@@ -294,9 +295,21 @@ class QuestionTypeAnkiCloze implements IQuestionTypeHandler {
     ): CardFrontBack[] {
         const result: CardFrontBack[] = [];
         const isCodeBlock = this.isCodeBlockQuestion(questionText);
+        const latexClozesEnabled = settings.isPro && settings.enableLatexClozes;
+        const workingQuestionText =
+            !isCodeBlock && !latexClozesEnabled
+                ? stripLatexAnkiClozeSyntax(questionText)
+                : questionText;
+        const workingContext =
+            !isCodeBlock && !latexClozesEnabled && context?.noteText
+                ? {
+                      ...context,
+                      noteText: stripLatexAnkiClozeSyntax(context.noteText),
+                  }
+                : context;
 
         // 1. 提取所有挖空信息
-        const clozeInfos = this.extractClozeInfos(questionText);
+        const clozeInfos = this.extractClozeInfos(workingQuestionText);
 
         if (isCodeBlock) {
             // === 核心逻辑变更：按 (ID + 行号) 分组 ===
@@ -334,7 +347,7 @@ class QuestionTypeAnkiCloze implements IQuestionTypeHandler {
                     let lastEnd = 0;
 
                     clozeInfos.forEach((info) => {
-                        processedFullText += questionText.substring(lastEnd, info.start);
+                        processedFullText += workingQuestionText.substring(lastEnd, info.start);
 
                         const isActive = activeClozes.some((active) => active.start === info.start);
 
@@ -349,7 +362,7 @@ class QuestionTypeAnkiCloze implements IQuestionTypeHandler {
                         }
                         lastEnd = info.end;
                     });
-                    processedFullText += questionText.substring(lastEnd);
+                    processedFullText += workingQuestionText.substring(lastEnd);
 
                     // 2. 获取上下文窗口 (基于已经完成了独立占位符替换的安全全量代码)
                     const contextSize = settings.codeContextLines || 15;
@@ -373,10 +386,10 @@ class QuestionTypeAnkiCloze implements IQuestionTypeHandler {
             uniqueIds.forEach((activeId) => {
                 const activeInfos = clozeInfos.filter((info) => info.id === activeId);
                 const contextText = this.resolveTextContext(
-                    questionText,
+                    workingQuestionText,
                     activeInfos.map((info) => info.lineNum),
                     settings,
-                    context,
+                    workingContext,
                 );
                 const contextInfos = this.extractClozeInfos(contextText);
                 const front = this.generateFront(contextText, contextInfos, activeId, settings);
@@ -394,23 +407,23 @@ class QuestionTypeAnkiCloze implements IQuestionTypeHandler {
         }[] = [];
 
         if (settings.convertHighlightsToClozes) {
-            const matches = [...questionText.matchAll(/==(.*?)==/g)];
+            const matches = [...workingQuestionText.matchAll(/==(.*?)==/g)];
             matches.forEach((m) =>
                 standardClozeMatches.push({
                     text: m[1],
                     fullMatch: m[0],
-                    lineNum: this.getLineNumberFromIndex(questionText, m.index ?? 0),
+                    lineNum: this.getLineNumberFromIndex(workingQuestionText, m.index ?? 0),
                     type: "highlight",
                 }),
             );
         }
         if (settings.convertBoldTextToClozes) {
-            const matches = [...questionText.matchAll(/\*\*(.*?)\*\*/g)];
+            const matches = [...workingQuestionText.matchAll(/\*\*(.*?)\*\*/g)];
             matches.forEach((m) =>
                 standardClozeMatches.push({
                     text: m[1],
                     fullMatch: m[0],
-                    lineNum: this.getLineNumberFromIndex(questionText, m.index ?? 0),
+                    lineNum: this.getLineNumberFromIndex(workingQuestionText, m.index ?? 0),
                     type: "bold",
                 }),
             );
@@ -419,10 +432,10 @@ class QuestionTypeAnkiCloze implements IQuestionTypeHandler {
         // 为每个普通挖空生成卡片
         standardClozeMatches.forEach((match) => {
             const contextText = this.resolveTextContext(
-                questionText,
+                workingQuestionText,
                 [match.lineNum],
                 settings,
-                context,
+                workingContext,
             );
             const activeMatch = this.findActiveStandardMatch(contextText, match.type, match.text);
             if (!activeMatch) {

@@ -816,3 +816,40 @@ describe("Parser debug messages", () => {
         logSpy.mockRestore();
     });
 });
+
+describe("LaTeX Anki clozes", () => {
+    const ankiParserOptions: ParserOptions = {
+        ...parserOptions,
+        clozePatterns: ["==[123;;]answer[;;hint]==", "**[123;;]answer[;;hint]**"],
+        convertAnkiClozesToClozes: true,
+    };
+
+    beforeEach(() => {
+        setDebugParser(false);
+    });
+
+    test("Ignores LaTeX Anki clozes when disabled", () => {
+        expect(
+            parseT("Formula only ${{c1::x}}$", {
+                ...ankiParserOptions,
+                enableLatexClozes: false,
+            }),
+        ).toEqual([]);
+
+        expect(
+            parseT("Outside {{c1::word}} and ${{c2::x}}$", {
+                ...ankiParserOptions,
+                enableLatexClozes: false,
+            }),
+        ).toEqual([[CardType.AnkiCloze, "Outside {{c1::word}} and ${{c2::x}}$", 0, 0]]);
+    });
+
+    test("Keeps LaTeX Anki clozes when enabled", () => {
+        expect(
+            parseT("Formula only ${{c1::x}}$", {
+                ...ankiParserOptions,
+                enableLatexClozes: true,
+            }),
+        ).toEqual([[CardType.AnkiCloze, "Formula only ${{c1::x}}$", 0, 0]]);
+    });
+});

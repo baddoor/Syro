@@ -1,84 +1,61 @@
 /**
- * 这个文件是干什么的：
- *   专门处理编辑器里 LaTeX 数学公式中的"填空"效果。
- *   当用户在公式中写了填空语法（比如 {{c1::x^2}}）时，
- *   这个文件会找到对应的公式，把它替换成带高亮填空效果的自定义渲染结果。
- *
- * 它在项目中属于：界面层（编辑器插件）
- *
- * 它会用到哪些文件：
- *   - src/utils/latexTransformer.ts（把填空语法转换成 LaTeX 高亮命令）
- *   - obsidian 的 renderMath / finishRenderMath（渲染数学公式）
- *
- * 哪些文件会用到它：
- *   - src/editor/index.ts 或插件主入口（注册这个编辑器扩展）
- *
- * 匹配原理：
- *   使用 CodeMirror 的 posAtDOM 方法，通过 DOM 元素反查文档位置，
- *   实现 DOM → 文档位置 的精确匹配，不依赖屏幕像素坐标。
+ * 处理编辑器里 LaTeX 公式中的 Cloze 渲染效果。
+ * 仅在 LaTeX 挖空开关开启时，把公式中的 {{c1::...}} 转成高亮后的数学公式预览。
  */
-import { EditorView, ViewPlugin, ViewUpdate } from "@codemirror/view";
 import { Extension } from "@codemirror/state";
-import { transformLatex, hasClozeSyntax } from "../utils/latexTransformer";
+import { EditorView, ViewPlugin, ViewUpdate } from "@codemirror/view";
 import { finishRenderMath, renderMath } from "obsidian";
+import { findLatexFormulaRanges, LatexFormulaRange } from "../util/latex-formula";
+import { hasClozeSyntax, transformLatex } from "../utils/latexTransformer";
 
 interface MathBlock {
     from: number;
     to: number;
     text: string;
+    latex: string;
     isBlock: boolean;
 }
 
-/**
- * 查找所有包含 cloze 的 math 块
- */
-function findMathBlocks(doc: string): MathBlock[] {
-    const blocks: MathBlock[] = [];
+let isLatexClozePreprocessorEnabled: () => boolean = () => true;
 
-    // 块级公式 $$...$$
-    const blockRegex = /\$\$([\s\S]*?)\$\$/g;
-    let match;
-    while ((match = blockRegex.exec(doc)) !== null) {
-        if (hasClozeSyntax(match[0])) {
-            blocks.push({
-                from: match.index,
-                to: match.index + match[0].length,
-                text: match[0],
-                isBlock: true,
-            });
-        }
-    }
-
-    // 行内公式 $...$
-    const inlineRegex = /(?<!\$)\$(?!\$)([^\$\n]+)\$(?!\$)/g;
-    while ((match = inlineRegex.exec(doc)) !== null) {
-        const from = match.index;
-        const to = match.index + match[0].length;
-        const overlaps = blocks.some(
-            (b) => (from >= b.from && from < b.to) || (to > b.from && to <= b.to),
-        );
-        if (!overlaps && hasClozeSyntax(match[0])) {
-            blocks.push({ from, to, text: match[0], isBlock: false });
-        }
-    }
-
-    blocks.sort((a, b) => a.from - b.from);
-    return blocks;
+export function initializeLatexClozePreprocessor(options?: { isEnabled?: () => boolean }) {
+    isLatexClozePreprocessorEnabled = options?.isEnabled ?? (() => true);
 }
 
-/**
- * 创建自定义渲染的 math 容器
- */
-function createCustomMathContainer(latex: string, isBlock: boolean): HTMLElement {
-    const innerLatex = latex.replace(/^\$\$?|\$\$?$/g, "").trim();
-    const transformedLatex = transformLatex(innerLatex, "highlight", null);
-    const finalLatex = isBlock ? `\\displaystyle ${transformedLatex}` : transformedLatex;
+function findMathBlocks(doc: string): MathBlock[] {
+    return findLatexFormulaRanges(doc)
+        .filter((range) => hasClozeSyntax(range.latex))
+        .map((range) => ({
+            from: range.from,
+            to: range.to,
+            text: doc.slice(range.from, range.to),
+            latex: range.latex,
+            isBlock: range.isBlock,
+        }));
+}
 
+function findMatchingFormula(
+    formulas: LatexFormulaRange[],
+    domPos: number,
+): LatexFormulaRange | undefined {
+    return formulas.find(
+        (formula) =>
+            Math.abs(formula.from - domPos) <= 2 || (domPos >= formula.from && domPos <= formula.to),
+    );
+}
+
+function createRenderedMathContainer(latex: string, isBlock: boolean, transform: boolean): HTMLElement {
+    const innerLatex = latex.trim();
+    const renderedLatex = transform ? transformLatex(innerLatex, "highlight", null) : innerLatex;
+    const finalLatex = isBlock ? `\\displaystyle ${renderedLatex}` : renderedLatex;
     const container = renderMath(finalLatex, false);
     finishRenderMath();
 
-    container.classList.add("sr-cloze-math-custom");
-    container.setAttribute("data-sr-cloze", "true");
+    if (transform) {
+        container.classList.add("sr-cloze-math-custom");
+        container.setAttribute("data-sr-cloze", "true");
+        container.setAttribute("data-sr-processed", "true");
+    }
 
     if (isBlock) {
         container.style.display = "block";
@@ -90,31 +67,30 @@ function createCustomMathContainer(latex: string, isBlock: boolean): HTMLElement
     return container;
 }
 
-/**
- * ViewPlugin - 使用 posAtDOM 进行精确的 DOM→Position 匹配，替换含填空的数学公式
- */
 class LatexClozeDOMPlugin {
     view: EditorView;
     blocks: MathBlock[] = [];
     rafId: number | null = null;
     timeoutId: number | null = null;
+    lastEnabledState: boolean;
 
     constructor(view: EditorView) {
         this.view = view;
+        this.lastEnabledState = isLatexClozePreprocessorEnabled();
         this.updateBlocks();
         this.scheduleProcess();
     }
 
     updateBlocks() {
         const docText = this.view.state.doc.toString();
-        this.blocks = findMathBlocks(docText);
+        this.blocks = isLatexClozePreprocessorEnabled() ? findMathBlocks(docText) : [];
     }
 
     scheduleProcess() {
         if (this.timeoutId !== null) {
             clearTimeout(this.timeoutId);
         }
-        // 延迟 150ms 确保 Obsidian 已完成 MathJax 渲染并挂载 DOM
+
         this.timeoutId = window.setTimeout(() => {
             this.rafId = requestAnimationFrame(() => {
                 this.processDOM();
@@ -122,60 +98,104 @@ class LatexClozeDOMPlugin {
         }, 150);
     }
 
-    processDOM() {
-        // 1. 获取选区，避免处理光标正在编辑的公式
-        const selection = this.view.state.selection.main;
-
-        // 2. 查找 Obsidian 生成的所有数学公式容器
-        //    Obsidian 用 span.math 包裹 mjx-container
+    private restoreDefaultMathRendering(formulas: LatexFormulaRange[]) {
         const mathElements = Array.from(
             this.view.dom.querySelectorAll(".cm-content .math"),
         ) as HTMLElement[];
 
         for (const mathSpan of mathElements) {
-            // 如果里面的 mjx-container 已经被我们处理过，直接跳过
-            const existingMjx = mathSpan.querySelector("mjx-container");
-            if (!existingMjx || existingMjx.hasAttribute("data-sr-processed")) continue;
+            const customContainer = mathSpan.querySelector("[data-sr-processed='true']") as
+                | HTMLElement
+                | null;
+            if (!customContainer) {
+                continue;
+            }
 
-            // 3. 核心：通过 DOM 元素反查它在文档中的位置
-            //    posAtDOM 返回该节点之前的字符位置
             let domPos: number;
             try {
                 domPos = this.view.posAtDOM(mathSpan);
             } catch {
-                // 如果 DOM 节点不在编辑器可见范围内，posAtDOM 可能抛异常
                 continue;
             }
 
-            // 4. 在我们解析的 blocks 中查找匹配该位置的 block
-            //    允许少量字符误差，因为有时候隐藏字符或 widget 会导致微小偏移
-            const matchedBlock = this.blocks.find(
-                (b) => Math.abs(b.from - domPos) <= 2 || (domPos >= b.from && domPos <= b.to),
+            const matchedFormula = findMatchingFormula(formulas, domPos);
+            if (!matchedFormula) {
+                continue;
+            }
+
+            const defaultContainer = createRenderedMathContainer(
+                matchedFormula.latex,
+                matchedFormula.isBlock,
+                false,
             );
+            customContainer.replaceWith(defaultContainer);
+        }
+    }
 
-            if (!matchedBlock) continue;
+    processDOM() {
+        const docText = this.view.state.doc.toString();
+        const allFormulas = findLatexFormulaRanges(docText);
 
-            // 5. 检查是否正在编辑（光标与该块重叠）
+        if (!isLatexClozePreprocessorEnabled()) {
+            this.restoreDefaultMathRendering(allFormulas);
+            return;
+        }
+
+        const selection = this.view.state.selection.main;
+        const mathElements = Array.from(
+            this.view.dom.querySelectorAll(".cm-content .math"),
+        ) as HTMLElement[];
+
+        for (const mathSpan of mathElements) {
+            const existingMjx = mathSpan.querySelector("mjx-container");
+            if (!existingMjx || existingMjx.hasAttribute("data-sr-processed")) {
+                continue;
+            }
+
+            let domPos: number;
+            try {
+                domPos = this.view.posAtDOM(mathSpan);
+            } catch {
+                continue;
+            }
+
+            const matchedBlock = this.blocks.find(
+                (block) => Math.abs(block.from - domPos) <= 2 || (domPos >= block.from && domPos <= block.to),
+            );
+            if (!matchedBlock) {
+                continue;
+            }
+
             const isEditing =
                 selection.to >= matchedBlock.from && selection.from <= matchedBlock.to;
-            if (isEditing) continue;
+            if (isEditing) {
+                continue;
+            }
 
-            // 6. 执行替换
-            //    替换 mjx-container，保留外层的 span.math，维持 CodeMirror 结构稳定
-            const customContainer = createCustomMathContainer(
-                matchedBlock.text,
+            const customContainer = createRenderedMathContainer(
+                matchedBlock.latex,
                 matchedBlock.isBlock,
+                true,
             );
-            customContainer.setAttribute("data-sr-processed", "true");
             existingMjx.replaceWith(customContainer);
         }
     }
 
     update(update: ViewUpdate) {
-        if (update.docChanged) {
+        const currentEnabledState = isLatexClozePreprocessorEnabled();
+        const enabledChanged = currentEnabledState !== this.lastEnabledState;
+
+        if (update.docChanged || enabledChanged) {
+            this.lastEnabledState = currentEnabledState;
             this.updateBlocks();
         }
-        if (update.docChanged || update.selectionSet || update.viewportChanged) {
+
+        if (
+            update.docChanged ||
+            update.selectionSet ||
+            update.viewportChanged ||
+            enabledChanged
+        ) {
             this.scheduleProcess();
         }
     }

@@ -97,6 +97,7 @@ export interface SRSettings {
     multilineReversedCardSeparator: string;
     multilineCardEndMarker: string;
     parseClozesInCodeBlocks: boolean; // Whether to parse {{c1::...}} cloze syntax in code blocks
+    enableLatexClozes: boolean; // Whether to enable LaTeX cloze parsing/rendering
     enableLatexPopover: boolean; // Whether to enable the LaTeX cloze popover
     codeContextLines: number; // code context lines
     clozeContextMode: ClozeContextMode;
@@ -250,7 +251,8 @@ export const DEFAULT_SETTINGS: SRSettings = {
     multilineReversedCardSeparator: "??",
     multilineCardEndMarker: "",
     parseClozesInCodeBlocks: false, // Disabled by default
-    enableLatexPopover: true,
+    enableLatexClozes: false,
+    enableLatexPopover: false,
     codeContextLines: 15, // default code context lines
     clozeContextMode: "single",
     clozeContextPerformanceMode: "off",
@@ -422,8 +424,12 @@ export function upgradeSettings(settings: SRSettings) {
         settings.convertAnkiClozesToClozes = true;
     }
 
+    if (settings.enableLatexClozes === undefined) {
+        settings.enableLatexClozes = false;
+    }
+
     if (settings.enableLatexPopover === undefined) {
-        settings.enableLatexPopover = true;
+        settings.enableLatexPopover = false;
     }
 
     if (settings.enableNoteCachePersistence === undefined) {

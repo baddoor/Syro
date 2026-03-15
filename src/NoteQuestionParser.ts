@@ -163,6 +163,7 @@ export class NoteQuestionParser {
 
         // Paid-only parsing features are enabled only for Pro users.
         const isPro = settings.isPro;
+        const enableLatexClozes = isPro && settings.enableLatexClozes;
 
         const parserOptions: ParserOptions = {
             singleLineCardSeparator: settings.singleLineCardSeparator,
@@ -175,6 +176,7 @@ export class NoteQuestionParser {
             // Non-Pro users cannot enable Anki cloze parsing or code-block cloze parsing.
             convertAnkiClozesToClozes: isPro ? settings.convertAnkiClozesToClozes : false,
             parseClozesInCodeBlocks: isPro ? settings.parseClozesInCodeBlocks : false,
+            enableLatexClozes,
         };
 
         // We pass contentText which has the frontmatter blanked out; see extractFrontmatter for reasoning

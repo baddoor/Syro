@@ -745,6 +745,12 @@ export const LinearCard: FC<LinearCardProps> = ({
                                                 isFlipped={isFlipped}
                                                 card={card}
                                                 renderMarkdown={renderMarkdown}
+                                                enableLatexClozes={
+                                                    plugin
+                                                        ? plugin.data.settings.isPro &&
+                                                          plugin.data.settings.enableLatexClozes
+                                                        : true
+                                                }
                                                 showOtherAnkiClozeVisual={
                                                     plugin
                                                         ? !plugin.data.settings
@@ -775,6 +781,12 @@ export const LinearCard: FC<LinearCardProps> = ({
                                                 isFlipped={isFlipped}
                                                 card={card || { front: "Q", back: "A" }}
                                                 renderMarkdown={renderMarkdown}
+                                                enableLatexClozes={
+                                                    plugin
+                                                        ? plugin.data.settings.isPro &&
+                                                          plugin.data.settings.enableLatexClozes
+                                                        : true
+                                                }
                                             />
                                         )}
                                     </div>
@@ -1102,10 +1114,12 @@ const MarkdownDisplay = ({
     content,
     renderMarkdown,
     onRendered,
+    enableLatexClozes = true,
 }: {
     content: string;
     renderMarkdown?: (text: string, el: HTMLElement) => Promise<void> | void;
     onRendered?: (el: HTMLDivElement) => void;
+    enableLatexClozes?: boolean;
 }) => {
     const ref = useRef<HTMLDivElement>(null);
     useEffect(() => {
@@ -1138,7 +1152,7 @@ const MarkdownDisplay = ({
             }
 
             // 【LaTeX 填空处理】在渲染前，将数学公式中的 marker 转为 LaTeX \color{} 命令
-            cleanContent = preprocessMathCloze(cleanContent);
+            cleanContent = preprocessMathCloze(cleanContent, enableLatexClozes);
 
             if (renderMarkdown) {
                 // 1. 创建离线缓冲区
@@ -1170,7 +1184,7 @@ const MarkdownDisplay = ({
         };
 
         renderAsync();
-    }, [content, renderMarkdown, onRendered]);
+    }, [content, renderMarkdown, onRendered, enableLatexClozes]);
 
     return (
         <div
@@ -1193,8 +1207,12 @@ const MarkdownDisplay = ({
  * 这样 MathJax 收到的是纯 LaTeX 代码，能正确渲染带颜色的填空效果。
  * 复用了 latex-cloze-preprocessor.ts 的渲染思路。
  */
-function preprocessMathCloze(content: string): string {
+function preprocessMathCloze(content: string, enableLatexClozes: boolean): string {
     content = normalizeSrMarkers(content);
+
+    if (!enableLatexClozes) {
+        return content;
+    }
 
     // 快速检查：如果不包含数学定界符或 marker 标记，直接返回
     const hasMath = content.includes("$");
@@ -1496,6 +1514,7 @@ const ClozeContent = ({
     isFlipped,
     card,
     renderMarkdown,
+    enableLatexClozes = true,
     showOtherAnkiClozeVisual = false,
     showOtherHighlightClozeVisual = false,
     showOtherBoldClozeVisual = false,
@@ -1503,6 +1522,7 @@ const ClozeContent = ({
     isFlipped: boolean;
     card?: CardState;
     renderMarkdown?: (text: string, el: HTMLElement) => void;
+    enableLatexClozes?: boolean;
     showOtherAnkiClozeVisual?: boolean;
     showOtherHighlightClozeVisual?: boolean;
     showOtherBoldClozeVisual?: boolean;
@@ -1663,6 +1683,7 @@ const ClozeContent = ({
                 content={contentToRender}
                 renderMarkdown={renderMarkdown}
                 onRendered={scheduleCenterActiveCloze}
+                enableLatexClozes={enableLatexClozes}
             />
         </div>
     );
@@ -1672,10 +1693,12 @@ const BasicContent = ({
     isFlipped,
     card,
     renderMarkdown,
+    enableLatexClozes = true,
 }: {
     isFlipped: boolean;
     card: CardState;
     renderMarkdown?: (text: string, el: HTMLElement) => void;
+    enableLatexClozes?: boolean;
 }) => (
     <div className="sr-basic-content">
         <div>
@@ -1684,6 +1707,7 @@ const BasicContent = ({
                 <MarkdownDisplay
                     content={card.front || "Question Content"}
                     renderMarkdown={renderMarkdown}
+                    enableLatexClozes={enableLatexClozes}
                 />
             </div>
         </div>
@@ -1705,6 +1729,7 @@ const BasicContent = ({
                                         <MarkdownDisplay
                                             content={card.back || "Answer Content"}
                                             renderMarkdown={renderMarkdown}
+                                            enableLatexClozes={enableLatexClozes}
                                         />
                                     </div>
                                 </>

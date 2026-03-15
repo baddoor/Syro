@@ -504,6 +504,8 @@ export default {
     SETTINGS_ANKI_CLOZE_DESC: "将 {{c1::...}} 转换为填空卡片",
     SETTINGS_CODE_CLOZE: "代码块填空",
     SETTINGS_CODE_CLOZE_DESC: "解析代码块中的 {{c1::...}} 为填空卡片",
+    SETTINGS_LATEX_CLOZE: "LaTeX 挖空",
+    SETTINGS_LATEX_CLOZE_DESC: "识别并渲染 LaTeX 公式中的 {{c1::...}} 挖空。",
     SETTINGS_CLOZE_CONTEXT_MODE: "Cloze 上下文范围",
     SETTINGS_CLOZE_CONTEXT_MODE_TOOLTIP: "选择复习时显示多少上下文。",
     SETTINGS_CLOZE_CONTEXT_SINGLE: "单段",

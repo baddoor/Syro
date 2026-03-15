@@ -352,6 +352,20 @@ const FlashcardsTab: React.FC<TabProps> = ({ settings, onChange }) => {
                     disabled={isFree}
                     onChange={(v) => handleLockedToggle("parseClozesInCodeBlocks", v, "代码块挖空")}
                 />
+                <ToggleRow
+                    label={
+                        (
+                            <LabelWithSupporter
+                                label={t("SETTINGS_LATEX_CLOZE") as string}
+                                isLocked={isFree}
+                            />
+                        ) as any
+                    }
+                    desc={t("SETTINGS_LATEX_CLOZE_DESC")}
+                    value={settings.enableLatexClozes}
+                    disabled={isFree}
+                    onChange={(v) => handleLockedToggle("enableLatexClozes", v, "LaTeX 挖空")}
+                />
                 <SelectRow
                     label={t("SETTINGS_CLOZE_CONTEXT_MODE")}
                     desc={getClozeContextModeDesc(settings.clozeContextMode)}
@@ -387,12 +401,6 @@ const FlashcardsTab: React.FC<TabProps> = ({ settings, onChange }) => {
                     onChange={(v) =>
                         onChange("clozeContextSoftLimitLines", Math.max(1, Math.min(1000, v)))
                     }
-                />
-                <ToggleRow
-                    label="Enable LaTeX Popover"
-                    desc="Show preview popover when editing LaTeX cloze."
-                    value={settings.enableLatexPopover}
-                    onChange={(v) => onChange("enableLatexPopover", v)}
                 />
                 {settings.parseClozesInCodeBlocks && (
                     <div

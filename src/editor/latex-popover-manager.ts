@@ -8,6 +8,7 @@ import { App, Component } from "obsidian";
 import { createRoot, Root } from "react-dom/client";
 import React from "react";
 import { LatexPopover } from "../ui/components/LatexPopover";
+import { findLatexFormulaAt, LatexFormulaRange } from "../util/latex-formula";
 import { hasClozeSyntax } from "../utils/latexTransformer";
 
 let appInstance: App | null = null;
@@ -18,40 +19,25 @@ export function initializeLatexPopover(app: App, options?: { isEnabled?: () => b
     isLatexPopoverEnabled = options?.isEnabled ?? (() => true);
 }
 
-interface MathMatch {
-    from: number;
-    to: number;
-    contentFrom: number;
-    latex: string;
-    isBlock: boolean;
-}
+type MathMatch = LatexFormulaRange;
 
 /**
  * 从文本中查找光标所在的数学公式
  */
 function findMathAtCursor(text: string, cursorPos: number, offset: number): MathMatch | null {
-    // 块级公式 $$...$$
-    const blockRegex = /\$\$([^$]+)\$\$/g;
-    let match;
-    while ((match = blockRegex.exec(text)) !== null) {
-        const from = offset + match.index;
-        const to = offset + match.index + match[0].length;
-        if (cursorPos >= from && cursorPos <= to) {
-            return { from, to, contentFrom: from + 2, latex: match[1], isBlock: true };
-        }
+    const relativePos = cursorPos - offset;
+    const range = findLatexFormulaAt(text, relativePos);
+    if (!range) {
+        return null;
     }
 
-    // 行内公式 $...$
-    const inlineRegex = /\$([^$]+)\$/g;
-    while ((match = inlineRegex.exec(text)) !== null) {
-        const from = offset + match.index;
-        const to = offset + match.index + match[0].length;
-        if (cursorPos >= from && cursorPos <= to) {
-            return { from, to, contentFrom: from + 1, latex: match[1], isBlock: false };
-        }
-    }
-
-    return null;
+    return {
+        ...range,
+        from: range.from + offset,
+        to: range.to + offset,
+        contentFrom: range.contentFrom + offset,
+        contentTo: range.contentTo + offset,
+    };
 }
 
 class LatexPopoverPlugin {

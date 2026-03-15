@@ -689,6 +689,9 @@ export default {
     SETTINGS_ANKI_CLOZE_DESC: "Convert {{c1::...}} to clozes.",
     SETTINGS_CODE_CLOZE: "Code Block Cloze",
     SETTINGS_CODE_CLOZE_DESC: "Parse {{c1::...}} in code blocks as cloze cards.",
+    SETTINGS_LATEX_CLOZE: "LaTeX Cloze",
+    SETTINGS_LATEX_CLOZE_DESC:
+        "Recognize and render {{c1::...}} clozes inside LaTeX formulas.",
     SETTINGS_CLOZE_CONTEXT_MODE: "Cloze Context Range",
     SETTINGS_CLOZE_CONTEXT_MODE_TOOLTIP: "Choose how much review context to show.",
     SETTINGS_CLOZE_CONTEXT_SINGLE: "Single Segment",

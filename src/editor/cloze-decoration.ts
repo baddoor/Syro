@@ -11,6 +11,7 @@ import {
 } from "@codemirror/view";
 import { RangeSetBuilder } from "@codemirror/state";
 import { App } from "obsidian";
+import { isPositionInsideLatexFormula } from "../util/latex-formula";
 import { ClozePopoverManager } from "../ui/editor/ClozePopoverManager";
 
 // 全局 App 实例引用
@@ -22,55 +23,6 @@ export function initializeClozeDecoration(app: App) {
 
 // 正则：匹配 {{c1::内容}} 或 {{c1::内容::提示}}
 const CLOZE_REGEX = /\{\{c(\d+)::(.*?)(?:::(.*?))?\}\}/g;
-
-/**
- * 检测位置是否在 LaTeX 公式内（$...$ 或 $$...$$）
- */
-function isInsideLatexFormula(text: string, position: number): boolean {
-    // 查找所有 LaTeX 公式范围
-    const formulas: { from: number; to: number }[] = [];
-
-    // 块级公式 $$...$$
-    let i = 0;
-    while (i < text.length) {
-        if (text.startsWith("$$", i)) {
-            const start = i;
-            i += 2;
-            const endIndex = text.indexOf("$$", i);
-            if (endIndex !== -1) {
-                formulas.push({ from: start, to: endIndex + 2 });
-                i = endIndex + 2;
-                continue;
-            }
-        }
-        // 行内公式 $...$
-        if (
-            text[i] === "$" &&
-            (i === 0 || text[i - 1] !== "$") &&
-            i + 1 < text.length &&
-            text[i + 1] !== "$"
-        ) {
-            const start = i;
-            i += 1;
-            let endIndex = -1;
-            for (let j = i; j < text.length; j++) {
-                if (text[j] === "$" && (j + 1 >= text.length || text[j + 1] !== "$")) {
-                    endIndex = j;
-                    break;
-                }
-            }
-            if (endIndex !== -1) {
-                formulas.push({ from: start, to: endIndex + 1 });
-                i = endIndex + 1;
-                continue;
-            }
-        }
-        i++;
-    }
-
-    // 检查位置是否在任何公式范围内
-    return formulas.some((f) => position >= f.from && position <= f.to);
-}
 
 /**
  * 获取当前位置所在的"卡片上下文"（段落边界）
@@ -209,7 +161,7 @@ export const clozeDecorationPlugin = ViewPlugin.fromClass(
                     const hint = match[3];
 
                     // 跳过 LaTeX 公式内的 cloze
-                    if (isInsideLatexFormula(text, match.index)) {
+                    if (isPositionInsideLatexFormula(text, match.index)) {
                         continue;
                     }
 

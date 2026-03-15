@@ -13,6 +13,7 @@
 import { ClozeCrafter } from "clozecraft";
 
 import { CardType } from "src/Question";
+import { hasSupportedAnkiCloze } from "src/util/latex-formula";
 
 export let debugParser = false;
 
@@ -25,6 +26,7 @@ export interface ParserOptions {
     clozePatterns: string[];
     convertAnkiClozesToClozes?: boolean;
     parseClozesInCodeBlocks?: boolean;
+    enableLatexClozes?: boolean;
 }
 
 export function setDebugParser(value: boolean) {
@@ -133,6 +135,7 @@ export function parse(text: string, options: ParserOptions): ParsedQuestionInfo[
         lastLineNo = 0;
 
     const clozecrafter = new ClozeCrafter(options.clozePatterns);
+    const enableLatexClozes = options.enableLatexClozes ?? true;
     const lines: string[] = text.replaceAll("\r\n", "\n").split("\n");
     for (let i = 0; i < lines.length; i++) {
         const currentLine = lines[i],
@@ -183,7 +186,7 @@ export function parse(text: string, options: ParserOptions): ParsedQuestionInfo[
         if (
             options.convertAnkiClozesToClozes &&
             cardType === null &&
-            /\{\{c\d+::/.test(currentLine)
+            hasSupportedAnkiCloze(cardText, enableLatexClozes)
         ) {
             cardType = CardType.AnkiCloze;
         }

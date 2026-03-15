@@ -106,7 +106,10 @@ import { SRSettingTab } from "src/ui/settings/settings-react";
 import { GetInputModal } from "src/ui/modals/getInputModal";
 import { clozeDecorationPlugin, initializeClozeDecoration } from "./editor/cloze-decoration";
 import { latexPopoverExtension, initializeLatexPopover } from "./editor/latex-popover-manager";
-import { latexClozePreprocessorPlugin } from "./editor/latex-cloze-preprocessor";
+import {
+    initializeLatexClozePreprocessor,
+    latexClozePreprocessorPlugin,
+} from "./editor/latex-cloze-preprocessor";
 import { clozePostProcessor } from "./editor/cloze-postprocessor";
 import { LicenseManager } from "./services/LicenseManager";
 import { SyncProgressTip } from "src/ui/components/SyncProgressTip";
@@ -119,6 +122,7 @@ import {
     serializeNote,
     SerializedNote,
 } from "src/cache/noteCacheStore";
+import { selectionIntersectsLatexFormula } from "src/util/latex-formula";
 
 // 每日牌组统计数据结构（持久化存储）
 // 每日牌组统计数据结构（持久化存储）
@@ -276,11 +280,16 @@ export default class SRPlugin extends Plugin {
 
         // 注册 LaTeX Cloze 编辑器扩展
         initializeLatexPopover(this.app, {
-            isEnabled: () => this.data.settings.enableLatexPopover !== false,
+            isEnabled: () =>
+                this.isLatexClozeFeatureEnabled() &&
+                this.data.settings.enableLatexPopover === true,
         });
         this.registerEditorExtension(latexPopoverExtension);
 
         // 注册 LaTeX Cloze 预处理器 (使用 atomic ranges)
+        initializeLatexClozePreprocessor({
+            isEnabled: () => this.isLatexClozeFeatureEnabled(),
+        });
         this.registerEditorExtension(latexClozePreprocessorPlugin);
 
         // 注册标准 Cloze Markdown 后处理器 (阅读模式)
@@ -741,6 +750,15 @@ export default class SRPlugin extends Plugin {
             return;
         }
 
+        if (!this.isLatexClozeFeatureEnabled()) {
+            const editorText = editor.getValue();
+            const selectionFrom = editor.posToOffset(editor.getCursor("from"));
+            const selectionTo = editor.posToOffset(editor.getCursor("to"));
+            if (selectionIntersectsLatexFormula(editorText, selectionFrom, selectionTo)) {
+                return;
+            }
+        }
+
         // 获取当前行/段落的文本来判断上下文 ID
         const cursor = editor.getCursor();
         const lineText = editor.getLine(cursor.line);
@@ -900,6 +918,10 @@ export default class SRPlugin extends Plugin {
         return new DeckTreeIterator(iteratorOrder, baseDeck);
     }
 
+    private isLatexClozeFeatureEnabled(): boolean {
+        return this.data.settings.isPro && this.data.settings.enableLatexClozes === true;
+    }
+
     private getSyncSignature(settings: SRSettings): string {
         // Only include parse- and deck-derivation settings to avoid cache resets from UI changes.
         const signature = {
@@ -916,6 +938,7 @@ export default class SRPlugin extends Plugin {
             clozePatterns: settings.clozePatterns,
             convertAnkiClozesToClozes: settings.convertAnkiClozesToClozes,
             parseClozesInCodeBlocks: settings.parseClozesInCodeBlocks,
+            enableLatexClozes: settings.enableLatexClozes,
             convertHighlightsToClozes: settings.convertHighlightsToClozes,
             convertBoldTextToClozes: settings.convertBoldTextToClozes,
             convertCurlyBracketsToClozes: settings.convertCurlyBracketsToClozes,
