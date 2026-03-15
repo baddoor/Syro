@@ -21,7 +21,6 @@ import { TopicPath } from "./TopicPath";
 import { NoteQuestionParser } from "./NoteQuestionParser";
 import { SRSettings } from "./settings";
 import { TextDirection } from "./util/TextDirection";
-import { PerfTracker } from "./util/PerfTracker";
 
 export class NoteFileLoader {
     fileText: string;
@@ -39,7 +38,6 @@ export class NoteFileLoader {
         defaultTextDirection: TextDirection,
         folderTopicPath: TopicPath,
     ): Promise<Note | null> {
-        PerfTracker.start("ParseNote:" + noteFile.path);
         this.noteFile = noteFile;
 
         const questionParser: NoteQuestionParser = new NoteQuestionParser(this.settings);
@@ -53,7 +51,6 @@ export class NoteFileLoader {
         );
 
         const result: Note = new Note(noteFile, questionList, questionParser.noteText);
-        PerfTracker.end("ParseNote:" + noteFile.path);
         return result;
     }
 }

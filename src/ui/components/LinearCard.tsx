@@ -42,7 +42,6 @@ import type SRPlugin from "src/main";
 import "../styles/linear-card.css";
 import { t } from "src/lang/helpers";
 import { transformLatex } from "../../utils/latexTransformer";
-import { PerfTracker } from "../../util/PerfTracker";
 
 // 卡片状态类型
 export interface CardState {
@@ -1112,7 +1111,6 @@ const MarkdownDisplay = ({
     useEffect(() => {
         const renderAsync = async () => {
             if (!ref.current) return;
-            PerfTracker.start("CardMarkdownRender");
 
             // 检查是否有代码块 cloze 标记
             const clozeMatch = content.match(/<!--SR_CODE_CLOZE:(\d+):(\d+)-->/);
@@ -1163,7 +1161,6 @@ const MarkdownDisplay = ({
                     while (buffer.firstChild) {
                         ref.current.appendChild(buffer.firstChild);
                     }
-                    PerfTracker.end("CardMarkdownRender");
                     onRendered?.(ref.current);
                 }
             } else {

@@ -396,7 +396,6 @@ export default {
     CMD_ITEM_INFO: "Информация об элементе",
     CMD_TRACK_NOTE: "Отслеживать заметку",
     CMD_UNTRACK_NOTE: "Не отслеживать заметку",
-    CMD_RESCHEDULE: "Перепланировать",
     CMD_POSTPONE_CARDS: "Отложить карточки",
     CMD_POSTPONE_NOTES: "Отложить заметки",
     CMD_POSTPONE_ALL: "Отложить всё",

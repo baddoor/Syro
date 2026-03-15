@@ -30,7 +30,6 @@ import { t } from "src/lang/helpers";
 import { ContextAnchorService } from "src/util/ContextAnchor";
 import { MarkdownView } from "obsidian";
 import { LicenseManager } from "src/services/LicenseManager";
-import { PerfTracker } from "src/util/PerfTracker";
 
 // Stable view type id used when registering the sidebar view.
 export const REACT_REVIEW_QUEUE_VIEW_TYPE = "react-review-queue-list-view";
@@ -166,7 +165,6 @@ export class ReactNoteReviewView extends ItemView {
      * Re-render the sidebar state.
      */
     public redraw(): void {
-        PerfTracker.start("SidebarRedraw");
         if (!this.root) return;
 
         const activeFile = this.app.workspace.getActiveFile();
@@ -211,7 +209,6 @@ export class ReactNoteReviewView extends ItemView {
                 showScrollPercentage: this.plugin.data.settings.showScrollPercentage,
             }),
         );
-        PerfTracker.end("SidebarRedraw");
     }
 
     // ==========================================

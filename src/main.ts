@@ -109,7 +109,6 @@ import { latexPopoverExtension, initializeLatexPopover } from "./editor/latex-po
 import { latexClozePreprocessorPlugin } from "./editor/latex-cloze-preprocessor";
 import { clozePostProcessor } from "./editor/cloze-postprocessor";
 import { LicenseManager } from "./services/LicenseManager";
-import { PerfTracker } from "./util/PerfTracker";
 import { SyncProgressTip } from "src/ui/components/SyncProgressTip";
 import { Tags } from "./tags";
 import {
@@ -342,23 +341,6 @@ export default class SRPlugin extends Plugin {
         if (this.data.settings.showSchedulingDebugMessages) {
             this.commands.addDebugCommands();
         }
-
-        this.addCommand({
-            id: "srs-export-perf-logs",
-            name: "Export Performance Logs to CSV",
-            callback: () => {
-                PerfTracker.exportToCSV(this.app);
-            },
-        });
-
-        this.addCommand({
-            id: "srs-clear-perf-logs",
-            name: "Clear Performance Logs",
-            callback: () => {
-                PerfTracker.clear();
-                new Notice("Performance logs cleared.");
-            },
-        });
 
         this.reviewFloatBar = new reviewResponseModal(this, settings);
         this.reviewFloatBar.submitCallback = (resp) => {
@@ -1262,7 +1244,6 @@ export default class SRPlugin extends Plugin {
         reviewMode = FlashcardReviewMode.Review,
         mode: SyncMode = "incremental",
     ): Promise<void> {
-        PerfTracker.start("VaultSync");
         const syncStartedAt = Date.now();
         // this.clock_start = Date.now();
         const settings = this.data.settings;
@@ -1547,7 +1528,6 @@ export default class SRPlugin extends Plugin {
             this.syncLock = false;
             this.syncEvents.emit("sync-finished");
             progressTip?.hide(800);
-            PerfTracker.end("VaultSync");
         }
     }
 

@@ -18,7 +18,7 @@ Until that rewrite is complete, use these entry points first:
 - note review
 - separate review data storage
 - FSRS-based scheduling workflows
-- postpone, reschedule, and statistics tools
+- postpone and statistics tools
 
 ## Note
 

@@ -25,7 +25,6 @@ import { Queue } from "./dataStore/queue";
 import { debug } from "./util/utils_recall";
 import { RPITEMTYPE } from "./dataStore/repetitionItem";
 import { postponeItems } from "./algorithms/balance/postpone";
-import { reschedule } from "./algorithms/balance/reschedule";
 import { GetInputModal } from "./ui/modals/getInputModal";
 import { ReviewView } from "./ui/views/reviewView";
 import { FlashcardReviewMode } from "src/scheduling";
@@ -88,14 +87,6 @@ export default class Commands {
                     }
                 }
                 return false;
-            },
-        });
-
-        plugin.addCommand({
-            id: "reschedule",
-            name: t("CMD_RESCHEDULE"),
-            callback: () => {
-                reschedule(plugin.store.items.filter((item) => item.hasDue && item.isTracked));
             },
         });
 

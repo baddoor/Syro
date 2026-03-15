@@ -490,7 +490,6 @@ export default {
     CMD_ITEM_INFO: "Item Info",
     CMD_TRACK_NOTE: "Track Note",
     CMD_UNTRACK_NOTE: "Untrack Note",
-    CMD_RESCHEDULE: "Reschedule",
     CMD_POSTPONE_CARDS: "Postpone cards",
     CMD_POSTPONE_NOTES: "Postpone notes",
     CMD_POSTPONE_ALL: "Postpone All",
