@@ -23,7 +23,7 @@
  * 閻庡湱鍋熼獮?iOS 濡炲瀛╅悧鎼佹儍閸曨垬鈧妫冮姀锛勬嫧闁告柣鍔忕换鍐ㄣ€掗垾鍐残楅柣?
  */
 
-import React, { useState, useCallback, useMemo, useEffect, useRef } from "react";
+import React, { useState, useCallback, useMemo, useEffect, useLayoutEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { MarkdownRenderer, Notice } from "obsidian";
 import { t } from "src/lang/helpers";
@@ -151,6 +151,7 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
     const [direction, setDirection] = useState(0); // 1 = Push, -1 = Pop
     const [tick, setTick] = useState(0); // 闁活潿鍔嬬花顒€顕ｉ崫鍕厬闁告帡鏀遍弻?
     const [recentDeckPath, setRecentDeckPath] = useState<string | null>(null);
+    const deckListScrollTopRef = useRef(0);
 
     const logRuntimeDebug = useCallback(
         (...args: unknown[]) => {
@@ -359,6 +360,10 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
                                 onCollapseChange={handleCollapseChange}
                                 tick={tick}
                                 recentDeckPath={recentDeckPath}
+                                initialScrollTop={deckListScrollTopRef.current}
+                                onScrollTopChange={(scrollTop) => {
+                                    deckListScrollTopRef.current = scrollTop;
+                                }}
                             />
                         </motion.div>
                     ) : (
@@ -405,6 +410,8 @@ interface DeckListViewProps {
     onCollapseChange: (fullPath: string, isCollapsed: boolean) => void;
     tick: number;
     recentDeckPath: string | null;
+    initialScrollTop: number;
+    onScrollTopChange: (scrollTop: number) => void;
 }
 
 interface OpenDeckOptionsState {
@@ -420,6 +427,8 @@ const DeckListView: React.FC<DeckListViewProps> = ({
     onCollapseChange,
     tick,
     recentDeckPath,
+    initialScrollTop,
+    onScrollTopChange,
 }) => {
     const panelHostRef = useRef<HTMLDivElement>(null);
     const treeHostRef = useRef<HTMLDivElement>(null);
@@ -428,6 +437,12 @@ const DeckListView: React.FC<DeckListViewProps> = ({
     const [isSyncing, setIsSyncing] = useState(plugin.syncLock);
     const initialTreeWidth = Number((plugin.data.settings as any).reactDeckTreeWidth ?? 860);
     const [treeWidth, setTreeWidth] = useState(initialTreeWidth);
+
+    useLayoutEffect(() => {
+        const host = treeHostRef.current;
+        if (!host) return;
+        host.scrollTop = initialScrollTop;
+    }, [initialScrollTop]);
 
     // [V3 閻犲鍟€规娊宕抽埡?婵炴挸寮堕悡瀣冀閹存繂鐏欓悶娑辩厜缁变即鎯勭€涙ê澶嶅ù锝堟硶閺併倝宕犻崨顓熷創闁圭鍋撻柡鍫濐槸瀹曢亶鎮ч崶鈺傜暠 remainingDeckTree闁?
     // deckToUIState 闁告垼濮ら弳鐔煎礃閸涙潙鍔ュù鍏间亢閸ゆ粓宕濋妸銉у畨闁?V3 缂佺姵顨嗙涵鍫曟嚊椤忓嫮淇洪柛姘灣缁楀倻鎷嬮敍鍕毈闁哄嫬澧介妵姘跺极閺夎法鎽熼柨?
@@ -472,6 +487,12 @@ const DeckListView: React.FC<DeckListViewProps> = ({
             deckPath: deck.fullPath || deck.deckName,
         });
     }, []);
+
+    const handleTreeScroll = useCallback(() => {
+        const host = treeHostRef.current;
+        if (!host) return;
+        onScrollTopChange(host.scrollTop);
+    }, [onScrollTopChange]);
 
     const handleTreeResizeStart = useCallback(
         (event: React.MouseEvent | React.TouchEvent, direction: "w" | "e") => {
@@ -540,7 +561,7 @@ const DeckListView: React.FC<DeckListViewProps> = ({
                 pointerEvents: "auto",
             }}
         >
-            <div className="sr-deck-list-scroll" ref={treeHostRef}>
+            <div className="sr-deck-list-scroll" ref={treeHostRef} onScroll={handleTreeScroll}>
                 <div
                     className="sr-deck-tree-shell"
                     ref={treeShellRef}
