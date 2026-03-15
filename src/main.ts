@@ -88,7 +88,7 @@ import { DEFAULT_DECKNAME } from "./constants";
 import { algorithms } from "src/algorithms/algorithms_switch";
 import { addFileMenuEvt, registerTrackFileEvents } from "./Events/trackFileEvents";
 import { SyncEvents } from "./Events/SyncEvents";
-import { ItemTrans } from "./dataStore/itemTrans";
+import { ItemTrans, itemToShedNote } from "./dataStore/itemTrans";
 import { LinkRank } from "src/algorithms/priorities/linkPageranks";
 import { Queue } from "./dataStore/queue";
 import { ReviewDeckSelectionModal } from "./ui/modals/reviewDeckSelectionModal";

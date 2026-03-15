@@ -204,7 +204,7 @@ export class RNonTrackfiles extends IReviewNote {
         }
         if (item == null) {
             return {
-                buryList: [],
+                buryList: [] as string[],
                 sNote: {
                     note,
                 },
