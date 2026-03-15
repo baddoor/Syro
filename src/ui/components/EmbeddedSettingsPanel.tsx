@@ -65,9 +65,9 @@ const LabelWithSupporter = ({ label, isLocked }: { label: string; isLocked: bool
     <span className="sr-supporter-label-wrap">
         <span>{label}</span>
         {isLocked && (
-            <span className="sr-supporter-badge" aria-label="支持者版">
+            <span className="sr-supporter-badge" aria-label="支持者功能">
                 <SupporterDiamond />
-                <span>支持者版</span>
+                <span>支持者功能</span>
             </span>
         )}
     </span>

@@ -585,7 +585,7 @@ export default {
     SETTINGS_SECTION_SUPPORTER: "支持者",
     SETTINGS_SUPPORTER_DESC_PRO: "持续支持项目长期发展。",
     SETTINGS_SUPPORTER_DESC_FREE:
-        "Syro 将始终免费提供 90% 的核心功能。\n激活 License Key 维护插件开发并获得额外功能。",
+        "Syro 将始终提供 90% 的核心功能。\n激活 License Key 维护插件开发并获得额外功能。",
     SETTINGS_SECTION_LICENSE: "授权",
     SETTINGS_LICENSE_KEY: "License Key",
     SETTINGS_LICENSE_KEY_DESC: "输入您的密钥以激活支持者状态。",
