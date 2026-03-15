@@ -26,6 +26,7 @@ config.js
 # testing
 coverage
 tests/vaults/*/.obsidian
+/.obsidian/
 
 # mkdocs
 site/
@@ -68,3 +69,6 @@ plugin_test/
 
 # local worktrees
 .worktrees/
+
+# local git history backups
+.git-backups/
