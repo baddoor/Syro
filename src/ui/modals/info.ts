@@ -37,7 +37,7 @@ export class ItemInfoModal extends Modal {
 
         // 如果没有指定具体 item (Card)，则默认为当前文件的 Note item
         if (item == null) {
-            this.item = this.store.getNoteItem(file.path);
+            this.item = plugin.noteReviewStore.getItem(file.path);
         } else {
             this.item = item;
         }

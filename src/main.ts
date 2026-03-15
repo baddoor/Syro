@@ -66,7 +66,6 @@ import { CardScheduleCalculator, NoteCardScheduleParser } from "./CardSchedule";
 import { Note } from "./Note";
 import { NoteFileLoader } from "./NoteFileLoader";
 import { ISRFile, SrTFile as SrTFile } from "./SRFile";
-import { NoteEaseCalculator } from "./NoteEaseCalculator";
 import { DeckTreeStatsCalculator } from "./DeckTreeStatsCalculator";
 import { NoteEaseList } from "./NoteEaseList";
 import { QuestionPostponementList } from "./QuestionPostponementList";
@@ -77,12 +76,14 @@ import { setDebugParser } from "src/parser";
 // Legacy migration note retained from the pre-Syro codebase.
 import { DataStore } from "./dataStore/data";
 import { DataLocation } from "./dataStore/dataLocation";
+import { NoteReviewStore, NoteReviewSource } from "./dataStore/noteReviewStore";
 import Commands from "./commands";
 import { algorithmNames, SrsAlgorithm } from "src/algorithms/algorithms";
 
 import { reviewResponseModal } from "src/ui/modals/reviewresponse-modal";
 import { debug, isIgnoredPath, isVersionNewerThanOther } from "./util/utils_recall";
 import { ReleaseNotes } from "src/ui/modals/ReleaseNotes";
+import { DEFAULT_DECKNAME } from "./constants";
 
 import { algorithms } from "src/algorithms/algorithms_switch";
 import { addFileMenuEvt, registerTrackFileEvents } from "./Events/trackFileEvents";
@@ -110,6 +111,7 @@ import { clozePostProcessor } from "./editor/cloze-postprocessor";
 import { LicenseManager } from "./services/LicenseManager";
 import { PerfTracker } from "./util/PerfTracker";
 import { SyncProgressTip } from "src/ui/components/SyncProgressTip";
+import { Tags } from "./tags";
 import {
     deserializeNote,
     NOTE_CACHE_VERSION,
@@ -184,7 +186,7 @@ export default class SRPlugin extends Plugin {
     private isSRInFocus: boolean = false;
     private statusBarNote: HTMLElement;
     private statusBarFlashcard: HTMLElement;
-    private reviewQueueView: ReactNoteReviewView;
+    public reviewQueueView: ReactNoteReviewView;
     public data: PluginData;
     // 双算法架构
     cardAlgorithm: SrsAlgorithm; // 卡片复习算法
@@ -205,6 +207,7 @@ export default class SRPlugin extends Plugin {
     public lastSelectedReviewDeck: string;
 
     public easeByPath: NoteEaseList;
+    public noteReviewStore: NoteReviewStore;
     private questionPostponementList: QuestionPostponementList;
     // public incomingLinks: Record<string, LinkStat[]> = {}; // del, has linkRank
     // public pageranks: Record<string, number> = {}; // del, has linkRank
@@ -222,6 +225,8 @@ export default class SRPlugin extends Plugin {
     private lastSuccessfulSyncStartedAt = 0;
     private lastSyncReviewMode: FlashcardReviewMode | null = null;
     private lastSemanticChangeAt = 0;
+    private noteReviewRefreshLock = false;
+    private noteReviewRefreshPending = false;
 
     // Derived from earlier pre-Syro command handling.
     public store: DataStore;
@@ -397,10 +402,8 @@ export default class SRPlugin extends Plugin {
         this.statusBarNote.classList.add("mod-clickable");
         setTooltip(this.statusBarNote, t("OPEN_NOTE_FOR_REVIEW"), { placement: "top" });
         this.statusBarNote.addEventListener("click", async () => {
-            if (!this.syncLock) {
-                await this.requestSync({ trigger: "review-entry" });
-                this.reviewNextNoteModal();
-            }
+            await this.refreshNoteReview({ trigger: "review-entry" });
+            this.reviewNextNoteModal();
         });
 
         // Initialize Flashcard Status Bar Item
@@ -417,6 +420,7 @@ export default class SRPlugin extends Plugin {
         // 初始化状态栏呼吸灯动态样式
         this.updateStatusBarVisibility();
         this.updateStatusBarStyles();
+        this.updateStatusBar();
 
         this.addRibbonIcon("SpacedRepIcon", t("REVIEW_CARDS"), async () => {
             if (!this.syncLock) {
@@ -436,8 +440,7 @@ export default class SRPlugin extends Plugin {
                         // 获取笔记的 RepetitionItem 以计算各选项的复习间隔天数
                         let intervals: number[] | null = null;
                         try {
-                            const store = DataStore.getInstance();
-                            const noteItem = store.getNoteItem(fileish.path);
+                            const noteItem = this.noteReviewStore.getItem(fileish.path);
                             if (noteItem) {
                                 intervals = this.noteAlgorithm.calcAllOptsIntervals(noteItem);
                             }
@@ -485,8 +488,7 @@ export default class SRPlugin extends Plugin {
                         // 添加"设置重要性"菜单项
                         menu.addItem((item) => {
                             // 获取当前笔记的 RepetitionItem
-                            const store = DataStore.getInstance();
-                            const noteItem = store.getNoteItem(fileish.path);
+                            const noteItem = this.noteReviewStore.getItem(fileish.path);
                             const currentPriority = noteItem?.priority ?? 5;
 
                             item.setTitle(
@@ -501,9 +503,10 @@ export default class SRPlugin extends Plugin {
                                             if (noteItem) {
                                                 // 更新重要性
                                                 noteItem.priority = newPriority;
-                                                await this.store.save();
+                                                await this.noteReviewStore.save();
                                                 // 刷新侧边栏
                                                 this.updateAndSortDueNotes();
+                                                this.syncEvents.emit("note-review-updated");
                                                 new Notice(`${t("PRIORITY")}: ${newPriority}`);
                                             }
                                         },
@@ -522,10 +525,8 @@ export default class SRPlugin extends Plugin {
             id: "srs-note-review-open-note",
             name: t("OPEN_NOTE_FOR_REVIEW"),
             callback: async () => {
-                if (!this.syncLock) {
-                    await this.requestSync({ trigger: "review-entry" });
-                    this.reviewNextNoteModal();
-                }
+                await this.refreshNoteReview({ trigger: "review-entry" });
+                this.reviewNextNoteModal();
             },
         });
 
@@ -642,6 +643,7 @@ export default class SRPlugin extends Plugin {
 
         this.app.workspace.onLayoutReady(async () => {
             await this.initReviewQueueView();
+            void this.refreshNoteReview({ trigger: "startup" });
             setTimeout(async () => {
                 if (!this.syncLock) {
                     await this.requestSync({ trigger: "startup" });
@@ -714,18 +716,19 @@ export default class SRPlugin extends Plugin {
                 return;
             }
 
-            const tkfile = this.store?.getTrackedFile(file.path);
-            if (tkfile?.tags?.[0] !== RPITEMTYPE.NOTE) {
+            const noteItem = this.noteReviewStore.getItem(file.path);
+            if (!noteItem) {
                 new Notice(t("PLEASE_TAG_NOTE"));
                 return;
             }
 
             const input = new GetInputModal(this.app, t("CMD_INPUT_POSITIVE_NUMBER"));
             input.submitCallback = async (days: number) => {
-                postponeItems([this.store.getItembyID(tkfile.items.file)], days);
-                this.store.save();
+                postponeItems([noteItem], days);
+                await this.noteReviewStore.save();
                 new Notice(t("CMD_NOTE_POSTPONED", { days: days }));
-                await this.sync();
+                this.updateAndSortDueNotes();
+                this.syncEvents.emit("note-review-updated");
                 if (this.data.settings.autoNextNote && this.lastSelectedReviewDeck) {
                     this.reviewNextNote(this.lastSelectedReviewDeck);
                 }
@@ -1098,6 +1101,132 @@ export default class SRPlugin extends Plugin {
         return Date.now() - this.lastSyncCompletedAt < AUTO_SYNC_COOLDOWN_MS;
     }
 
+    private getNoteReviewableMarkdownFiles(): TFile[] {
+        let notes = this.app.vault.getMarkdownFiles();
+        notes = notes.filter((noteFile) => {
+            const fileCachedData = this.app.metadataCache.getFileCache(noteFile) || {};
+            const tags = getAllTags(fileCachedData) || [];
+            const isIgnoredTags = this.data.settings.tagsToIgnore.some((igntag) =>
+                tags.some((notetag) => notetag.startsWith(igntag)),
+            );
+            return (
+                !isIgnoredPath(this.data.settings.noteFoldersToIgnore, noteFile.path) &&
+                !isIgnoredTags
+            );
+        });
+        return notes;
+    }
+
+    private resolveNoteReviewTracking(
+        note: TFile,
+    ): { deckName: string; source: NoteReviewSource } | null {
+        const tagDeckName = Tags.getNoteDeckName(note, this.data.settings);
+        if (tagDeckName !== null) {
+            return { deckName: tagDeckName, source: "tag" };
+        }
+
+        const existing = this.noteReviewStore.getEntry(note.path);
+        if (!existing) {
+            return null;
+        }
+
+        if (existing.source === "manual") {
+            return { deckName: existing.deckName ?? DEFAULT_DECKNAME, source: "manual" };
+        }
+
+        if (this.data.settings.untrackWithReviewTag === false) {
+            return {
+                deckName: existing.deckName ?? DEFAULT_DECKNAME,
+                source: existing.source,
+            };
+        }
+
+        return null;
+    }
+
+    public async refreshNoteReview({
+        trigger = "manual",
+    }: { trigger?: SyncTrigger } = {}): Promise<void> {
+        if (this.noteReviewRefreshLock) {
+            this.noteReviewRefreshPending = true;
+            return;
+        }
+
+        this.noteReviewRefreshLock = true;
+        try {
+            do {
+                this.noteReviewRefreshPending = false;
+                await this.refreshNoteReviewOnce(trigger);
+            } while (this.noteReviewRefreshPending);
+        } finally {
+            this.noteReviewRefreshLock = false;
+        }
+    }
+
+    private async refreshNoteReviewOnce(_trigger: SyncTrigger): Promise<void> {
+        graph.reset();
+        this.easeByPath = this.easeByPath ?? new NoteEaseList(this.data.settings);
+        this.linkRank = new LinkRank(this.data.settings, this.app.metadataCache);
+
+        const notes = this.getNoteReviewableMarkdownFiles();
+        const visiblePaths = new Set(notes.map((note) => note.path));
+        let changed = this.noteReviewStore.cleanupMissingFiles(this.app.vault);
+
+        this.linkRank.readLinks(notes);
+
+        for (const path of this.noteReviewStore.listPaths()) {
+            if (!visiblePaths.has(path)) {
+                changed = this.noteReviewStore.remove(path) || changed;
+            }
+        }
+
+        for (const note of notes) {
+            const tracking = this.resolveNoteReviewTracking(note);
+            const existing = this.noteReviewStore.getEntry(note.path);
+            const previousDeckName = existing?.deckName;
+            const previousSource = existing?.source;
+
+            if (!tracking) {
+                if (existing) {
+                    changed = this.noteReviewStore.remove(note.path) || changed;
+                }
+                continue;
+            }
+
+            const item = this.noteReviewStore.ensureTracked(
+                note.path,
+                tracking.deckName,
+                tracking.source,
+                this.noteAlgorithm,
+            );
+
+            if (
+                !existing ||
+                previousDeckName !== tracking.deckName ||
+                previousSource !== tracking.source
+            ) {
+                changed = true;
+            }
+
+            const sched = item.getSched();
+            if (sched != null) {
+                const ease = parseFloat(String(sched[3]));
+                if (!isNaN(ease)) {
+                    this.easeByPath.setEaseForPath(note.path, ease);
+                }
+            }
+        }
+
+        this.reviewDecks = this.noteReviewStore.buildReviewDecks(this.app.vault);
+        this.updateAndSortDueNotes();
+
+        if (changed) {
+            await this.noteReviewStore.save();
+        }
+
+        this.syncEvents.emit("note-review-updated");
+    }
+
     async requestSync({
         reviewMode = FlashcardReviewMode.Review,
         mode = "incremental",
@@ -1191,14 +1320,6 @@ export default class SRPlugin extends Plugin {
                 this.store.cleanDirtyNewItems();
             }
 
-            // reset notes stuff
-            graph.reset();
-            this.easeByPath = new NoteEaseList(this.data.settings);
-            // this.incomingLinks = {};
-            // this.pageranks = {};
-            this.linkRank = new LinkRank(this.data.settings, this.app.metadataCache);
-            this.reviewDecks = {};
-
             // reset flashcards stuff
             const fullDeckTree = new Deck("root", null);
 
@@ -1257,18 +1378,7 @@ export default class SRPlugin extends Plugin {
                         }
                         nextCache.set(noteFile.path, { mtime, note });
                         if (note.questionList.length > 0) {
-                            const flashcardsInNoteAvgEase: number = NoteEaseCalculator.Calculate(
-                                note,
-                                this.data.settings,
-                            );
                             note.appendCardsToDeck(fullDeckTree);
-
-                            if (flashcardsInNoteAvgEase > 0) {
-                                this.easeByPath.setEaseForPath(
-                                    note.filePath,
-                                    flashcardsInNoteAvgEase,
-                                );
-                            }
                         }
                         syncedCount++;
                         progressTip?.update(
@@ -1291,7 +1401,6 @@ export default class SRPlugin extends Plugin {
                 releaseSaveSuppression = null;
                 await this.store.flushSaveIfNeeded();
             }
-            await IReviewNote.getInstance().sync(notes, this.reviewDecks, this.easeByPath);
             if (this.store) {
                 await this.store.save();
             }
@@ -1404,7 +1513,6 @@ export default class SRPlugin extends Plugin {
                 );
             }
 
-            this.updateAndSortDueNotes();
             const fbar = this.reviewFloatBar;
             fbar.cardtotalCB = () => {
                 return this.remainingDeckTree.getCardCount(CardListType.All, true);
@@ -1462,11 +1570,13 @@ export default class SRPlugin extends Plugin {
             reviewDeck.sortNotes(this.linkRank.pageranks);
         });
 
-        setDueDates(this.noteStats.delayedDays.dict, this.cardStats.delayedDays.dict);
+        setDueDates(this.noteStats.delayedDays.dict, this.cardStats?.delayedDays?.dict ?? {});
 
         this.updateStatusBar();
 
-        if (this.getActiveLeaf(REVIEW_QUEUE_VIEW_TYPE)) this.reviewQueueView.redraw();
+        if (this.getActiveLeaf(REVIEW_QUEUE_VIEW_TYPE) && this.reviewQueueView?.redraw) {
+            this.reviewQueueView.redraw();
+        }
     }
 
     async loadNote(noteFile: TFile): Promise<Note> {
@@ -1514,17 +1624,25 @@ export default class SRPlugin extends Plugin {
             new Notice(t("NOTE_IN_IGNORED_FOLDER"));
             return;
         }
-        const revnote = IReviewNote.getInstance();
-        if (!revnote.tagCheck(note)) {
+        const tracking = this.resolveNoteReviewTracking(note);
+        if (!tracking) {
             // tagCheck已经显示Notice，这里不需要额外提示
             if (debugScheduling) {
                 console.log("[SR Debug] tagCheck failed");
             }
+            new Notice(t("PLEASE_TAG_NOTE"));
             return;
         }
 
+        const item = this.noteReviewStore.ensureTracked(
+            note.path,
+            tracking.deckName,
+            tracking.source,
+            this.noteAlgorithm,
+        );
+
         let ease: number;
-        if (revnote.isNew && settings.noteAlgorithm !== algorithmNames.Fsrs) {
+        if (item.isNew && settings.noteAlgorithm !== algorithmNames.Fsrs) {
             if (debugScheduling) {
                 console.log("[SR Debug] Calculating ease for new note (non-FSRS)");
             }
@@ -1540,27 +1658,34 @@ export default class SRPlugin extends Plugin {
         }
 
         if (debugScheduling) {
-            console.log("[SR Debug] Calling responseProcess...");
-        }
-        const result = await revnote.responseProcess(note, response, ease);
-        if (debugScheduling) {
-            console.log("[SR Debug] responseProcess result:", result);
+            console.log("[SR Debug] Applying note review response...");
         }
 
+        if (item.isNew && ease != null) {
+            item.updateAlgorithmData("ease", ease);
+        }
+
+        const option = this.noteAlgorithm.srsOptions()[response];
+        const reviewResult = this.noteAlgorithm.onSelection(item, option, false);
+        item.reviewUpdate(reviewResult);
+        IReviewNote.minNextView = IReviewNote.updateminNextView(
+            IReviewNote.minNextView,
+            item.nextReview,
+        );
+
         if (settings.burySiblingCardsByNoteReview) {
-            this.data.buryList.push(...result.buryList);
             await this.savePluginData();
         }
 
-        // Update note's properties to update our due notes.
-        this.postponeResponse(note, result.sNote);
+        await this.noteReviewStore.save();
+        this.postponeResponse(note, itemToShedNote(item, note));
+        this.syncEvents.emit("note-review-updated");
 
         if (debugScheduling) {
             console.log("[SR Debug] saveReviewResponse completed successfully");
         }
 
         // ✅ 刷新UI
-        await this.sync();
     }
 
     // return false if is ignored
@@ -1647,6 +1772,11 @@ export default class SRPlugin extends Plugin {
 
     async reviewNextNoteModal(): Promise<void> {
         const reviewDeckNames: string[] = Object.keys(this.reviewDecks);
+        if (reviewDeckNames.length === 0) {
+            this.reviewFloatBar.close();
+            new Notice(t("ALL_CAUGHT_UP"));
+            return;
+        }
         if (reviewDeckNames.length === 1) {
             this.reviewNextNote(reviewDeckNames[0]);
         } else if (this.data.settings.reviewingNoteDirectly) {
@@ -1679,8 +1809,6 @@ export default class SRPlugin extends Plugin {
         }
         this.lastSelectedReviewDeck = deckKey;
         const deck = this.reviewDecks[deckKey];
-        const queue = this.store.data.queues;
-        const mqs = MixQueSet.getInstance();
         let show = false;
         let item;
         let index = -1;
@@ -1724,21 +1852,8 @@ export default class SRPlugin extends Plugin {
             item = deck.scheduledNotes[index].item;
             fShowItemInfo(item, "scheduledNoes index: " + index);
             show = true;
-            // return;
-        } else if (MixQueSet.isDue() && queue.queueSize(deckKey) > 0) {
-            item = this.store.getNext(deckKey);
-            fShowItemInfo(item, "queue");
-            const path = this.store.getFilePath(item);
-            const note = this.app.vault.getAbstractFileByPath(path) as TFile;
-            if (item != null && item.isTracked && path != null && note instanceof TFile) {
-                // debug("nextNote inside que");
-                await this.app.workspace.getLeaf().openFile(note);
-                show = true;
-            } else {
-                queue.remove(item, queue.queue[deckKey]);
-            }
         }
-        if (!MixQueSet.isDue() && deck.newNotes.length > 0) {
+        if (!show && deck.newNotes.length > 0) {
             const index = IReviewNote.getNextNoteIndex(
                 deck.newNotes.length,
                 this.data.settings.openRandomNote,
@@ -1755,10 +1870,6 @@ export default class SRPlugin extends Plugin {
             return;
         }
 
-        // add repeat items to review.
-        // this.store.loadRepeatQueue(this.reviewDecks);
-        await this.sync();
-
         if (
             this.data.settings.reviewingNoteDirectly &&
             this.noteStats.onDueCount + this.noteStats.newCount > 0
@@ -1770,11 +1881,13 @@ export default class SRPlugin extends Plugin {
             }
         }
 
-        if (this.store) {
-            await this.store.save();
-        }
-
-        ReviewView.nextReviewNotice(IReviewNote.minNextView, Queue.getInstance().laterSize);
+        const laterSize = Object.values(this.reviewDecks).reduce((total, reviewDeck) => {
+            const futureCount = reviewDeck.scheduledNotes.filter(
+                (snote) => (snote.dueUnix ?? 0) > Date.now(),
+            ).length;
+            return total + futureCount;
+        }, 0);
+        ReviewView.nextReviewNotice(IReviewNote.minNextView, laterSize);
 
         this.reviewFloatBar.close();
         this.reviewQueueView.redraw();
@@ -1792,6 +1905,13 @@ export default class SRPlugin extends Plugin {
         this.data.settings = Object.assign({}, DEFAULT_SETTINGS, this.data.settings);
         this.store = new DataStore(this.data.settings, this.manifest.dir);
         await this.store.load();
+        this.noteReviewStore = new NoteReviewStore(this.data.settings, this.manifest.dir);
+        await this.noteReviewStore.load();
+        await this.noteReviewStore.migrateFromLegacyStore(this.store);
+        this.easeByPath = new NoteEaseList(this.data.settings);
+        this.linkRank = new LinkRank(this.data.settings, this.app.metadataCache);
+        this.reviewDecks = this.noteReviewStore.buildReviewDecks(this.app.vault);
+        this.updateAndSortDueNotes();
         setDebugParser(this.data.settings.showParserDebugMessages);
     }
 
@@ -1900,13 +2020,13 @@ export default class SRPlugin extends Plugin {
     updateStatusBar() {
         this.updateStatusBarVisibility();
         if (this.data.settings.showStatusBar === false) return;
-        if (!this.noteStats || !this.remainingDeckTree) return;
+        if (!this.statusBarNote || !this.statusBarFlashcard) return;
+        if (!this.noteStats) return;
         // 获取到期数值
         const dueNotesCount = this.noteStats.onDueCount;
-        const dueFlashcardsCount = this.remainingDeckTree.getDistinctCardCount(
-            CardListType.All,
-            true,
-        );
+        const dueFlashcardsCount = this.remainingDeckTree
+            ? this.remainingDeckTree.getDistinctCardCount(CardListType.All, true)
+            : 0;
 
         // --- 更新笔记状态栏 ---
         this.statusBarNote.empty();

@@ -141,7 +141,7 @@ export class ReactNoteReviewView extends ItemView {
         });
 
         // Refresh automatically after sync completes.
-        this.unsubscribeSyncEvent = this.plugin.syncEvents.on("sync-complete", () => {
+        this.unsubscribeSyncEvent = this.plugin.syncEvents.on("note-review-updated", () => {
             this.redraw();
         });
     }
@@ -232,12 +232,9 @@ export class ReactNoteReviewView extends ItemView {
         await this.app.workspace.getLeaf().openFile(item.noteFile);
 
         // Show the floating review bar when the note is tracked.
-        const store = this.plugin.store;
-        if (store) {
-            const repItem = store.getNoteItem(item.path);
-            if (repItem) {
-                this.plugin.reviewFloatBar.display(repItem);
-            }
+        const repItem = this.plugin.noteReviewStore.getItem(item.path);
+        if (repItem) {
+            this.plugin.reviewFloatBar.display(repItem);
         }
     }
 
@@ -387,13 +384,13 @@ export class ReactNoteReviewView extends ItemView {
         if (!file) return;
 
         try {
-            const store = this.plugin.store;
-            const noteItem = store.getNoteItem(file.path);
+            const noteItem = this.plugin.noteReviewStore.getItem(file.path);
 
             if (noteItem) {
                 noteItem.priority = newPriority;
-                await store.save();
+                await this.plugin.noteReviewStore.save();
                 this.plugin.updateAndSortDueNotes();
+                this.plugin.syncEvents.emit("note-review-updated");
                 new Notice(`${t("PRIORITY")}: ${newPriority}`);
             } else {
                 new Notice(t("SIDEBAR_NOTE_DATA_NOT_FOUND"));

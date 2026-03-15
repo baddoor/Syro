@@ -31,6 +31,8 @@ import { ReviewView } from "./ui/views/reviewView";
 import { FlashcardReviewMode } from "src/scheduling";
 import { t } from "src/lang/helpers";
 import { SyncProgressTip } from "src/ui/components/SyncProgressTip";
+import { DEFAULT_DECKNAME } from "src/constants";
+import { Tags } from "src/tags";
 
 export default class Commands {
     plugin: ObsidianSrsPlugin;
@@ -51,13 +53,17 @@ export default class Commands {
             checkCallback: (checking: boolean) => {
                 const file = plugin.app.workspace.getActiveFile();
                 if (file != null) {
-                    const tkFile = plugin.store.getTrackedFile(file.path);
-                    if (!tkFile || !tkFile.tags.includes(RPITEMTYPE.NOTE)) {
+                    if (!plugin.noteReviewStore.isTracked(file.path)) {
                         if (!checking) {
-                            plugin.store.trackFile(file.path, undefined, true);
-                            plugin.store.save();
-                            plugin.sync();
-                            // plugin.updateStatusBar();
+                            const deckName = Tags.getNoteDeckName(file, plugin.data.settings);
+                            plugin.noteReviewStore.ensureTracked(
+                                file.path,
+                                deckName ?? DEFAULT_DECKNAME,
+                                deckName ? "tag" : "manual",
+                                plugin.noteAlgorithm,
+                            );
+                            plugin.noteReviewStore.save();
+                            plugin.refreshNoteReview({ trigger: "manual" });
                         }
                         return true;
                     }
@@ -72,13 +78,11 @@ export default class Commands {
             checkCallback: (checking: boolean) => {
                 const file = plugin.app.workspace.getActiveFile();
                 if (file != null) {
-                    const tkFile = plugin.store.getTrackedFile(file.path);
-                    if (tkFile && tkFile.tags.includes(RPITEMTYPE.NOTE)) {
+                    if (plugin.noteReviewStore.isTracked(file.path)) {
                         if (!checking) {
-                            plugin.store.untrackFile(file.path, true);
-                            plugin.store.save();
-                            plugin.sync();
-                            // plugin.updateStatusBar();
+                            plugin.noteReviewStore.remove(file.path);
+                            plugin.noteReviewStore.save();
+                            plugin.refreshNoteReview({ trigger: "manual" });
                         }
                         return true;
                     }
@@ -102,19 +106,19 @@ export default class Commands {
                 const file = plugin.app.workspace.getActiveFile();
                 const settings = plugin.data.settings;
                 if (file != null) {
-                    const tkFile = plugin.store.getTrackedFile(file.path);
-                    if (tkFile && tkFile.tags.includes(RPITEMTYPE.NOTE)) {
+                    const noteItem = plugin.noteReviewStore.getItem(file.path);
+                    if (noteItem) {
                         if (!checking) {
-                            const tkfile = plugin.store.getTrackedFile(file.path);
                             const input = new GetInputModal(
                                 plugin.app,
                                 t("CMD_INPUT_POSITIVE_NUMBER"),
                             );
                             input.submitCallback = async (days: number) => {
-                                postponeItems([plugin.store.getItembyID(tkfile.items.file)], days);
-                                plugin.store.save();
+                                postponeItems([noteItem], days);
+                                await plugin.noteReviewStore.save();
                                 new Notice(t("CMD_NOTE_POSTPONED", { days: days }));
-                                await plugin.sync();
+                                plugin.updateAndSortDueNotes();
+                                plugin.syncEvents.emit("note-review-updated");
                                 if (settings.autoNextNote && plugin.lastSelectedReviewDeck) {
                                     plugin.reviewNextNote(plugin.lastSelectedReviewDeck);
                                 }
