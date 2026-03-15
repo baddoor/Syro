@@ -598,7 +598,7 @@ export default class SRPlugin extends Plugin {
         // 同级挖空 (Ctrl+Alt+Shift+C) - 使用当前行最大 ID
         this.addCommand({
             id: "srs-cloze-same-level",
-            name: "Create Cloze (Same Level)",
+            name: t("CMD_CREATE_CLOZE_SAME_LEVEL"),
             icon: "flashcards",
             hotkeys: [{ modifiers: ["Ctrl", "Alt", "Shift"], key: "c" }],
             editorCallback: async (editor) => {
@@ -612,7 +612,7 @@ export default class SRPlugin extends Plugin {
         // 新级挖空 (Alt+Shift+C) - 使用 maxId + 1
         this.addCommand({
             id: "srs-cloze-new-level",
-            name: "Create Cloze (New Level)",
+            name: t("CMD_CREATE_CLOZE_NEW_LEVEL"),
             icon: "flashcards",
             hotkeys: [{ modifiers: ["Alt", "Shift"], key: "c" }],
             editorCallback: async (editor) => {

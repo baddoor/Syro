@@ -42,9 +42,6 @@ export default class Commands {
 
     addCommands() {
         const plugin = this.plugin;
-        const rebuildCacheCommandName = t("CMD_GLOBAL_SYNC_FULL")
-            .replace("Global Sync (Full Rebuild)", "Rebuild Cache (Full Parse)")
-            .replace("全量同步（重建）", "重建缓存（全量解析）");
 
         plugin.addCommand({
             id: "track-file",
@@ -179,7 +176,7 @@ export default class Commands {
 
         plugin.addCommand({
             id: "global-sync-full",
-            name: rebuildCacheCommandName,
+            name: t("CMD_GLOBAL_SYNC_FULL"),
             callback: async () => {
                 await plugin.store.performGlobalGarbageCollection();
                 await plugin.sync(FlashcardReviewMode.Review, "full");
@@ -188,7 +185,7 @@ export default class Commands {
 
         plugin.addCommand({
             id: "global-sync-cards",
-            name: "Global Sync Cards (Clean Ghost Cards)",
+            name: t("CMD_GLOBAL_SYNC_CARDS"),
             callback: async () => {
                 const store = plugin.store;
                 const settings = plugin.data.settings;

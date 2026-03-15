@@ -56,6 +56,22 @@ test("Test translation without interpolation in čeština", () => {
     });
 });
 
+test("Deck options labels stay Chinese-only in zh-cn", () => {
+    jest.isolateModules(() => {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { moment } = require("obsidian");
+        const mockLocale = moment.locale as jest.MockedFunction<() => string>;
+        mockLocale.mockImplementation(() => "zh-cn");
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { t } = require("src/lang/helpers");
+        expect(t("DECK_OPTIONS_SECTION_NEW_CARDS")).toEqual("新卡片");
+        expect(t("DECK_OPTIONS_LEARNING_STEPS")).toEqual("初学间隔");
+        expect(t("DECK_OPTIONS_SECTION_LAPSES")).toEqual("遗忘");
+        expect(t("DECK_OPTIONS_RELEARNING_STEPS")).toEqual("重学间隔");
+        expect(t("DECK_OPTIONS_SECTION_REVIEWS")).toEqual("复习");
+    });
+});
+
 test("Test translation with interpolation in English", () => {
     jest.isolateModules(() => {
         // eslint-disable-next-line @typescript-eslint/no-var-requires

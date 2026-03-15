@@ -505,6 +505,9 @@ export default {
     CMD_UPDATE_ITEMS: "Update Items",
     CMD_INPUT_POSITIVE_NUMBER: "please input positive number",
     CMD_NOTE_POSTPONED: "This note has been postponed ${days} days",
+    CMD_GLOBAL_SYNC_CARDS: "Global Sync Cards (Clean Ghost Cards)",
+    CMD_CREATE_CLOZE_SAME_LEVEL: "Create Cloze (Same Level)",
+    CMD_CREATE_CLOZE_NEW_LEVEL: "Create Cloze (New Level)",
 
     // trackFileEvents.ts
     MENU_TRACK_ALL_NOTES: "Track All Notes",
