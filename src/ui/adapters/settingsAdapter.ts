@@ -46,6 +46,7 @@ export function settingsToUIState(settings: SRSettings): UISettingsState {
         tagsToReview: settings.tagsToReview || [],
         autoNextNote: settings.autoNextNote ?? false,
         openRandomNote: settings.openRandomNote ?? false,
+        enableNoteReviewPaneOnStartup: settings.enableNoteReviewPaneOnStartup ?? true,
         sidebarIgnoredTags: settings.sidebarIgnoredTags || [],
         hideNoteReviewSidebarFilters: settings.hideNoteReviewSidebarFilters ?? false,
         showScrollPercentage: settings.showScrollPercentage ?? true,
@@ -157,6 +158,8 @@ export function mergeUIStateToSettings(
     if (uiChanges.tagsToReview !== undefined) merged.tagsToReview = uiChanges.tagsToReview;
     if (uiChanges.autoNextNote !== undefined) merged.autoNextNote = uiChanges.autoNextNote;
     if (uiChanges.openRandomNote !== undefined) merged.openRandomNote = uiChanges.openRandomNote;
+    if (uiChanges.enableNoteReviewPaneOnStartup !== undefined)
+        merged.enableNoteReviewPaneOnStartup = uiChanges.enableNoteReviewPaneOnStartup;
     if (uiChanges.sidebarIgnoredTags !== undefined)
         merged.sidebarIgnoredTags = uiChanges.sidebarIgnoredTags;
     if (uiChanges.hideNoteReviewSidebarFilters !== undefined)

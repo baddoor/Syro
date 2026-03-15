@@ -37,6 +37,7 @@ export interface UISettingsState {
     tagsToReview: string[];
     autoNextNote: boolean;
     openRandomNote: boolean;
+    enableNoteReviewPaneOnStartup: boolean;
     sidebarIgnoredTags: string[]; // Ignored tags
     hideNoteReviewSidebarFilters: boolean; // Hide the sidebar filter header
     showScrollPercentage: boolean; // Show saved scroll percentage in timeline items

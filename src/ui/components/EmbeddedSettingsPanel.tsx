@@ -1071,6 +1071,13 @@ const AlgoTab: React.FC<TabProps> = ({ settings, onChange }) => {
 // ==========================================
 const NotesTab: React.FC<TabProps> = ({ settings, onChange }) => (
     <div className="sr-settings-sections">
+        <Section title={t("NOTES")}>
+            <ToggleRow
+                label={t("REVIEW_PANE_ON_STARTUP")}
+                value={settings.enableNoteReviewPaneOnStartup}
+                onChange={(v) => onChange("enableNoteReviewPaneOnStartup", v)}
+            />
+        </Section>
         <Section title={t("SETTINGS_SECTION_IGNORED_TAGS")}>
             <TextAreaRow
                 label={t("SETTINGS_SECTION_IGNORED_TAGS")}
