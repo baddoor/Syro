@@ -432,7 +432,11 @@ export default class SRPlugin extends Plugin {
         if (!this.data.settings.disableFileMenuReviewOptions) {
             this.registerEvent(
                 this.app.workspace.on("file-menu", (menu, fileish: TAbstractFile) => {
-                    if (fileish instanceof TFile && fileish.extension === "md") {
+                    if (
+                        fileish instanceof TFile &&
+                        fileish.extension === "md" &&
+                        this.noteReviewStore.isTracked(fileish.path)
+                    ) {
                         const options = this.noteAlgorithm.srsOptions();
                         const algo = this.data.settings.noteAlgorithm;
                         const showtext = this.data.settings.responseOptionBtnsText;

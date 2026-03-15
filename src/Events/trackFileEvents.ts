@@ -150,7 +150,7 @@ export function addFileMenuEvt(plugin: SRPlugin, menu: Menu, fileish: TAbstractF
                 .filter((file) => file.path === fileish.path || file.path.startsWith(folderPrefix));
 
         menu.addItem((item) => {
-            item.setIcon("plus-with-circle");
+            item.setIcon("SpacedRepIcon");
             item.setTitle(t("MENU_TRACK_ALL_NOTES"));
             item.onClick(async () => {
                 for (const file of getFolderNotes()) {
@@ -168,7 +168,7 @@ export function addFileMenuEvt(plugin: SRPlugin, menu: Menu, fileish: TAbstractF
         });
 
         menu.addItem((item) => {
-            item.setIcon("minus-with-circle");
+            item.setIcon("SpacedRepIcon");
             item.setTitle(t("MENU_UNTRACK_ALL_NOTES"));
             item.onClick(async () => {
                 for (const file of getFolderNotes()) {
@@ -187,7 +187,7 @@ export function addFileMenuEvt(plugin: SRPlugin, menu: Menu, fileish: TAbstractF
 
     if (plugin.noteReviewStore.isTracked(fileish.path)) {
         menu.addItem((item) => {
-            item.setIcon("minus-with-circle");
+            item.setIcon("SpacedRepIcon");
             item.setTitle(t("MENU_UNTRACK_NOTE"));
             item.onClick(async () => {
                 plugin.noteReviewStore.remove(fileish.path);
@@ -202,7 +202,7 @@ export function addFileMenuEvt(plugin: SRPlugin, menu: Menu, fileish: TAbstractF
     }
 
     menu.addItem((item) => {
-        item.setIcon("plus-with-circle");
+        item.setIcon("SpacedRepIcon");
         item.setTitle(t("MENU_TRACK_NOTE"));
         item.onClick(async () => {
             const deckName = Tags.getNoteDeckName(fileish, plugin.data.settings);
