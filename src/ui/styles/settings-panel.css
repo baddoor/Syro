@@ -207,6 +207,13 @@
     /* 激活色 */
 }
 
+
+.sr-settings-panel .mod-toggle .checkbox-container.is-disabled {
+    cursor: default;
+    opacity: 0.55;
+    pointer-events: none;
+}
+
 /* 移除 React 组件可能自带的边框干扰 */
 .sr-settings-panel .setting-items .setting-item:first-child {
     border-top: none;

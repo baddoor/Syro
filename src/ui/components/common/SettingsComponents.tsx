@@ -53,15 +53,30 @@ interface ToggleRowProps {
     tooltip?: string;
     value: boolean;
     onChange: (v: boolean) => void;
+    disabled?: boolean;
 }
 
-export const ToggleRow: React.FC<ToggleRowProps> = ({ label, desc, tooltip, value, onChange }) => (
+export const ToggleRow: React.FC<ToggleRowProps> = ({
+    label,
+    desc,
+    tooltip,
+    value,
+    onChange,
+    disabled = false,
+}) => (
     <BaseComponent label={label} desc={desc} tooltip={tooltip} className="mod-toggle">
         <div
-            className={`checkbox-container ${value ? "is-enabled" : ""}`}
-            onClick={() => onChange(!value)}
+            className={`checkbox-container ${value ? "is-enabled" : ""} ${disabled ? "is-disabled" : ""}`}
+            onClick={disabled ? undefined : () => onChange(!value)}
+            aria-disabled={disabled}
         >
-            <input type="checkbox" tabIndex={0} />
+            <input
+                type="checkbox"
+                tabIndex={disabled ? -1 : 0}
+                checked={value}
+                readOnly
+                disabled={disabled}
+            />
         </div>
     </BaseComponent>
 );

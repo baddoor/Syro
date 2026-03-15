@@ -271,10 +271,9 @@ const FlashcardsTab: React.FC<TabProps> = ({ settings, onChange }) => {
     const handleLockedToggle = (
         key: keyof UISettingsState,
         value: boolean,
-        featureName: string,
+        _featureName: string,
     ) => {
         if (isFree && value === true) {
-            new Notice(`「${featureName}」为支持者版功能`);
             onChange(key, false);
         } else {
             onChange(key, value);
@@ -334,6 +333,7 @@ const FlashcardsTab: React.FC<TabProps> = ({ settings, onChange }) => {
                     }
                     desc={t("SETTINGS_ANKI_CLOZE_DESC")}
                     value={settings.convertAnkiClozesToClozes}
+                    disabled={isFree}
                     onChange={(v) =>
                         handleLockedToggle("convertAnkiClozesToClozes", v, "Anki 挖空")
                     }
@@ -349,6 +349,7 @@ const FlashcardsTab: React.FC<TabProps> = ({ settings, onChange }) => {
                     }
                     desc={t("SETTINGS_CODE_CLOZE_DESC")}
                     value={settings.parseClozesInCodeBlocks}
+                    disabled={isFree}
                     onChange={(v) => handleLockedToggle("parseClozesInCodeBlocks", v, "代码块挖空")}
                 />
                 <SelectRow
