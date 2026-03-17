@@ -110,5 +110,6 @@ Syro's development is deeply indebted to the open-source community and inspired 
 -   **[Obsidian Smart Connections](https://github.com/brianpetro/obsidian-smart-connections)**: Its excellent engineering architecture and innovative ideas provided invaluable inspiration when exploring the integration of AI with local knowledge bases.
 
 ---
-**License**: [MIT License](./LICENSE)  
-*(Commercialization and Connectivity Disclosure: Most core Syro features are free to use, while some supporter-only features require a CDK. The current version has no mandatory account system. It does perform online CDK verification, but it does not send core review data, note content, or other learning content to external services.)*
+**License**: [MIT License](./LICENSE) 
+
+ *(Disclosure: Most of Syro’s core features are available for free. Certain supporter-exclusive experimental features require CDK verification. The current version does not enforce an account system; the plugin may perform automatic or user-initiated online CDK validation, but it does not transmit core review data, note content, or any information unrelated to CDK verification to the cloud.)*
