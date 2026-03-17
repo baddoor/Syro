@@ -1,8 +1,8 @@
-# Syro: Reshape Your Memory and Reading in Obsidian
+**English** | [中文文档](./docs/README_ZH.md)  
+
+***Reshape Your Memory and Reading in Obsidian***
 
 > **Seamlessly integrate the scientific principles of Spaced Repetition and Incremental Reading into your plain-text knowledge base.**
-
-[中文文档 (Chinese)](./docs/README_ZH.md) | **English**
 
 ## When Your Knowledge Vault Becomes a Collection Graveyard
 
