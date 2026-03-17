@@ -7,21 +7,82 @@
 
 
 
-import { SRSettings, DEFAULT_PROGRESS_BAR_STYLE, syncDefaultClozePatterns } from "../../settings";
+import {
+    AiThemeLlmProvider,
+    AiThemeLlmProviderConfigMap,
+    DEFAULT_PROGRESS_BAR_STYLE,
+    SRSettings,
+    createDefaultAiThemeLlmProviders,
+    isAiThemeLlmProvider,
+    syncDefaultClozePatterns,
+} from "../../settings";
 import { DataLocation } from "../../dataStore/dataLocation";
-import { UISettingsState } from "../types/settingsTypes";
+import { AiThemeRetrieverStatusKind, UISettingsState } from "../types/settingsTypes";
 
 /**
  * Extract the subset of settings needed by the UI.
  */
 interface SettingsUiRuntimeState {
     aiThemeRetrieverAvailable?: boolean;
+    aiThemeRetrieverStatusKind?: AiThemeRetrieverStatusKind;
+    aiThemeRetrieverStatusSource?: string;
+    aiThemeRetrieverStatusMessage?: string;
+}
+
+function normalizeAiThemeProvider(
+    provider: string | undefined,
+    fallback: AiThemeLlmProvider = "openai",
+): AiThemeLlmProvider {
+    return provider && isAiThemeLlmProvider(provider) ? provider : fallback;
+}
+
+function normalizeAiThemeProviderConfigs(
+    settings: SRSettings,
+): {
+    activeProvider: AiThemeLlmProvider;
+    providers: AiThemeLlmProviderConfigMap;
+} {
+    const defaults = createDefaultAiThemeLlmProviders();
+    const activeProvider = normalizeAiThemeProvider(
+        settings.aiThemeLlmActiveProvider ?? settings.aiThemeLlmProvider,
+    );
+
+    const providers = { ...defaults };
+    const fromSettings = settings.aiThemeLlmProviders;
+    if (fromSettings) {
+        for (const provider of Object.keys(defaults) as AiThemeLlmProvider[]) {
+            providers[provider] = {
+                ...defaults[provider],
+                ...(fromSettings[provider] ?? {}),
+            };
+        }
+    }
+
+    // Backfill active provider model from legacy flat settings.
+    if (!providers[activeProvider].model && settings.aiThemeLlmModel) {
+        providers[activeProvider].model = settings.aiThemeLlmModel;
+    }
+
+    return { activeProvider, providers };
 }
 
 export function settingsToUIState(
     settings: SRSettings,
     runtimeState: SettingsUiRuntimeState = {},
 ): UISettingsState {
+    const { activeProvider, providers } = normalizeAiThemeProviderConfigs(settings);
+    const retrieverAvailable = runtimeState.aiThemeRetrieverAvailable ?? false;
+    const retrieverStatusKind =
+        runtimeState.aiThemeRetrieverStatusKind ??
+        (retrieverAvailable ? "smart-blocks-ready" : "unsupported-shape");
+    const retrieverStatusSource =
+        runtimeState.aiThemeRetrieverStatusSource ?? (retrieverAvailable ? "smart_blocks" : "none");
+    const retrieverStatusMessage =
+        runtimeState.aiThemeRetrieverStatusMessage ??
+        (retrieverAvailable
+            ? "Smart Connections retriever is available."
+            : "No compatible Smart Connections retriever interface detected.");
+
     return {
         // Flashcards
         flashcardTags: settings.flashcardTags || [],
@@ -53,12 +114,17 @@ export function settingsToUIState(
         // AI theme review
         enableAiThemeReview: settings.enableAiThemeReview ?? false,
         aiThemeRetriever: settings.aiThemeRetriever ?? "smart-connections",
-        aiThemeRetrieverAvailable: runtimeState.aiThemeRetrieverAvailable ?? false,
+        aiThemeRetrieverAvailable: retrieverAvailable,
+        aiThemeRetrieverStatusKind: retrieverStatusKind,
+        aiThemeRetrieverStatusSource: retrieverStatusSource,
+        aiThemeRetrieverStatusMessage: retrieverStatusMessage,
         aiThemeDefaultFinalEntryLimit: settings.aiThemeDefaultFinalEntryLimit ?? 10,
         aiThemeDefaultOrderMode: settings.aiThemeDefaultOrderMode ?? "relevance",
         aiThemeEnableLlm: settings.aiThemeEnableLlm ?? false,
-        aiThemeLlmProvider: settings.aiThemeLlmProvider ?? "openai",
-        aiThemeLlmModel: settings.aiThemeLlmModel ?? "",
+        aiThemeLlmActiveProvider: activeProvider,
+        aiThemeLlmProviders: providers,
+        aiThemeLlmProvider: activeProvider,
+        aiThemeLlmModel: providers[activeProvider].model ?? "",
         aiThemeLlmPrompt: settings.aiThemeLlmPrompt ?? "",
         aiThemeStrictJsonOutput: settings.aiThemeStrictJsonOutput ?? true,
         // Notes
@@ -179,12 +245,32 @@ export function mergeUIStateToSettings(
         merged.enableAiThemeReview = uiChanges.enableAiThemeReview;
     if (uiChanges.aiThemeRetriever !== undefined)
         merged.aiThemeRetriever = uiChanges.aiThemeRetriever;
+    if (uiChanges.aiThemeRetrieverStatusKind !== undefined)
+        merged.aiThemeRetrieverStatusKind = uiChanges.aiThemeRetrieverStatusKind;
+    if (uiChanges.aiThemeRetrieverStatusSource !== undefined)
+        merged.aiThemeRetrieverStatusSource = uiChanges.aiThemeRetrieverStatusSource;
+    if (uiChanges.aiThemeRetrieverStatusMessage !== undefined)
+        merged.aiThemeRetrieverStatusMessage = uiChanges.aiThemeRetrieverStatusMessage;
     if (uiChanges.aiThemeDefaultFinalEntryLimit !== undefined)
         merged.aiThemeDefaultFinalEntryLimit = Math.max(1, Math.floor(uiChanges.aiThemeDefaultFinalEntryLimit));
     if (uiChanges.aiThemeDefaultOrderMode !== undefined)
         merged.aiThemeDefaultOrderMode = uiChanges.aiThemeDefaultOrderMode as any;
     if (uiChanges.aiThemeEnableLlm !== undefined)
         merged.aiThemeEnableLlm = uiChanges.aiThemeEnableLlm;
+    if (uiChanges.aiThemeLlmActiveProvider !== undefined) {
+        merged.aiThemeLlmActiveProvider = normalizeAiThemeProvider(uiChanges.aiThemeLlmActiveProvider);
+    }
+    if (uiChanges.aiThemeLlmProviders !== undefined) {
+        const defaults = createDefaultAiThemeLlmProviders();
+        const nextProviders = { ...defaults };
+        for (const provider of Object.keys(defaults) as AiThemeLlmProvider[]) {
+            nextProviders[provider] = {
+                ...defaults[provider],
+                ...(uiChanges.aiThemeLlmProviders[provider] ?? {}),
+            };
+        }
+        merged.aiThemeLlmProviders = nextProviders;
+    }
     if (uiChanges.aiThemeLlmProvider !== undefined)
         merged.aiThemeLlmProvider = uiChanges.aiThemeLlmProvider;
     if (uiChanges.aiThemeLlmModel !== undefined)
@@ -193,6 +279,20 @@ export function mergeUIStateToSettings(
         merged.aiThemeLlmPrompt = uiChanges.aiThemeLlmPrompt;
     if (uiChanges.aiThemeStrictJsonOutput !== undefined)
         merged.aiThemeStrictJsonOutput = uiChanges.aiThemeStrictJsonOutput;
+
+    const normalizedProvider = normalizeAiThemeProvider(
+        merged.aiThemeLlmActiveProvider ?? merged.aiThemeLlmProvider,
+    );
+    const providerMap = merged.aiThemeLlmProviders
+        ? normalizeAiThemeProviderConfigs(merged).providers
+        : createDefaultAiThemeLlmProviders();
+    if (uiChanges.aiThemeLlmModel !== undefined) {
+        providerMap[normalizedProvider].model = uiChanges.aiThemeLlmModel;
+    }
+    merged.aiThemeLlmActiveProvider = normalizedProvider;
+    merged.aiThemeLlmProviders = providerMap;
+    merged.aiThemeLlmProvider = normalizedProvider;
+    merged.aiThemeLlmModel = providerMap[normalizedProvider].model;
     // Notes
     if (uiChanges.tagsToReview !== undefined) merged.tagsToReview = uiChanges.tagsToReview;
     if (uiChanges.autoNextNote !== undefined) merged.autoNextNote = uiChanges.autoNextNote;

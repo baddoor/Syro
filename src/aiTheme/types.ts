@@ -1,6 +1,38 @@
 export type AiThemeOrderMode = "relevance" | "random";
 
 export type AiThemeRetrieverId = "smart-connections";
+export type AiThemeRetrieverStatusKind =
+    | "missing-plugin"
+    | "env-loading"
+    | "smart-blocks-ready"
+    | "smart-sources-fallback"
+    | "unsupported-shape"
+    | "error";
+export type AiThemeRetrieverSource = "smart-blocks" | "smart-sources" | "legacy-search" | "none";
+export type AiThemeLlmProviderId =
+    | "lm_studio"
+    | "ollama"
+    | "openai"
+    | "open_router"
+    | "gemini"
+    | "anthropic"
+    | "azure_openai"
+    | "custom_openai_compatible";
+export type AiThemeLlmAdapterKind =
+    | "openai"
+    | "ollama"
+    | "gemini"
+    | "anthropic"
+    | "azure_openai"
+    | "lm_studio";
+
+export interface AiThemeRetrieverStatus {
+    kind: AiThemeRetrieverStatusKind;
+    canRetrieve: boolean;
+    source: AiThemeRetrieverSource;
+    message: string;
+    details?: Record<string, unknown>;
+}
 
 export interface AiThemeCardRef {
     path: string;
@@ -30,9 +62,13 @@ export interface AiThemeSourceBlock {
     blockId?: string;
     textHash?: string;
     lineNo?: number;
+    lineEnd?: number;
     content?: string;
     metadata?: Record<string, unknown>;
     matchedEntryKey?: string;
+    runtimeCollection?: "smart-blocks" | "smart-sources" | "legacy-search";
+    rawPath?: string;
+    subKey?: string;
 }
 
 export interface AiThemePackRecord {
@@ -45,6 +81,8 @@ export interface AiThemePackRecord {
     cardCount: number;
     orderMode: AiThemeOrderMode;
     llmEnabled: boolean;
+    llmProvider?: string;
+    llmModel?: string;
     createdAt: number;
     updatedAt: number;
     sourceBlocks: AiThemeSourceBlock[];
@@ -73,12 +111,17 @@ export interface AiThemeRetrieverHit {
     blockId?: string;
     textHash?: string;
     lineNo?: number;
+    lineEnd?: number;
     content?: string;
     metadata?: Record<string, unknown>;
+    runtimeCollection?: "smart-blocks" | "smart-sources" | "legacy-search";
+    rawPath?: string;
+    subKey?: string;
 }
 
 export interface AiThemeRetriever {
     readonly id: string;
+    getStatus(): AiThemeRetrieverStatus;
     isAvailable(): boolean;
     retrieve(request: AiThemeRetrieverRequest): Promise<AiThemeRetrieverHit[]>;
 }
@@ -103,6 +146,53 @@ export interface AiThemeRerankerInput {
     strictJson?: boolean;
 }
 
+export interface AiThemeLlmProviderConfig {
+    model?: string;
+    baseUrl?: string;
+    host?: string;
+    apiKey?: string;
+    headersJson?: string;
+    timeoutMs?: number;
+    temperature?: number;
+    maxTokens?: number;
+    topP?: number;
+    modelsEndpoint?: string;
+    chatEndpoint?: string;
+    adapterKind?: AiThemeLlmAdapterKind;
+    customAdapterKind?: AiThemeLlmAdapterKind;
+    azureResourceName?: string;
+    azureDeploymentName?: string;
+    azureApiVersion?: string;
+    anthropicVersion?: string;
+}
+
+export type AiThemeLlmProviderConfigMap = Partial<
+    Record<AiThemeLlmProviderId, AiThemeLlmProviderConfig>
+>;
+
+export interface AiThemeResolvedLlmConfig extends AiThemeLlmProviderConfig {
+    provider: AiThemeLlmProviderId;
+    model: string;
+    systemPrompt?: string;
+    strictJsonOutput: boolean;
+    timeoutMs: number;
+    temperature?: number;
+    maxTokens?: number;
+    topP?: number;
+    headers?: Record<string, string>;
+}
+
+export interface AiThemeRerankExecutionInput extends AiThemeRerankerInput {
+    providerId: AiThemeLlmProviderId;
+    resolvedConfig: AiThemeResolvedLlmConfig;
+}
+
+export interface AiThemeLlmModelOption {
+    id: string;
+    label: string;
+    contextWindow?: number;
+}
+
 export interface AiThemeRerankerResult {
     used: boolean;
     orderedKeys: string[];
@@ -121,7 +211,7 @@ export interface CreateAiThemePackInput {
     finalEntryLimit: number;
     orderMode: AiThemeOrderMode;
     llmEnabled: boolean;
-    llmProvider?: string;
+    llmProvider?: string | AiThemeLlmProviderId;
     llmModel?: string;
     llmSystemPrompt?: string;
     llmStrictJson?: boolean;
@@ -180,4 +270,3 @@ export function createEntryKey(input: {
     if (path && lineNo !== undefined) return `p:${path}|l:${lineNo}`;
     return `p:${path}`;
 }
-

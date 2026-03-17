@@ -39,6 +39,22 @@ class StaticRetriever implements AiThemeRetriever {
 
     constructor(private readonly hits: unknown[], private readonly available = true) {}
 
+    getStatus() {
+        return this.available
+            ? {
+                  kind: "smart-blocks-ready" as const,
+                  canRetrieve: true,
+                  source: "smart-blocks" as const,
+                  message: "ready",
+              }
+            : {
+                  kind: "missing-plugin" as const,
+                  canRetrieve: false,
+                  source: "none" as const,
+                  message: "missing",
+              };
+    }
+
     isAvailable(): boolean {
         return this.available;
     }
@@ -111,6 +127,56 @@ describe("ThemePackService", () => {
         expect(result.warnings).toEqual([]);
     });
 
+    it("matches eligible entries by path plus line number when block ids are unavailable", async () => {
+        const service = new ThemePackService({
+            store: new MemoryPackStore() as any,
+            retriever: new StaticRetriever([
+                { path: "vault/topic-b.md", lineNo: 22, score: 0.88, rawPath: "vault/topic-b.md#x" },
+            ]),
+        });
+
+        const result = await service.createPack({
+            name: "Biology",
+            themePrompt: "cells",
+            finalEntryLimit: 1,
+            orderMode: "relevance",
+            llmEnabled: false,
+            questionIndex: createQuestionIndex(),
+        });
+
+        expect(result.pack.entryCount).toBe(1);
+        expect(result.pack.entryRefs[0].path).toBe("vault/topic-b.md");
+        expect(result.pack.cardRefs[0].cardId).toBe(200);
+    });
+
+    it("falls back to the first entry inside a retrieved line range when exact line hits are unavailable", async () => {
+        const service = new ThemePackService({
+            store: new MemoryPackStore() as any,
+            retriever: new StaticRetriever([
+                {
+                    path: "vault/topic-b.md",
+                    lineNo: 20,
+                    lineEnd: 25,
+                    score: 0.88,
+                    rawPath: "vault/topic-b.md#heading",
+                },
+            ]),
+        });
+
+        const result = await service.createPack({
+            name: "Biology",
+            themePrompt: "cells",
+            finalEntryLimit: 1,
+            orderMode: "relevance",
+            llmEnabled: false,
+            questionIndex: createQuestionIndex(),
+        });
+
+        expect(result.pack.entryCount).toBe(1);
+        expect(result.pack.entryRefs[0].lineNo).toBe(22);
+        expect(result.pack.cardRefs[0].cardId).toBe(200);
+    });
+
     it("applies LLM rerank when JSON keys are valid", async () => {
         const reranker: AiThemeReranker = new FunctionAiThemeReranker(async (input) =>
             JSON.stringify([input.candidates[1].key]),
@@ -130,6 +196,8 @@ describe("ThemePackService", () => {
             finalEntryLimit: 1,
             orderMode: "relevance",
             llmEnabled: true,
+            llmProvider: "openai",
+            llmModel: "gpt-test",
             llmStrictJson: true,
             questionIndex: createQuestionIndex(),
         });
@@ -138,6 +206,8 @@ describe("ThemePackService", () => {
         expect(result.pack.entryCount).toBe(1);
         expect(result.pack.entryRefs[0].path).toBe("vault/topic-b.md");
         expect(result.pack.cardRefs[0].cardId).toBe(200);
+        expect(result.pack.llmProvider).toBe("openai");
+        expect(result.pack.llmModel).toBe("gpt-test");
     });
 
     it("falls back to retrieval order when LLM JSON is broken", async () => {
@@ -161,7 +231,9 @@ describe("ThemePackService", () => {
             questionIndex: createQuestionIndex(),
         });
 
-        expect(result.warnings).toContain("LLM 返回结果无法解析为条目 JSON，已回退到检索排序。");
+        expect(result.warnings).toContain(
+            "LLM response could not be parsed as entry-key JSON; using retrieval order.",
+        );
         expect(result.pack.entryRefs.map((entry) => entry.path)).toEqual([
             "vault/topic-a.md",
             "vault/topic-b.md",

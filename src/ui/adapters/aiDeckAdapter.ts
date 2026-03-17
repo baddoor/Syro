@@ -28,7 +28,7 @@ export function aiPacksToDeckStates(packs: AiThemePackRecord[]): DeckState[] {
         id: pack.id,
         kind: "ai-pack",
         deckName: pack.name,
-        subtitle: `${pack.entryCount} 条 / ${pack.cardCount} 卡`,
+        subtitle: `${pack.entryCount} entries / ${pack.cardCount} cards`,
         fullPath: `${AI_DECK_PATH_PREFIX}${pack.id}`,
         newCount: pack.entryCount,
         learningCount: 0,

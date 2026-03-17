@@ -30,6 +30,38 @@ export type ClozeContextMode = "single" | "double-break" | "expanded" | "full";
 export type ClozeContextPerformanceMode = "off" | "safe-trim";
 export type SyncProgressDisplayMode = "always" | "full-only" | "never";
 export type AiThemeOrderMode = "relevance" | "random";
+export type AiThemeLlmProvider =
+    | "lm_studio"
+    | "ollama"
+    | "openai"
+    | "open_router"
+    | "gemini"
+    | "anthropic"
+    | "azure_openai"
+    | "custom_openai_compatible";
+export type AiThemeCustomAdapterKind = "openai" | "anthropic" | "gemini" | "ollama" | "lm_studio";
+
+export interface AiThemeLlmProviderConfig {
+    model: string;
+    baseUrl: string;
+    host?: string;
+    apiKey: string;
+    headersJson: string;
+    timeoutMs: number;
+    temperature: number;
+    maxTokens: number;
+    topP: number;
+    chatEndpoint?: string;
+    modelsEndpoint?: string;
+    azureResourceName?: string;
+    azureDeploymentName?: string;
+    azureApiVersion?: string;
+    anthropicVersion?: string;
+    adapterKind?: AiThemeCustomAdapterKind;
+    customAdapterKind?: AiThemeCustomAdapterKind;
+}
+
+export type AiThemeLlmProviderConfigMap = Record<AiThemeLlmProvider, AiThemeLlmProviderConfig>;
 
 // ============ Deck Option Presets ===========
 // Per-preset configuration.
@@ -114,6 +146,12 @@ export interface SRSettings {
     aiThemeDefaultFinalEntryLimit: number;
     aiThemeDefaultOrderMode: AiThemeOrderMode;
     aiThemeEnableLlm: boolean;
+    aiThemeLlmActiveProvider?: AiThemeLlmProvider;
+    aiThemeLlmProviders?: AiThemeLlmProviderConfigMap;
+    aiThemeRetrieverStatusKind?: string;
+    aiThemeRetrieverStatusSource?: string;
+    aiThemeRetrieverStatusMessage?: string;
+    // Legacy flat fields retained for backward compatibility with existing call sites.
     aiThemeLlmProvider: string;
     aiThemeLlmModel: string;
     aiThemeLlmPrompt: string;
@@ -234,6 +272,140 @@ export interface SRSettings {
     enableCardLevelTrace: boolean; // Whether to enable per-card trace logging
 }
 
+export function createDefaultAiThemeLlmProviders(): AiThemeLlmProviderConfigMap {
+    return {
+        lm_studio: {
+            model: "",
+            baseUrl: "http://localhost:1234",
+            chatEndpoint: "/v1/chat/completions",
+            modelsEndpoint: "/v1/models",
+            apiKey: "",
+            headersJson: "{}",
+            timeoutMs: 30000,
+            temperature: 0,
+            maxTokens: 2048,
+            topP: 1,
+        },
+        ollama: {
+            model: "",
+            baseUrl: "http://localhost:11434",
+            host: "http://localhost:11434",
+            chatEndpoint: "/api/chat",
+            modelsEndpoint: "/api/tags",
+            apiKey: "",
+            headersJson: "{}",
+            timeoutMs: 30000,
+            temperature: 0,
+            maxTokens: 2048,
+            topP: 1,
+        },
+        openai: {
+            model: "gpt-5-nano",
+            baseUrl: "https://api.openai.com",
+            chatEndpoint: "/v1/chat/completions",
+            modelsEndpoint: "/v1/models",
+            apiKey: "",
+            headersJson: "{}",
+            timeoutMs: 30000,
+            temperature: 0,
+            maxTokens: 2048,
+            topP: 1,
+        },
+        open_router: {
+            model: "mistralai/mistral-7b-instruct:free",
+            baseUrl: "https://openrouter.ai",
+            chatEndpoint: "/api/v1/chat/completions",
+            modelsEndpoint: "/api/v1/models",
+            apiKey: "",
+            headersJson: "{}",
+            timeoutMs: 30000,
+            temperature: 0,
+            maxTokens: 2048,
+            topP: 1,
+        },
+        gemini: {
+            model: "gemini-1.5-pro",
+            baseUrl: "https://generativelanguage.googleapis.com",
+            modelsEndpoint: "/v1beta/models",
+            apiKey: "",
+            headersJson: "{}",
+            timeoutMs: 30000,
+            temperature: 0,
+            maxTokens: 2048,
+            topP: 1,
+        },
+        anthropic: {
+            model: "claude-opus-4-1-20250805",
+            baseUrl: "https://api.anthropic.com",
+            chatEndpoint: "/v1/messages",
+            modelsEndpoint: "/v1/models",
+            apiKey: "",
+            headersJson: "{}",
+            timeoutMs: 30000,
+            temperature: 0,
+            maxTokens: 2048,
+            topP: 1,
+            anthropicVersion: "2023-06-01",
+        },
+        azure_openai: {
+            model: "",
+            baseUrl: "",
+            apiKey: "",
+            headersJson: "{}",
+            timeoutMs: 30000,
+            temperature: 0,
+            maxTokens: 2048,
+            topP: 1,
+            azureResourceName: "",
+            azureDeploymentName: "",
+            azureApiVersion: "2024-10-01-preview",
+        },
+        custom_openai_compatible: {
+            model: "",
+            baseUrl: "http://localhost:8000",
+            chatEndpoint: "/v1/chat/completions",
+            modelsEndpoint: "/v1/models",
+            apiKey: "",
+            headersJson: "{}",
+            timeoutMs: 30000,
+            temperature: 0,
+            maxTokens: 2048,
+            topP: 1,
+            adapterKind: "openai",
+            customAdapterKind: "openai",
+        },
+    };
+}
+
+function normalizeAiThemeProviderConfig(
+    provider: AiThemeLlmProvider,
+    config: AiThemeLlmProviderConfig,
+): AiThemeLlmProviderConfig {
+    const normalized = { ...config };
+
+    if (provider === "custom_openai_compatible") {
+        normalized.adapterKind = normalized.adapterKind ?? normalized.customAdapterKind ?? "openai";
+        normalized.customAdapterKind = normalized.adapterKind;
+    }
+
+    if (provider === "ollama") {
+        normalized.host = normalized.host ?? normalized.baseUrl;
+    }
+
+    const chatEndpoint = normalized.chatEndpoint?.trim();
+    const baseUrl = normalized.baseUrl?.trim();
+    if (chatEndpoint && baseUrl && /^https?:\/\//i.test(baseUrl) && baseUrl.endsWith(chatEndpoint)) {
+        normalized.baseUrl = baseUrl.slice(0, baseUrl.length - chatEndpoint.length);
+    }
+
+    const host = normalized.host?.trim();
+    if (chatEndpoint && host && /^https?:\/\//i.test(host) && host.endsWith(chatEndpoint)) {
+        normalized.host = host.slice(0, host.length - chatEndpoint.length);
+    }
+
+    return normalized;
+}
+
 export const DEFAULT_SETTINGS: SRSettings = {
     // flashcards
     responseOptionBtnsText: DEFAULT_responseOptionBtnsText,
@@ -280,6 +452,11 @@ export const DEFAULT_SETTINGS: SRSettings = {
     aiThemeDefaultFinalEntryLimit: 10,
     aiThemeDefaultOrderMode: "relevance",
     aiThemeEnableLlm: false,
+    aiThemeLlmActiveProvider: "openai",
+    aiThemeLlmProviders: createDefaultAiThemeLlmProviders(),
+    aiThemeRetrieverStatusKind: "unsupported-shape",
+    aiThemeRetrieverStatusSource: "none",
+    aiThemeRetrieverStatusMessage: "Retriever runtime status is unavailable.",
     aiThemeLlmProvider: "openai",
     aiThemeLlmModel: "",
     aiThemeLlmPrompt:
@@ -494,6 +671,34 @@ export function upgradeSettings(settings: SRSettings) {
         settings.showOtherBoldClozeVisual = settings.showOtherClozesVisual ?? false;
     }
 
+    if (!settings.aiThemeLlmActiveProvider) {
+        const fromLegacy = (settings.aiThemeLlmProvider ?? "openai") as AiThemeLlmProvider;
+        settings.aiThemeLlmActiveProvider = isAiThemeLlmProvider(fromLegacy)
+            ? fromLegacy
+            : "openai";
+    }
+
+    if (!settings.aiThemeLlmProviders) {
+        settings.aiThemeLlmProviders = createDefaultAiThemeLlmProviders();
+    } else {
+        const defaults = createDefaultAiThemeLlmProviders();
+        for (const provider of Object.keys(defaults) as AiThemeLlmProvider[]) {
+            const current = settings.aiThemeLlmProviders[provider] ?? defaults[provider];
+            settings.aiThemeLlmProviders[provider] = normalizeAiThemeProviderConfig(provider, {
+                ...defaults[provider],
+                ...current,
+            });
+        }
+    }
+
+    const activeProvider = settings.aiThemeLlmActiveProvider;
+    if (isAiThemeLlmProvider(activeProvider)) {
+        const activeConfig = settings.aiThemeLlmProviders[activeProvider];
+        if (!activeConfig.model && settings.aiThemeLlmModel) {
+            activeConfig.model = settings.aiThemeLlmModel;
+        }
+    }
+
     // Upgrade deck option presets by filling any missing fields introduced in newer versions.
     if (settings.deckOptionsPresets && settings.deckOptionsPresets.length > 0) {
         for (const preset of settings.deckOptionsPresets) {
@@ -557,6 +762,19 @@ export function upgradeSettings(settings: SRSettings) {
             settings.deckCollapseState[path] = true;
         }
     }
+}
+
+export function isAiThemeLlmProvider(value: string): value is AiThemeLlmProvider {
+    return (
+        value === "lm_studio" ||
+        value === "ollama" ||
+        value === "openai" ||
+        value === "open_router" ||
+        value === "gemini" ||
+        value === "anthropic" ||
+        value === "azure_openai" ||
+        value === "custom_openai_compatible"
+    );
 }
 
 export class SettingsUtil {

@@ -27,7 +27,11 @@ import React, { useState, useCallback, useMemo, useEffect, useLayoutEffect, useR
 import { motion, AnimatePresence } from "framer-motion";
 import { MarkdownRenderer, Notice } from "obsidian";
 import { t } from "src/lang/helpers";
-import { AiDeckOptionsPanel } from "../components/AiDeckOptionsPanel";
+import {
+    AiDeckLlmSummaryView,
+    AiDeckOptionsPanel,
+    AiDeckRetrieverStatusView,
+} from "../components/AiDeckOptionsPanel";
 import { ReviewContext } from "../context/ReviewContext";
 import { DeckOptionsPanel } from "../components/DeckOptionsPanel";
 import { DeckTree } from "../components/DeckTree";
@@ -39,6 +43,7 @@ import {
 } from "../adapters/aiDeckAdapter";
 import { deckToUIState, findDeckByPath, saveCollapseState } from "../adapters/deckAdapter";
 import { AiDeckDraftInput, DeckSourceTab, DeckState } from "../types/deckTypes";
+import { AiThemeRetrieverStatusKind } from "../types/settingsTypes";
 import type SRPlugin from "src/main";
 import { IFlashcardReviewSequencer } from "src/FlashcardReviewSequencer";
 import { Deck, DeckTreeFilter, CardListType } from "src/Deck";
@@ -46,6 +51,7 @@ import { ReviewResponse, textInterval } from "src/scheduling";
 import { CardType } from "src/Question";
 import { TopicPath } from "src/TopicPath";
 import { CardFrontBackUtil } from "src/question-type";
+import { AiThemeLlmProvider, isAiThemeLlmProvider } from "src/settings";
 
 // ==========================================
 // 缂侇偉顕ч悗椋庘偓瑙勭煯缁?
@@ -454,6 +460,28 @@ interface OpenAiDeckOptionsState {
     packId?: string;
 }
 
+const AI_LLM_PROVIDER_LABELS: Record<AiThemeLlmProvider, string> = {
+    lm_studio: "LM Studio",
+    ollama: "Ollama",
+    openai: "OpenAI",
+    open_router: "OpenRouter",
+    gemini: "Gemini",
+    anthropic: "Anthropic",
+    azure_openai: "Azure OpenAI",
+    custom_openai_compatible: "Custom (OpenAI Compatible)",
+};
+
+function isRetrieverStatusKind(value: string | undefined): value is AiThemeRetrieverStatusKind {
+    return (
+        value === "missing-plugin" ||
+        value === "env-loading" ||
+        value === "smart-blocks-ready" ||
+        value === "smart-sources-fallback" ||
+        value === "unsupported-shape" ||
+        value === "error"
+    );
+}
+
 
 const DeckListView: React.FC<DeckListViewProps> = ({
     plugin,
@@ -477,8 +505,48 @@ const DeckListView: React.FC<DeckListViewProps> = ({
     const [isSyncing, setIsSyncing] = useState(plugin.syncLock);
     const initialTreeWidth = Number((plugin.data.settings as any).reactDeckTreeWidth ?? 860);
     const [treeWidth, setTreeWidth] = useState(initialTreeWidth);
+    const pluginSettings = plugin.data.settings;
     const aiFeatureEnabled = plugin.data.settings.enableAiThemeReview;
-    const aiRetrieverAvailable = plugin.isAiThemeRetrieverAvailable();
+    const runtimeRetrieverStatus = plugin.getAiThemeRetrieverStatus();
+    const aiRetrieverAvailable = runtimeRetrieverStatus.canRetrieve;
+    const aiRetrieverStatus: AiDeckRetrieverStatusView = {
+        kind: isRetrieverStatusKind(runtimeRetrieverStatus.kind)
+            ? runtimeRetrieverStatus.kind
+            : aiRetrieverAvailable
+              ? "smart-blocks-ready"
+              : "unsupported-shape",
+        source: runtimeRetrieverStatus.source || "none",
+        message:
+            runtimeRetrieverStatus.message ||
+            (aiRetrieverAvailable
+                ? "Smart Connections retriever is ready."
+                : "No compatible Smart Connections retriever interface detected."),
+        canRetrieve: aiRetrieverAvailable,
+    };
+    const aiLlmSummary = useMemo<AiDeckLlmSummaryView>(() => {
+        const activeProvider = isAiThemeLlmProvider(pluginSettings.aiThemeLlmActiveProvider)
+            ? pluginSettings.aiThemeLlmActiveProvider
+            : isAiThemeLlmProvider(pluginSettings.aiThemeLlmProvider)
+              ? pluginSettings.aiThemeLlmProvider
+              : "openai";
+        const providerConfig = pluginSettings.aiThemeLlmProviders?.[activeProvider];
+        const model = (providerConfig?.model ?? pluginSettings.aiThemeLlmModel ?? "").trim();
+        return {
+            providerLabel: AI_LLM_PROVIDER_LABELS[activeProvider],
+            model,
+            configured: model.length > 0,
+            strictJsonOutput: pluginSettings.aiThemeStrictJsonOutput,
+            enabledByDefault: pluginSettings.aiThemeEnableLlm,
+        };
+    }, [
+        pluginSettings.aiThemeEnableLlm,
+        pluginSettings.aiThemeLlmActiveProvider,
+        pluginSettings.aiThemeLlmModel,
+        pluginSettings.aiThemeLlmProvider,
+        pluginSettings.aiThemeLlmProviders,
+        pluginSettings.aiThemeStrictJsonOutput,
+    ]);
+    const aiLlmNeedsConfig = aiLlmSummary.enabledByDefault && !aiLlmSummary.configured;
 
     useLayoutEffect(() => {
         const host = treeHostRef.current;
@@ -560,10 +628,14 @@ const DeckListView: React.FC<DeckListViewProps> = ({
     }, []);
 
     const handleCreateAiPack = useCallback(() => {
+        if (!aiRetrieverStatus.canRetrieve) {
+            new Notice(`Retriever unavailable: ${aiRetrieverStatus.message}`);
+            return;
+        }
         setOpenAiDeckOptions({
             mode: "create",
         });
-    }, []);
+    }, [aiRetrieverStatus.canRetrieve, aiRetrieverStatus.message]);
 
     const handleAiPackSave = useCallback(
         async (draft: AiDeckDraftInput) => {
@@ -577,7 +649,7 @@ const DeckListView: React.FC<DeckListViewProps> = ({
                 new Notice(warning, 7000);
             }
             new Notice(
-                `已保存 AI 主题包：${result.pack.name}（${result.pack.entryCount} 条 / ${result.pack.cardCount} 卡）`,
+                `Saved AI theme pack: ${result.pack.name} (${result.pack.entryCount} entries / ${result.pack.cardCount} cards)`,
             );
         },
         [openAiDeckOptions, plugin],
@@ -587,7 +659,7 @@ const DeckListView: React.FC<DeckListViewProps> = ({
         if (!openAiDeckOptions?.packId) return;
         return plugin.removeAiThemePack(openAiDeckOptions.packId).then(() => {
             setAiPacks(plugin.listAiThemePacks());
-            new Notice("已删除 AI 主题包。");
+            new Notice("Deleted AI theme pack.");
         });
     }, [openAiDeckOptions, plugin]);
 
@@ -697,7 +769,7 @@ const DeckListView: React.FC<DeckListViewProps> = ({
                                     className={`sr-deck-source-tab ${activeDeckTab === "native" ? "is-active" : ""}`}
                                     onClick={() => setActiveDeckTab("native")}
                                 >
-                                    牌组
+                                    Decks
                                 </button>
                                 <button
                                     type="button"
@@ -706,13 +778,19 @@ const DeckListView: React.FC<DeckListViewProps> = ({
                                     className={`sr-deck-source-tab ${activeDeckTab === "ai" ? "is-active" : ""}`}
                                     onClick={() => setActiveDeckTab("ai")}
                                 >
-                                    AI 牌组
+                                    AI Packs
                                 </button>
                             </div>
                             <button
                                 type="button"
                                 className="sr-deck-source-create-btn"
                                 onClick={handleCreateAiPack}
+                                disabled={!aiRetrieverStatus.canRetrieve}
+                                title={
+                                    !aiRetrieverStatus.canRetrieve
+                                        ? `Retriever unavailable: ${aiRetrieverStatus.message}`
+                                        : "Create a new AI theme pack"
+                                }
                             >
                                 + AI
                             </button>
@@ -756,19 +834,26 @@ const DeckListView: React.FC<DeckListViewProps> = ({
                 </div>
                 {aiFeatureEnabled && activeDeckTab === "ai" && aiPacks.length === 0 && (
                     <div className="sr-ai-pack-empty">
-                        {aiRetrieverAvailable
-                            ? "还没有 AI 主题包。点击 “+ AI” 创建第一个主题复习包。"
-                            : "还没有 AI 主题包。当前未检测到 Smart Connections，可先安装或启用它，再创建主题包。"}
+                        {!aiRetrieverStatus.canRetrieve
+                            ? `No AI packs yet. Retriever unavailable (${aiRetrieverStatus.kind} / ${aiRetrieverStatus.source || "none"}). ${aiRetrieverStatus.message}`
+                            : aiLlmNeedsConfig
+                              ? `No AI packs yet. Create one with +AI. LLM rerank default is enabled, but ${aiLlmSummary.providerLabel} has no model configured.`
+                              : "No AI packs yet. Click +AI to create your first theme pack."}
                     </div>
                 )}
                 {aiFeatureEnabled &&
                     activeDeckTab === "ai" &&
-                    !aiRetrieverAvailable &&
+                    !aiRetrieverStatus.canRetrieve &&
                     aiPacks.length > 0 && (
                         <div className="sr-ai-pack-empty">
-                            Smart Connections 当前不可用。已缓存的 AI 主题包仍可复习，但创建或重生成会被禁用。
+                            Retriever is currently unavailable. Cached AI packs remain reviewable, but create/regenerate is disabled. {aiRetrieverStatus.message}
                         </div>
                     )}
+                {aiFeatureEnabled && activeDeckTab === "ai" && aiLlmNeedsConfig && (
+                    <div className="sr-ai-pack-empty is-warning">
+                        LLM rerank default is enabled, but active profile {aiLlmSummary.providerLabel} has no model configured. Pack creation can continue and fallback to retriever ordering.
+                    </div>
+                )}
             </div>
             {openDeckOptions && (
                 <DeckOptionsPanel
@@ -787,7 +872,7 @@ const DeckListView: React.FC<DeckListViewProps> = ({
             )}
             {openAiDeckOptions && (
                 <AiDeckOptionsPanel
-                    title={openAiDeckOptions.mode === "create" ? "创建 AI 主题包" : "编辑 AI 主题包"}
+                    title={openAiDeckOptions.mode === "create" ? "Create AI Theme Pack" : "Edit AI Theme Pack"}
                     containerElement={panelHostRef.current}
                     preferredWidth={Math.min(treeWidth, 760)}
                     initialValue={
@@ -800,7 +885,8 @@ const DeckListView: React.FC<DeckListViewProps> = ({
                                   llmEnabled: plugin.data.settings.aiThemeEnableLlm,
                               }
                     }
-                    retrieverAvailable={aiRetrieverAvailable}
+                    retrieverStatus={aiRetrieverStatus}
+                    llmSummary={aiLlmSummary}
                     onClose={() => setOpenAiDeckOptions(null)}
                     onSave={handleAiPackSave}
                     onDelete={openAiDeckOptions.mode === "edit" ? handleAiPackDelete : undefined}

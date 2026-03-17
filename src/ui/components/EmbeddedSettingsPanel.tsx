@@ -34,8 +34,11 @@ import {
     Cpu,
 } from "lucide-react";
 import { t } from "src/lang/helpers";
-import { UISettingsState } from "../types/settingsTypes";
+import { AiThemeLlmModelOption } from "src/aiTheme";
+import { AiThemeRetrieverStatusKind, UISettingsState } from "../types/settingsTypes";
+import { AiThemeCustomAdapterKind, AiThemeLlmProvider } from "src/settings";
 import {
+    BaseComponent,
     Section,
     ToggleRow,
     InputRow,
@@ -200,11 +203,16 @@ interface EmbeddedSettingsPanelProps {
     settings: UISettingsState;
     onSettingsChange: (newSettings: UISettingsState) => void;
     version?: string;
+    onRefreshAiModels?: (provider: AiThemeLlmProvider) => Promise<AiThemeLlmModelOption[]>;
 }
 
 interface TabProps {
     settings: UISettingsState;
     onChange: <K extends keyof UISettingsState>(key: K, value: UISettingsState[K]) => void;
+}
+
+interface AITabProps extends TabProps {
+    onRefreshModels?: (provider: AiThemeLlmProvider) => Promise<AiThemeLlmModelOption[]>;
 }
 
 const getClozeContextModeDesc = (mode: string) => {
@@ -1162,98 +1170,391 @@ const SyncTab: React.FC<TabProps> = ({ settings, onChange }) => (
     </div>
 );
 
-const AITab: React.FC<TabProps> = ({ settings, onChange }) => (
-    <div className="sr-settings-sections">
-        <Section title="AI 主题复习">
-            <ToggleRow
-                label="启用 AI 主题复习"
-                desc="开启后显示 AI 牌组入口与主题包能力。"
-                value={settings.enableAiThemeReview}
-                onChange={(v) => onChange("enableAiThemeReview", v)}
-            />
-            <InputRow
-                label="检索器"
-                desc="当前仅支持 Smart Connections。"
-                value={settings.aiThemeRetriever}
-                onChange={(v) => onChange("aiThemeRetriever", v)}
-            />
-            <div className="setting-item">
-                <div className="setting-item-info">
-                    <div className="setting-item-name">Smart Connections 状态</div>
-                    <div className="setting-item-description">
-                        {settings.aiThemeRetrieverAvailable
-                            ? "已检测到可用接口，可直接用于 AI 主题召回。"
-                            : "当前未检测到可用接口。已有主题包仍可复习，但创建或重生成会降级失败。"}
+const AI_THEME_PROVIDER_OPTIONS: Array<{ value: AiThemeLlmProvider; label: string }> = [
+    { value: "lm_studio", label: "LM Studio" },
+    { value: "ollama", label: "Ollama" },
+    { value: "openai", label: "OpenAI" },
+    { value: "open_router", label: "OpenRouter" },
+    { value: "gemini", label: "Gemini" },
+    { value: "anthropic", label: "Anthropic" },
+    { value: "azure_openai", label: "Azure OpenAI" },
+    { value: "custom_openai_compatible", label: "Custom (OpenAI Compatible)" },
+];
+
+const AI_RETRIEVER_KIND_LABELS: Record<AiThemeRetrieverStatusKind, string> = {
+    "missing-plugin": "Missing Plugin",
+    "env-loading": "Env Loading",
+    "smart-blocks-ready": "Smart Blocks Ready",
+    "smart-sources-fallback": "Smart Sources Fallback",
+    "unsupported-shape": "Unsupported Shape",
+    error: "Error",
+};
+
+const AI_RETRIEVER_KIND_PILL: Record<AiThemeRetrieverStatusKind, "is-ready" | "is-missing"> = {
+    "missing-plugin": "is-missing",
+    "env-loading": "is-missing",
+    "smart-blocks-ready": "is-ready",
+    "smart-sources-fallback": "is-ready",
+    "unsupported-shape": "is-missing",
+    error: "is-missing",
+};
+
+const AI_CUSTOM_ADAPTER_KIND_OPTIONS: Array<{ value: AiThemeCustomAdapterKind; label: string }> = [
+    { value: "openai", label: "OpenAI" },
+    { value: "anthropic", label: "Anthropic" },
+    { value: "gemini", label: "Gemini" },
+    { value: "ollama", label: "Ollama" },
+    { value: "lm_studio", label: "LM Studio" },
+];
+
+const clampNumber = (value: string, fallback: number, min: number, max: number): number => {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) {
+        return fallback;
+    }
+    return Math.min(max, Math.max(min, parsed));
+};
+
+const AITab: React.FC<AITabProps> = ({ settings, onChange, onRefreshModels }) => {
+    const activeProvider = settings.aiThemeLlmActiveProvider;
+    const activeProviderConfig = settings.aiThemeLlmProviders[activeProvider];
+    const retrieverStatusKind = settings.aiThemeRetrieverStatusKind;
+    const retrieverStatusText = AI_RETRIEVER_KIND_LABELS[retrieverStatusKind];
+    const retrieverStatusPill = AI_RETRIEVER_KIND_PILL[retrieverStatusKind];
+    const retrieverSource = settings.aiThemeRetrieverStatusSource || settings.aiThemeRetriever;
+    const retrieverMessage =
+        settings.aiThemeRetrieverStatusMessage ||
+        "No retriever diagnostic message from runtime. Check plugin logs for details.";
+    const [modelOptions, setModelOptions] = useState<AiThemeLlmModelOption[]>([]);
+    const [modelsLoading, setModelsLoading] = useState(false);
+    const [modelsError, setModelsError] = useState("");
+
+    useEffect(() => {
+        setModelOptions([]);
+        setModelsError("");
+        setModelsLoading(false);
+    }, [activeProvider]);
+
+    const updateProviderConfig = (
+        patch: Partial<(typeof settings.aiThemeLlmProviders)[typeof activeProvider]>,
+    ) => {
+        const nextConfig = {
+            ...activeProviderConfig,
+            ...patch,
+        };
+        const nextProviders = {
+            ...settings.aiThemeLlmProviders,
+            [activeProvider]: nextConfig,
+        };
+        onChange("aiThemeLlmProviders", nextProviders);
+        onChange("aiThemeLlmModel", nextConfig.model);
+    };
+
+    const handleRefreshModels = useCallback(async () => {
+        if (!onRefreshModels) {
+            setModelsError("Model refresh is not available in this build.");
+            return;
+        }
+        setModelsLoading(true);
+        setModelsError("");
+        try {
+            const nextModels = await onRefreshModels(activeProvider);
+            setModelOptions(nextModels);
+            if (nextModels.length === 0) {
+                setModelsError("Provider returned no models. You can still type the model name manually.");
+            }
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            setModelsError(message);
+            new Notice(`AI model refresh failed: ${message}`);
+        } finally {
+            setModelsLoading(false);
+        }
+    }, [activeProvider, onRefreshModels]);
+
+    const baseUrlLabel = activeProvider === "ollama" ? "Host" : "Base URL";
+    const baseUrlDesc =
+        activeProvider === "lm_studio"
+            ? "LM Studio normally uses http://localhost:1234 and requires its local server/CORS settings to be enabled."
+            : activeProvider === "ollama"
+              ? "Ollama host, usually http://localhost:11434."
+              : "Root API URL without the chat path. You can still override the chat/models paths below.";
+
+    return (
+        <div className="sr-settings-sections">
+            <Section title="AI Theme Review">
+                <ToggleRow
+                    label="Enable AI theme review"
+                    desc="Adds a separate AI pack workflow that reuses real Syro cards and scheduling."
+                    value={settings.enableAiThemeReview}
+                    onChange={(value) => onChange("enableAiThemeReview", value)}
+                />
+                <InputRow
+                    label="Retriever"
+                    desc="Syro v1 uses Smart Connections for semantic recall."
+                    value={settings.aiThemeRetriever}
+                    onChange={(value) => onChange("aiThemeRetriever", value)}
+                />
+                <div className="setting-item">
+                    <div className="setting-item-info">
+                        <div className="setting-item-name">Retriever diagnostics</div>
+                        <div className="setting-item-description">{retrieverMessage}</div>
+                        <div className="sr-ai-settings-meta">
+                            <span>Kind: {retrieverStatusText}</span>
+                            <span>Source: {retrieverSource || "-"}</span>
+                        </div>
+                    </div>
+                    <div className="setting-item-control">
+                        <span className={`sr-settings-status-pill ${retrieverStatusPill}`}>
+                            {retrieverStatusPill === "is-ready" ? "Ready" : "Unavailable"}
+                        </span>
                     </div>
                 </div>
-                <div className="setting-item-control">
-                    <span
-                        className={`sr-settings-status-pill ${
-                            settings.aiThemeRetrieverAvailable ? "is-ready" : "is-missing"
-                        }`}
-                    >
-                        {settings.aiThemeRetrieverAvailable ? "可用" : "不可用"}
-                    </span>
-                </div>
-            </div>
-        </Section>
+            </Section>
 
-        <Section title="主题包默认策略">
-            <SliderRow
-                label="默认最终条目数"
-                desc="按最终可映射的文本条目计数，不是原始命中数。"
-                value={settings.aiThemeDefaultFinalEntryLimit}
-                min={1}
-                max={100}
-                step={1}
-                onChange={(v) => onChange("aiThemeDefaultFinalEntryLimit", v)}
-            />
-            <SelectRow
-                label="默认排序"
-                desc="创建主题包时的默认出题顺序。"
-                value={settings.aiThemeDefaultOrderMode}
-                options={[
-                    { label: "相关度", value: "relevance" },
-                    { label: "随机", value: "random" },
-                ]}
-                onChange={(v) => onChange("aiThemeDefaultOrderMode", v as any)}
-            />
-        </Section>
+            <Section title="Pack Defaults">
+                <SliderRow
+                    label="Final entry limit"
+                    desc="Counts final eligible text entries, not raw Smart Connections hits."
+                    value={settings.aiThemeDefaultFinalEntryLimit}
+                    min={1}
+                    max={100}
+                    step={1}
+                    onChange={(value) => onChange("aiThemeDefaultFinalEntryLimit", value)}
+                />
+                <SelectRow
+                    label="Default order"
+                    desc="Controls how cards are shown after entry selection is complete."
+                    value={settings.aiThemeDefaultOrderMode}
+                    options={[
+                        { label: "Relevance", value: "relevance" },
+                        { label: "Random", value: "random" },
+                    ]}
+                    onChange={(value) => onChange("aiThemeDefaultOrderMode", value as any)}
+                />
+            </Section>
 
-        <Section title="LLM 精排">
-            <ToggleRow
-                label="启用 LLM 精排"
-                desc="关闭时仅使用 Smart Connections + 规则筛选。"
-                value={settings.aiThemeEnableLlm}
-                onChange={(v) => onChange("aiThemeEnableLlm", v)}
-            />
-            <InputRow
-                label="Provider"
-                desc="例如 openai / ollama / openrouter。"
-                value={settings.aiThemeLlmProvider}
-                onChange={(v) => onChange("aiThemeLlmProvider", v)}
-            />
-            <InputRow
-                label="Model"
-                desc="用于主题条目精排的模型标识。"
-                value={settings.aiThemeLlmModel}
-                onChange={(v) => onChange("aiThemeLlmModel", v)}
-            />
-            <TextAreaRow
-                label="System Prompt"
-                desc="建议要求模型仅返回结构化 JSON。"
-                value={settings.aiThemeLlmPrompt}
-                onChange={(v) => onChange("aiThemeLlmPrompt", v)}
-            />
-            <ToggleRow
-                label="严格 JSON 输出"
-                desc="要求模型只返回 JSON，便于稳定解析。"
-                value={settings.aiThemeStrictJsonOutput}
-                onChange={(v) => onChange("aiThemeStrictJsonOutput", v)}
-            />
-        </Section>
-    </div>
-);
+            <Section title="LLM Rerank">
+                <ToggleRow
+                    label="Enable LLM rerank by default"
+                    desc="Retriever still decides eligibility; the LLM only performs a single rerank pass."
+                    value={settings.aiThemeEnableLlm}
+                    onChange={(value) => onChange("aiThemeEnableLlm", value)}
+                />
+                <SelectRow
+                    label="Provider"
+                    desc="Each provider keeps its own independent configuration profile."
+                    value={activeProvider}
+                    options={AI_THEME_PROVIDER_OPTIONS}
+                    onChange={(value) => {
+                        const nextProvider = value as AiThemeLlmProvider;
+                        onChange("aiThemeLlmActiveProvider", nextProvider);
+                        onChange("aiThemeLlmProvider", nextProvider);
+                        onChange(
+                            "aiThemeLlmModel",
+                            settings.aiThemeLlmProviders[nextProvider]?.model ?? "",
+                        );
+                    }}
+                />
+                <InputRow
+                    label="Model"
+                    desc="You can type a model manually or pick one after refreshing the provider model list."
+                    value={activeProviderConfig.model}
+                    onChange={(value) => updateProviderConfig({ model: value })}
+                />
+                <BaseComponent
+                    label="Model discovery"
+                    desc="Fetch available models from the active provider using the current provider settings."
+                >
+                    <div style={{ display: "grid", gap: "8px", minWidth: "220px" }}>
+                        <button type="button" onClick={() => void handleRefreshModels()} disabled={modelsLoading}>
+                            {modelsLoading ? "Refreshing..." : "Refresh models"}
+                        </button>
+                        {modelOptions.length > 0 && (
+                            <select
+                                className="dropdown"
+                                value={activeProviderConfig.model}
+                                onChange={(event) => updateProviderConfig({ model: event.target.value })}
+                            >
+                                <option value="">Select a discovered model</option>
+                                {modelOptions.map((option) => (
+                                    <option key={option.id} value={option.id}>
+                                        {option.contextWindow
+                                            ? `${option.label} (${option.contextWindow} ctx)`
+                                            : option.label}
+                                    </option>
+                                ))}
+                            </select>
+                        )}
+                        {modelsError && (
+                            <div style={{ fontSize: "12px", color: "var(--text-error)" }}>
+                                {modelsError}
+                            </div>
+                        )}
+                    </div>
+                </BaseComponent>
+
+                {activeProvider !== "azure_openai" && (
+                    <InputRow
+                        label={baseUrlLabel}
+                        desc={baseUrlDesc}
+                        value={
+                            activeProvider === "ollama"
+                                ? activeProviderConfig.host ?? activeProviderConfig.baseUrl ?? ""
+                                : activeProviderConfig.baseUrl ?? ""
+                        }
+                        onChange={(value) =>
+                            updateProviderConfig(
+                                activeProvider === "ollama"
+                                    ? { host: value, baseUrl: value }
+                                    : { baseUrl: value },
+                            )
+                        }
+                    />
+                )}
+
+                {(activeProvider === "lm_studio" ||
+                    activeProvider === "openai" ||
+                    activeProvider === "open_router" ||
+                    activeProvider === "anthropic" ||
+                    activeProvider === "custom_openai_compatible" ||
+                    activeProvider === "ollama") && (
+                    <InputRow
+                        label="Chat endpoint"
+                        desc="Optional path override. Leave the provider default if you are using the standard local/server API."
+                        value={activeProviderConfig.chatEndpoint ?? ""}
+                        onChange={(value) => updateProviderConfig({ chatEndpoint: value })}
+                    />
+                )}
+
+                {activeProvider !== "azure_openai" && (
+                    <InputRow
+                        label="Models endpoint"
+                        desc="Optional path override for provider model discovery."
+                        value={activeProviderConfig.modelsEndpoint ?? ""}
+                        onChange={(value) => updateProviderConfig({ modelsEndpoint: value })}
+                    />
+                )}
+
+                <InputRow
+                    label="API key"
+                    desc="Leave empty for local providers like LM Studio or Ollama."
+                    type="password"
+                    value={activeProviderConfig.apiKey}
+                    onChange={(value) => updateProviderConfig({ apiKey: value })}
+                />
+                <TextAreaRow
+                    label="Headers JSON"
+                    desc='Optional request headers, for example {"HTTP-Referer":"https://example.com"}.'
+                    rows={3}
+                    value={activeProviderConfig.headersJson}
+                    onChange={(value) => updateProviderConfig({ headersJson: value })}
+                />
+                <InputRow
+                    label="Timeout (ms)"
+                    type="number"
+                    value={activeProviderConfig.timeoutMs}
+                    onChange={(value) =>
+                        updateProviderConfig({
+                            timeoutMs: Math.floor(
+                                clampNumber(value, activeProviderConfig.timeoutMs, 1000, 300000),
+                            ),
+                        })
+                    }
+                />
+                <InputRow
+                    label="Temperature"
+                    type="number"
+                    value={activeProviderConfig.temperature}
+                    onChange={(value) =>
+                        updateProviderConfig({
+                            temperature: clampNumber(value, activeProviderConfig.temperature, 0, 2),
+                        })
+                    }
+                />
+                <InputRow
+                    label="Max tokens"
+                    type="number"
+                    value={activeProviderConfig.maxTokens}
+                    onChange={(value) =>
+                        updateProviderConfig({
+                            maxTokens: Math.floor(
+                                clampNumber(value, activeProviderConfig.maxTokens, 1, 32768),
+                            ),
+                        })
+                    }
+                />
+                <InputRow
+                    label="Top P"
+                    type="number"
+                    value={activeProviderConfig.topP}
+                    onChange={(value) =>
+                        updateProviderConfig({
+                            topP: clampNumber(value, activeProviderConfig.topP, 0, 1),
+                        })
+                    }
+                />
+
+                {activeProvider === "azure_openai" && (
+                    <>
+                        <InputRow
+                            label="Azure resource name"
+                            value={activeProviderConfig.azureResourceName ?? ""}
+                            onChange={(value) => updateProviderConfig({ azureResourceName: value })}
+                        />
+                        <InputRow
+                            label="Azure deployment name"
+                            value={activeProviderConfig.azureDeploymentName ?? ""}
+                            onChange={(value) => updateProviderConfig({ azureDeploymentName: value })}
+                        />
+                        <InputRow
+                            label="Azure API version"
+                            value={activeProviderConfig.azureApiVersion ?? ""}
+                            onChange={(value) => updateProviderConfig({ azureApiVersion: value })}
+                        />
+                    </>
+                )}
+
+                {activeProvider === "anthropic" && (
+                    <InputRow
+                        label="Anthropic version"
+                        desc="Defaults to 2023-06-01, matching the standard messages API header."
+                        value={activeProviderConfig.anthropicVersion ?? ""}
+                        onChange={(value) => updateProviderConfig({ anthropicVersion: value })}
+                    />
+                )}
+
+                {activeProvider === "custom_openai_compatible" && (
+                    <SelectRow
+                        label="Custom adapter kind"
+                        desc="Choose the response format expected from the custom endpoint."
+                        value={activeProviderConfig.customAdapterKind ?? activeProviderConfig.adapterKind ?? "openai"}
+                        options={AI_CUSTOM_ADAPTER_KIND_OPTIONS}
+                        onChange={(value) =>
+                            updateProviderConfig({
+                                customAdapterKind: value as AiThemeCustomAdapterKind,
+                                adapterKind: value as AiThemeCustomAdapterKind,
+                            })
+                        }
+                    />
+                )}
+
+                <TextAreaRow
+                    label="System prompt"
+                    desc="Used for the single rerank pass. Keep it short and make the JSON requirement explicit."
+                    value={settings.aiThemeLlmPrompt}
+                    onChange={(value) => onChange("aiThemeLlmPrompt", value)}
+                />
+                <ToggleRow
+                    label="Strict JSON output"
+                    desc="If enabled, invalid JSON falls back to retriever order instead of trying loose parsing."
+                    value={settings.aiThemeStrictJsonOutput}
+                    onChange={(value) => onChange("aiThemeStrictJsonOutput", value)}
+                />
+            </Section>
+        </div>
+    );
+};
 
 // ==========================================
 // UI Tab
@@ -1529,9 +1830,14 @@ export const EmbeddedSettingsPanel: React.FC<EmbeddedSettingsPanelProps> = ({
     settings: initialSettings,
     onSettingsChange,
     version = "0.0.1",
+    onRefreshAiModels,
 }) => {
     const [activeTab, setActiveTab] = useState("flashcards");
     const [settings, setSettings] = useState<UISettingsState>(initialSettings);
+
+    useEffect(() => {
+        setSettings(initialSettings);
+    }, [initialSettings]);
 
     // 当设置变化时通知父组件
     useEffect(() => {
@@ -1557,7 +1863,13 @@ export const EmbeddedSettingsPanel: React.FC<EmbeddedSettingsPanelProps> = ({
                 )}
                 {activeTab === "notes" && <NotesTab settings={settings} onChange={handleChange} />}
                 {activeTab === "algo" && <AlgoTab settings={settings} onChange={handleChange} />}
-                {activeTab === "ai" && <AITab settings={settings} onChange={handleChange} />}
+                {activeTab === "ai" && (
+                    <AITab
+                        settings={settings}
+                        onChange={handleChange}
+                        onRefreshModels={onRefreshAiModels}
+                    />
+                )}
                 {activeTab === "ui" && <UITab settings={settings} onChange={handleChange} />}
                 {activeTab === "sync" && <SyncTab settings={settings} onChange={handleChange} />}
                 {activeTab === "license" && (

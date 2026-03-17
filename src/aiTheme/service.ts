@@ -5,6 +5,7 @@ import { SmartConnectionsRetriever } from "src/aiTheme/smartConnectionsRetriever
 import {
     AiThemeCardRef,
     AiThemeEntryRef,
+    AiThemeLlmProviderId,
     AiThemeOrderMode,
     AiThemePackBuildResult,
     AiThemePackBuildStats,
@@ -14,6 +15,7 @@ import {
     AiThemeReranker,
     AiThemeRetriever,
     AiThemeRetrieverHit,
+    AiThemeRetrieverStatus,
     AiThemeSourceBlock,
     CreateAiThemePackInput,
     UpdateAiThemePackInput,
@@ -46,6 +48,8 @@ interface EntryLookupContext {
     entriesByKey: Map<string, IndexedEntry>;
     byPathAndBlockId: Map<string, IndexedEntry>;
     byPathAndTextHashLine: Map<string, IndexedEntry>;
+    byPathAndLineNo: Map<string, IndexedEntry>;
+    byPathSortedByLineNo: Map<string, IndexedEntry[]>;
     byPathAndUniqueTextHash: Map<string, IndexedEntry>;
 }
 
@@ -66,8 +70,12 @@ export class ThemePackService {
         this.reranker = options.reranker ?? new NoopAiThemeReranker();
     }
 
+    getRetrieverStatus(): AiThemeRetrieverStatus {
+        return this.retriever.getStatus();
+    }
+
     isRetrieverAvailable(): boolean {
-        return this.retriever.isAvailable();
+        return this.getRetrieverStatus().canRetrieve;
     }
 
     listPacks(): AiThemePackRecord[] {
@@ -102,16 +110,20 @@ export class ThemePackService {
         const finalEntryLimit = normalizeFinalEntryLimit(input.finalEntryLimit);
         const rawRecallLimit = computeRawRecallLimit(finalEntryLimit);
         const entryLookup = buildEntryLookup(input.questionIndex);
+        const retrieverStatus = this.getRetrieverStatus();
 
         let rawHits: AiThemeRetrieverHit[] = [];
-        if (!this.retriever.isAvailable()) {
-            warnings.push("Smart Connections 不可用，无法执行语义召回。");
+        if (!retrieverStatus.canRetrieve) {
+            warnings.push(retrieverStatus.message || "Smart Connections is not available.");
         } else {
             rawHits = await this.retriever.retrieve({
                 query: input.themePrompt,
                 limit: rawRecallLimit,
                 extra: input.retrieverExtra,
             });
+            if (retrieverStatus.kind === "smart-sources-fallback") {
+                warnings.push(retrieverStatus.message);
+            }
         }
 
         const { matchedEntries, sourceBlocks } = mapHitsToEntries(rawHits, entryLookup);
@@ -128,20 +140,20 @@ export class ThemePackService {
                     strictJson: input.llmStrictJson ?? true,
                 });
                 if (reranked.error) {
-                    warnings.push(`LLM 精排失败，回退到检索排序: ${reranked.error}`);
+                    warnings.push(`LLM rerank failed; falling back to retrieval order: ${reranked.error}`);
                 } else if (reranked.used && reranked.rawText && reranked.orderedKeys.length === 0) {
-                    warnings.push("LLM 返回结果无法解析为条目 JSON，已回退到检索排序。");
+                    warnings.push("LLM response could not be parsed as entry-key JSON; using retrieval order.");
                 }
                 orderedEntries = applyRerankOrder(matchedEntries, reranked.orderedKeys);
             } else {
-                warnings.push("LLM 已开启但未提供可用 reranker，已回退到检索排序。");
+                warnings.push("LLM rerank is enabled, but no runnable reranker is configured.");
             }
         }
 
         const selectedEntries = orderedEntries.slice(0, finalEntryLimit);
         if (selectedEntries.length < finalEntryLimit) {
             warnings.push(
-                `eligible 条目不足：目标 ${finalEntryLimit}，实际 ${selectedEntries.length}。`,
+                `Eligible entries are insufficient: target ${finalEntryLimit}, actual ${selectedEntries.length}.`,
             );
         }
 
@@ -162,6 +174,8 @@ export class ThemePackService {
             cardCount: cardRefs.length,
             orderMode: input.orderMode,
             llmEnabled: input.llmEnabled,
+            llmProvider: normalizeLlmProviderId(input.llmProvider),
+            llmModel: (input.llmModel ?? "").trim() || undefined,
             createdAt,
             updatedAt: now,
             sourceBlocks,
@@ -225,12 +239,13 @@ function buildEntryLookup(indexRecords: AiThemeQuestionIndexRecord[]): EntryLook
             entriesByKey.set(key, entry);
         }
 
-        const mergedCards = dedupeCardRefs([...(entry.cardRefs ?? []), ...(record.cardRefs ?? [])]);
-        entry.cardRefs = mergedCards;
+        entry.cardRefs = dedupeCardRefs([...(entry.cardRefs ?? []), ...(record.cardRefs ?? [])]);
     }
 
     const byPathAndBlockId = new Map<string, IndexedEntry>();
     const byPathAndTextHashLine = new Map<string, IndexedEntry>();
+    const byPathAndLineNo = new Map<string, IndexedEntry>();
+    const byPathSortedByLineNo = new Map<string, IndexedEntry[]>();
     const hashBuckets = new Map<string, IndexedEntry[]>();
     const byPathAndUniqueTextHash = new Map<string, IndexedEntry>();
 
@@ -247,6 +262,12 @@ function buildEntryLookup(indexRecords: AiThemeQuestionIndexRecord[]): EntryLook
         if (path && textHash && lineNo !== undefined) {
             byPathAndTextHashLine.set(composePathAndHashLineKey(path, textHash, lineNo), entry);
         }
+        if (path && lineNo !== undefined) {
+            byPathAndLineNo.set(composePathAndLineKey(path, lineNo), entry);
+            const pathEntries = byPathSortedByLineNo.get(path) ?? [];
+            pathEntries.push(entry);
+            byPathSortedByLineNo.set(path, pathEntries);
+        }
         if (path && textHash) {
             const hashKey = composePathAndHashKey(path, textHash);
             const bucket = hashBuckets.get(hashKey) ?? [];
@@ -261,10 +282,16 @@ function buildEntryLookup(indexRecords: AiThemeQuestionIndexRecord[]): EntryLook
         }
     }
 
+    for (const entries of byPathSortedByLineNo.values()) {
+        entries.sort((left, right) => (left.lineNo ?? Number.MAX_SAFE_INTEGER) - (right.lineNo ?? Number.MAX_SAFE_INTEGER));
+    }
+
     return {
         entriesByKey,
         byPathAndBlockId,
         byPathAndTextHashLine,
+        byPathAndLineNo,
+        byPathSortedByLineNo,
         byPathAndUniqueTextHash,
     };
 }
@@ -293,9 +320,13 @@ function mapHitsToEntries(
             blockId: hit.blockId,
             textHash: hit.textHash,
             lineNo: toLineNo(hit.lineNo),
+            lineEnd: toLineNo(hit.lineEnd),
             content: hit.content,
             metadata: hit.metadata,
             matchedEntryKey: candidate?.key,
+            runtimeCollection: hit.runtimeCollection,
+            rawPath: hit.rawPath,
+            subKey: hit.subKey,
         });
     }
 
@@ -324,11 +355,38 @@ function resolveCandidateFromHit(
         if (byHashLine) return byHashLine;
     }
 
+    if (lineNo !== undefined) {
+        const byLine = lookup.byPathAndLineNo.get(composePathAndLineKey(path, lineNo));
+        if (byLine) return byLine;
+    }
+
+    const lineEnd = toLineNo(hit.lineEnd);
+    if (lineNo !== undefined && lineEnd !== undefined && lineEnd >= lineNo) {
+        const byRange = findEntryWithinLineRange(lookup.byPathSortedByLineNo.get(path), lineNo, lineEnd);
+        if (byRange) return byRange;
+    }
+
     if (textHash) {
         const byHash = lookup.byPathAndUniqueTextHash.get(composePathAndHashKey(path, textHash));
         if (byHash) return byHash;
     }
 
+    return null;
+}
+
+function findEntryWithinLineRange(
+    entries: IndexedEntry[] | undefined,
+    lineStart: number,
+    lineEnd: number,
+): IndexedEntry | null {
+    if (!entries?.length) return null;
+    for (const entry of entries) {
+        const candidateLine = toLineNo(entry.lineNo);
+        if (candidateLine === undefined) continue;
+        if (candidateLine < lineStart) continue;
+        if (candidateLine > lineEnd) break;
+        return entry;
+    }
     return null;
 }
 
@@ -434,6 +492,10 @@ function composePathAndHashKey(path: string, textHash: string): string {
     return `p:${normalizeAiThemePath(path)}|h:${(textHash ?? "").trim()}`;
 }
 
+function composePathAndLineKey(path: string, lineNo: number): string {
+    return `p:${normalizeAiThemePath(path)}|l:${lineNo}`;
+}
+
 function composeCardKey(cardRef: AiThemeCardRef): string {
     const cardId = cardRef.cardId != null ? String(cardRef.cardId) : "";
     return `p:${normalizeAiThemePath(cardRef.path)}|idx:${cardRef.cardIdx}|id:${cardId}`;
@@ -450,4 +512,9 @@ function shuffleInPlace<T>(arr: T[]): void {
 
 function clone<T>(value: T): T {
     return JSON.parse(JSON.stringify(value));
+}
+
+function normalizeLlmProviderId(provider?: string): AiThemeLlmProviderId | string | undefined {
+    const normalized = (provider ?? "").trim();
+    return normalized || undefined;
 }

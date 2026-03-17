@@ -1,10 +1,30 @@
 /**
  * UI-specific settings types used by the settings screens.
  */
-import type { StatusBarAnimationStyle } from "../../settings";
+import type {
+    AiThemeLlmProvider,
+    AiThemeLlmProviderConfigMap,
+    StatusBarAnimationStyle,
+} from "../../settings";
 
 // Re-export full plugin settings types for adapter code.
-export type { SRSettings, DeckOptionsPreset, ProgressBarStyle, AiThemeOrderMode } from "../../settings";
+export type {
+    SRSettings,
+    DeckOptionsPreset,
+    ProgressBarStyle,
+    AiThemeOrderMode,
+    AiThemeLlmProvider,
+    AiThemeLlmProviderConfig,
+    AiThemeLlmProviderConfigMap,
+} from "../../settings";
+
+export type AiThemeRetrieverStatusKind =
+    | "missing-plugin"
+    | "env-loading"
+    | "smart-blocks-ready"
+    | "smart-sources-fallback"
+    | "unsupported-shape"
+    | "error";
 
 /**
  * Subset of settings exposed to the settings UI.
@@ -38,9 +58,15 @@ export interface UISettingsState {
     enableAiThemeReview: boolean;
     aiThemeRetriever: string;
     aiThemeRetrieverAvailable: boolean;
+    aiThemeRetrieverStatusKind: AiThemeRetrieverStatusKind;
+    aiThemeRetrieverStatusSource: string;
+    aiThemeRetrieverStatusMessage: string;
     aiThemeDefaultFinalEntryLimit: number;
     aiThemeDefaultOrderMode: "relevance" | "random";
     aiThemeEnableLlm: boolean;
+    aiThemeLlmActiveProvider: AiThemeLlmProvider;
+    aiThemeLlmProviders: AiThemeLlmProviderConfigMap;
+    // Legacy flat fields retained for compatibility with existing code paths.
     aiThemeLlmProvider: string;
     aiThemeLlmModel: string;
     aiThemeLlmPrompt: string;

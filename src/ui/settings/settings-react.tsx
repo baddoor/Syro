@@ -45,8 +45,12 @@ export class SRSettingTab extends PluginSettingTab {
         this.root = createRoot(reactContainer);
 
         // 获取当前设置并转换为 UI 状态
+        const retrieverStatus = this.plugin.getAiThemeRetrieverStatus();
         const uiSettings = settingsToUIState(this.plugin.data.settings, {
-            aiThemeRetrieverAvailable: this.plugin.isAiThemeRetrieverAvailable(),
+            aiThemeRetrieverAvailable: retrieverStatus.canRetrieve,
+            aiThemeRetrieverStatusKind: retrieverStatus.kind as any,
+            aiThemeRetrieverStatusSource: retrieverStatus.source,
+            aiThemeRetrieverStatusMessage: retrieverStatus.message,
         });
 
         // 渲染 React 组件
@@ -54,6 +58,7 @@ export class SRSettingTab extends PluginSettingTab {
             React.createElement(EmbeddedSettingsPanel, {
                 settings: uiSettings,
                 onSettingsChange: (newSettings) => this.handleSettingsChange(newSettings),
+                onRefreshAiModels: (provider) => this.plugin.listAiThemeLlmModels(provider),
                 version: this.plugin.manifest.version,
             }),
         );

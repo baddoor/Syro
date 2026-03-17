@@ -124,13 +124,21 @@ import {
 } from "src/cache/noteCacheStore";
 import { selectionIntersectsLatexFormula } from "src/util/latex-formula";
 import {
+    AiThemeLlmModelOption,
     AiThemeCardRef,
+    AiThemeRetrieverStatus,
     AiThemePackBuildResult,
     AiThemePackRecord,
     AiThemeQuestionIndexRecord,
+    FunctionAiThemeReranker,
+    RequestUrlAiThemeLlmTransport,
     ThemePackService,
+    listAiThemeProviderModels,
     normalizeAiThemePath,
+    normalizeAiThemeLlmProviderId,
     normalizeObsidianBlockId,
+    resolveAiThemeLlmConfig,
+    runAiThemeProviderRerank,
 } from "src/aiTheme";
 import { AiThemeDeckStore } from "src/dataStore/aiThemeDeckStore";
 import { AiDeckDraftInput } from "src/ui/types/deckTypes";
@@ -224,6 +232,7 @@ export default class SRPlugin extends Plugin {
     public noteReviewStore: NoteReviewStore;
     public aiThemeDeckStore: AiThemeDeckStore;
     public themePackService: ThemePackService;
+    private readonly aiThemeLlmTransport = new RequestUrlAiThemeLlmTransport();
     private questionPostponementList: QuestionPostponementList;
     // public incomingLinks: Record<string, LinkStat[]> = {}; // del, has linkRank
     // public pageranks: Record<string, number> = {}; // del, has linkRank
@@ -1624,16 +1633,17 @@ export default class SRPlugin extends Plugin {
     }
 
     private toAiThemePackInput(draft: AiDeckDraftInput) {
+        const llmConfig = this.getAiThemeResolvedLlmConfig();
         return {
             name: draft.name,
             themePrompt: draft.themePrompt,
             finalEntryLimit: draft.finalEntryLimit,
             orderMode: draft.orderMode,
             llmEnabled: draft.llmEnabled,
-            llmProvider: this.data.settings.aiThemeLlmProvider,
-            llmModel: this.data.settings.aiThemeLlmModel,
-            llmSystemPrompt: this.data.settings.aiThemeLlmPrompt,
-            llmStrictJson: this.data.settings.aiThemeStrictJsonOutput,
+            llmProvider: llmConfig.provider,
+            llmModel: llmConfig.model,
+            llmSystemPrompt: llmConfig.systemPrompt,
+            llmStrictJson: llmConfig.strictJsonOutput,
             questionIndex: this.buildAiThemeQuestionIndex(),
         };
     }
@@ -2019,8 +2029,28 @@ export default class SRPlugin extends Plugin {
         return new SrTFile(this.app.vault, this.app.metadataCache, note);
     }
 
+    getAiThemeRetrieverStatus(): AiThemeRetrieverStatus {
+        return (
+            this.themePackService?.getRetrieverStatus() ?? {
+                kind: "env-loading",
+                canRetrieve: false,
+                source: "none",
+                message: "AI theme retriever is initializing.",
+            }
+        );
+    }
+
     isAiThemeRetrieverAvailable(): boolean {
-        return this.themePackService?.isRetrieverAvailable() ?? false;
+        return this.getAiThemeRetrieverStatus().canRetrieve;
+    }
+
+    getAiThemeResolvedLlmConfig(providerOverride?: string) {
+        return resolveAiThemeLlmConfig(this.data.settings as any, providerOverride);
+    }
+
+    async listAiThemeLlmModels(providerOverride?: string): Promise<AiThemeLlmModelOption[]> {
+        const config = this.getAiThemeResolvedLlmConfig(providerOverride);
+        return listAiThemeProviderModels(config, this.aiThemeLlmTransport);
     }
 
     listAiThemePacks(): AiThemePackRecord[] {
@@ -2134,6 +2164,24 @@ export default class SRPlugin extends Plugin {
         this.themePackService = new ThemePackService({
             store: this.aiThemeDeckStore,
             app: this.app,
+            reranker: new FunctionAiThemeReranker(async (input) => {
+                const providerId = normalizeAiThemeLlmProviderId(input.provider);
+                const resolvedConfig = resolveAiThemeLlmConfig(
+                    this.data.settings as any,
+                    providerId,
+                    input.model,
+                    input.systemPrompt,
+                    input.strictJson,
+                );
+                return runAiThemeProviderRerank(
+                    {
+                        ...input,
+                        providerId,
+                        resolvedConfig,
+                    },
+                    this.aiThemeLlmTransport,
+                );
+            }),
         });
         this.easeByPath = new NoteEaseList(this.data.settings);
         this.linkRank = new LinkRank(this.data.settings, this.app.metadataCache);
