@@ -1,55 +1,40 @@
 # Syro 中文文档总览
 
-![Syro 界面总览](../assets/media/en/user-interface-overview.jpg)
+![Syro 界面总览](../../assets/media/en/user-interface-overview.jpg)
 
-> 提示：当前仓库可复用的截图多来自较早的英文界面，但布局和入口位置仍可作为对照。
+> *注：文档中的截图主要用于辅助视觉定位，具体界面请以您当前安装的插件版本为准。*
 
-## 这是什么
-- 这是一份面向中文用户的 Syro 正式文档入口页，负责告诉你先读什么、每个功能区分别解决什么问题，以及哪些内容属于实验或高级能力。
-- 仓库根目录的 README 适合快速了解插件和安装方式；这里则负责完整教程、设置说明、数据说明和故障排查。
+## 欢迎来到 Syro
+Syro 是一款为 Obsidian 深度定制的知识调度插件。它将**间隔重复（Spaced Repetition）**与**渐进阅读（Incremental Reading）**的科学理念无缝融入纯文本的本地知识库中。
 
-## 从哪里进入
-- 如果你是第一次接触 Syro，先读 [开始使用总览](./getting-started/index.md)。
-- 如果你已经在使用插件，想补齐工作流理解，可以直接进入 [笔记复习](./note-review/index.md)、[闪卡复习](./flashcards/index.md) 或 [卡片编写](./card-authoring/index.md)。
-- 需要校准设置、理解算法或排查同步问题时，进入 [设置](./settings/index.md)、[数据与同步](./data-and-sync/index.md) 和 [故障排查](./troubleshooting/index.md)。
-- AI、支持者、兼容字段和调试入口统一收纳在 [实验与高级](./experimental/index.md)。
+这份官方文档旨在帮助您从零开始，逐步掌握如何将静态的 Markdown 笔记转化为动态的复习队列，从而在知识积累的过程中有效对抗遗忘，建立深层的上下文联系。
 
-## 适合什么场景
-- 你刚安装插件，想知道最短上手路径。
-- 你已经会用命令入口，但不清楚笔记复习和闪卡复习的区别。
-- 你准备调整 FSRS、WMS、同步或数据备份策略。
-- 你遇到“没出卡”“队列不更新”“升级后数据文件变多”等问题。
+## 推荐阅读路径
+为了降低学习成本，我们已将文档按核心工作流进行了精简与重组。建议您按照以下模块顺序进行探索：
 
-## 具体步骤
-1. 先确认你当前最关心的是“笔记复习”还是“闪卡复习”。前者侧重文章和阅读位置，后者侧重卡片、牌组和评分。
-2. 阅读 [开始使用总览](./getting-started/index.md) 和 [所有入口](./getting-started/entry-points.md)，先搞清楚命令面板、状态栏、右键菜单和侧边栏的分工。
-3. 如果你主要依赖整篇笔记推进学习，继续进入 [笔记复习](./note-review/index.md)。如果你主要依赖卡片、牌组和评分按钮，继续进入 [闪卡复习](./flashcards/index.md)。
-4. 当你开始自定义卡片写法时，再读 [卡片编写](./card-authoring/index.md)。这里会细讲问答卡、Cloze、代码块和 LaTeX 的边界。
-5. 日常使用中遇到任何异常，先看 [故障排查](./troubleshooting/index.md)，再对照 [数据与同步](./data-and-sync/index.md) 判断是否涉及缓存、Overlay 或迁移。
+### 📦 第一部分：新手起步 (Getting Started)
+在开始动手操作前，了解工具背后的设计哲学将极大提升您的使用效率。
+- [核心理念：间隔重复与渐进阅读](./getting-started/introduction.md) —— 了解 Syro 选择的独特路径及其解决的具体痛点。
+- [5 分钟快速上手指南](./getting-started/quick-start.md) —— 通过一个极简的闭环，快速体验制卡与复习的全流程。
 
-## 相关设置 / 相关命令
-- 总入口页不是设置页，但它会把你引向所有稳定功能区。
-- 相关页面： [开始使用](./getting-started/index.md)、[笔记复习](./note-review/index.md)、[闪卡复习](./flashcards/index.md)、[卡片编写](./card-authoring/index.md)。
-- 补充参考： [更新记录](../changelog.md) 和 [许可证](../license.md)。
+### 🧠 第二部分：闪卡复习 (Flashcards)
+专注于知识点的“主动回忆”与原子化测试。
+- [闪卡复习总览](./flashcards/index.md) —— 了解闪卡模块的整体架构。
+- [优雅地编写闪卡](./flashcards/card-authoring.md) —— 掌握问答卡（Q/A）与填空卡（Cloze）的 Markdown 语法规则。
+- [管理复习与心流](./flashcards/review-workflow.md) —— 学习如何解读牌组树、进行会话评分，以及控制每日的认知负荷。
 
-## 常见错误
-- 把 README 当成完整教程来读，结果找不到详细设置说明。
-- 把“笔记复习队列”和“闪卡牌组树”混为一谈，导致不知道应该从哪个入口开始。
-- 看到实验或高级功能就直接开启，却没有先了解依赖、风险或当前限制。
+### 📖 第三部分：笔记复习 (Note Review)
+专注于长篇文献与学习材料的“渐进式消化”。
+- [笔记复习总览](./note-review/index.md) —— 了解渐进阅读在 Obsidian 中的具体落地方式。
+- [掌控笔记复习队列](./note-review/queue-management.md) —— 学习如何追踪笔记、使用侧边栏，以及通过标签和优先级重塑阅读秩序。
+- [Timeline：保存阅读历史与进度](./note-review/timeline.md) —— 了解系统如何为您保留跨越时间的阅读上下文。
 
-## FAQ
-- **我需要按顺序把所有页面读完吗**：不需要。先从开始使用总览入手，再按你的主工作流选择笔记复习或闪卡复习。只有在你开始调整设置、数据或 AI 能力时，才需要进入后面的章节。
-- **中文文档和英文文档哪个更完整**：当前这一轮重构以中文文档为主。英文页面会保留最小入口和导航，但详细说明以中文站为准。
-- **实验与高级区是不是不能用**：不是。它们通常是可见或可触达的能力，但依赖更多前置条件、存在更强的兼容性约束，或者不适合作为新用户的默认起点。
-
-## 排错与风险提示
-- 如果你准备修改算法、同步方式或手工备份数据，请先阅读 [数据与同步](./data-and-sync/index.md)；这些操作会直接影响你对“当前状态”的判断。
-- 如果文档文字和某个旧截图不完全一致，请以当前代码行为和当前界面为准；仓库里的现成截图主要用于辅助定位。
+### ⚙️ 第四部分：进阶与数据管理 (Advanced & FAQ)
+为您的知识资产提供安全保障，并解答偶发的疑难杂症。
+- [数据、同步与备份机制](./advanced-and-faq/data-and-sync.md) —— 了解底层 JSON 文件的存储逻辑与安全的跨端同步方案。
+- [常见问题与排障指南](./advanced-and-faq/faq-troubleshooting.md) —— 遇到“卡片未解析”、“队列不更新”等问题时的标准化自检清单。
 
 ---
-
-继续阅读：
-- [开始使用总览](./getting-started/index.md)
-- [笔记复习总览](./note-review/index.md)
-- [闪卡复习总览](./flashcards/index.md)
-- [实验与高级](./experimental/index.md)
+*附录：* 
+- [更新记录 (Changelog)](../changelog.md)
+- [开源许可证 (License)](../license.md)
