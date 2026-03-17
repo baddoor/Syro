@@ -1,9 +1,3 @@
-Of course. Here is the professional English translation of the README.md file.
-
-This version is not a literal word-for-word translation; it has been localized to use idiomatic English and phrasing common within the Personal Knowledge Management (PKM) and Obsidian communities, ensuring it resonates effectively with an international audience while preserving the original's professional and sincere tone.
-
----
-
 # Syro: Reshape Your Memory and Reading in Obsidian
 
 > **Seamlessly integrate the scientific principles of Spaced Repetition and Incremental Reading into your plain-text knowledge base.**
