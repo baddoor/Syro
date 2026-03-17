@@ -29,6 +29,7 @@ export type StatusBarAnimationStyle = "None" | "Breathing";
 export type ClozeContextMode = "single" | "double-break" | "expanded" | "full";
 export type ClozeContextPerformanceMode = "off" | "safe-trim";
 export type SyncProgressDisplayMode = "always" | "full-only" | "never";
+export type AiThemeOrderMode = "relevance" | "random";
 
 // ============ Deck Option Presets ===========
 // Per-preset configuration.
@@ -107,6 +108,16 @@ export interface SRSettings {
     showOtherAnkiClozeVisual: boolean; // Show styling for other Anki clozes during review
     showOtherHighlightClozeVisual: boolean; // Show styling for other highlight clozes during review
     showOtherBoldClozeVisual: boolean; // Show styling for other bold clozes during review
+    // AI theme review
+    enableAiThemeReview: boolean;
+    aiThemeRetriever: string;
+    aiThemeDefaultFinalEntryLimit: number;
+    aiThemeDefaultOrderMode: AiThemeOrderMode;
+    aiThemeEnableLlm: boolean;
+    aiThemeLlmProvider: string;
+    aiThemeLlmModel: string;
+    aiThemeLlmPrompt: string;
+    aiThemeStrictJsonOutput: boolean;
     editLaterTag: string;
     intervalShowHide: boolean;
     // notes
@@ -263,6 +274,17 @@ export const DEFAULT_SETTINGS: SRSettings = {
     showOtherAnkiClozeVisual: false,
     showOtherHighlightClozeVisual: false,
     showOtherBoldClozeVisual: false,
+    // AI theme review defaults
+    enableAiThemeReview: false,
+    aiThemeRetriever: "smart-connections",
+    aiThemeDefaultFinalEntryLimit: 10,
+    aiThemeDefaultOrderMode: "relevance",
+    aiThemeEnableLlm: false,
+    aiThemeLlmProvider: "openai",
+    aiThemeLlmModel: "",
+    aiThemeLlmPrompt:
+        "You are selecting review entries relevant to a user theme. Return strict JSON only.",
+    aiThemeStrictJsonOutput: true,
     // notes
     enableNoteReviewPaneOnStartup: true,
     tagsToReview: ["#review"],

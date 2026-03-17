@@ -1,9 +1,10 @@
 /**
  * UI-specific settings types used by the settings screens.
  */
+import type { StatusBarAnimationStyle } from "../../settings";
 
 // Re-export full plugin settings types for adapter code.
-export type { SRSettings, DeckOptionsPreset, ProgressBarStyle } from "../../settings";
+export type { SRSettings, DeckOptionsPreset, ProgressBarStyle, AiThemeOrderMode } from "../../settings";
 
 /**
  * Subset of settings exposed to the settings UI.
@@ -33,6 +34,16 @@ export interface UISettingsState {
     showOtherAnkiClozeVisual: boolean;
     showOtherHighlightClozeVisual: boolean;
     showOtherBoldClozeVisual: boolean;
+    // AI Theme Review
+    enableAiThemeReview: boolean;
+    aiThemeRetriever: string;
+    aiThemeDefaultFinalEntryLimit: number;
+    aiThemeDefaultOrderMode: "relevance" | "random";
+    aiThemeEnableLlm: boolean;
+    aiThemeLlmProvider: string;
+    aiThemeLlmModel: string;
+    aiThemeLlmPrompt: string;
+    aiThemeStrictJsonOutput: boolean;
 
     // Notes
     tagsToReview: string[];

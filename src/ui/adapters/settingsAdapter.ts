@@ -43,6 +43,16 @@ export function settingsToUIState(settings: SRSettings): UISettingsState {
             settings.showOtherHighlightClozeVisual ?? settings.showOtherClozesVisual ?? false,
         showOtherBoldClozeVisual:
             settings.showOtherBoldClozeVisual ?? settings.showOtherClozesVisual ?? false,
+        // AI theme review
+        enableAiThemeReview: settings.enableAiThemeReview ?? false,
+        aiThemeRetriever: settings.aiThemeRetriever ?? "smart-connections",
+        aiThemeDefaultFinalEntryLimit: settings.aiThemeDefaultFinalEntryLimit ?? 10,
+        aiThemeDefaultOrderMode: settings.aiThemeDefaultOrderMode ?? "relevance",
+        aiThemeEnableLlm: settings.aiThemeEnableLlm ?? false,
+        aiThemeLlmProvider: settings.aiThemeLlmProvider ?? "openai",
+        aiThemeLlmModel: settings.aiThemeLlmModel ?? "",
+        aiThemeLlmPrompt: settings.aiThemeLlmPrompt ?? "",
+        aiThemeStrictJsonOutput: settings.aiThemeStrictJsonOutput ?? true,
         // Notes
         tagsToReview: settings.tagsToReview || [],
         autoNextNote: settings.autoNextNote ?? false,
@@ -157,6 +167,24 @@ export function mergeUIStateToSettings(
         merged.showOtherHighlightClozeVisual = uiChanges.showOtherHighlightClozeVisual;
     if (uiChanges.showOtherBoldClozeVisual !== undefined)
         merged.showOtherBoldClozeVisual = uiChanges.showOtherBoldClozeVisual;
+    if (uiChanges.enableAiThemeReview !== undefined)
+        merged.enableAiThemeReview = uiChanges.enableAiThemeReview;
+    if (uiChanges.aiThemeRetriever !== undefined)
+        merged.aiThemeRetriever = uiChanges.aiThemeRetriever;
+    if (uiChanges.aiThemeDefaultFinalEntryLimit !== undefined)
+        merged.aiThemeDefaultFinalEntryLimit = Math.max(1, Math.floor(uiChanges.aiThemeDefaultFinalEntryLimit));
+    if (uiChanges.aiThemeDefaultOrderMode !== undefined)
+        merged.aiThemeDefaultOrderMode = uiChanges.aiThemeDefaultOrderMode as any;
+    if (uiChanges.aiThemeEnableLlm !== undefined)
+        merged.aiThemeEnableLlm = uiChanges.aiThemeEnableLlm;
+    if (uiChanges.aiThemeLlmProvider !== undefined)
+        merged.aiThemeLlmProvider = uiChanges.aiThemeLlmProvider;
+    if (uiChanges.aiThemeLlmModel !== undefined)
+        merged.aiThemeLlmModel = uiChanges.aiThemeLlmModel;
+    if (uiChanges.aiThemeLlmPrompt !== undefined)
+        merged.aiThemeLlmPrompt = uiChanges.aiThemeLlmPrompt;
+    if (uiChanges.aiThemeStrictJsonOutput !== undefined)
+        merged.aiThemeStrictJsonOutput = uiChanges.aiThemeStrictJsonOutput;
     // Notes
     if (uiChanges.tagsToReview !== undefined) merged.tagsToReview = uiChanges.tagsToReview;
     if (uiChanges.autoNextNote !== undefined) merged.autoNextNote = uiChanges.autoNextNote;

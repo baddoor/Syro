@@ -187,6 +187,7 @@ const TABS = [
     { id: "flashcards", label: t("SETTINGS_TAB_FLASHCARDS"), icon: <SpacedIcon size={16} /> },
     { id: "notes", label: t("SETTINGS_TAB_NOTES"), icon: <FileText size={16} /> },
     { id: "algo", label: t("SETTINGS_TAB_ALGORITHM"), icon: <Cpu size={16} /> },
+    { id: "ai", label: "AI", icon: <Search size={16} /> },
     { id: "ui", label: t("SETTINGS_TAB_INTERFACE"), icon: <Layout size={16} /> },
     { id: "sync", label: t("SETTINGS_TAB_SYNC"), icon: <SyncTabIcon size={16} /> },
     { id: "license", label: t("SETTINGS_TAB_LICENSE"), icon: <Shield size={16} /> },
@@ -1161,6 +1162,88 @@ const SyncTab: React.FC<TabProps> = ({ settings, onChange }) => (
     </div>
 );
 
+const AITab: React.FC<TabProps> = ({ settings, onChange }) => (
+    <div className="sr-settings-sections">
+        <Section title="AI 主题复习">
+            <ToggleRow
+                label="启用 AI 主题复习"
+                desc="开启后显示 AI 牌组入口与主题包能力。"
+                value={settings.enableAiThemeReview}
+                onChange={(v) => onChange("enableAiThemeReview", v)}
+            />
+            <InputRow
+                label="检索器"
+                desc="当前仅支持 Smart Connections。"
+                value={settings.aiThemeRetriever}
+                onChange={(v) => onChange("aiThemeRetriever", v)}
+            />
+            <div className="setting-item">
+                <div className="setting-item-info">
+                    <div className="setting-item-name">Smart Connections 状态</div>
+                    <div className="setting-item-description">
+                        运行时自动检测安装与接口可用性。未安装或接口不可用时，AI 主题检索将自动降级。
+                    </div>
+                </div>
+            </div>
+        </Section>
+
+        <Section title="主题包默认策略">
+            <SliderRow
+                label="默认最终条目数"
+                desc="按最终可映射的文本条目计数，不是原始命中数。"
+                value={settings.aiThemeDefaultFinalEntryLimit}
+                min={1}
+                max={100}
+                step={1}
+                onChange={(v) => onChange("aiThemeDefaultFinalEntryLimit", v)}
+            />
+            <SelectRow
+                label="默认排序"
+                desc="创建主题包时的默认出题顺序。"
+                value={settings.aiThemeDefaultOrderMode}
+                options={[
+                    { label: "相关度", value: "relevance" },
+                    { label: "随机", value: "random" },
+                ]}
+                onChange={(v) => onChange("aiThemeDefaultOrderMode", v as any)}
+            />
+        </Section>
+
+        <Section title="LLM 精排">
+            <ToggleRow
+                label="启用 LLM 精排"
+                desc="关闭时仅使用 Smart Connections + 规则筛选。"
+                value={settings.aiThemeEnableLlm}
+                onChange={(v) => onChange("aiThemeEnableLlm", v)}
+            />
+            <InputRow
+                label="Provider"
+                desc="例如 openai / ollama / openrouter。"
+                value={settings.aiThemeLlmProvider}
+                onChange={(v) => onChange("aiThemeLlmProvider", v)}
+            />
+            <InputRow
+                label="Model"
+                desc="用于主题条目精排的模型标识。"
+                value={settings.aiThemeLlmModel}
+                onChange={(v) => onChange("aiThemeLlmModel", v)}
+            />
+            <TextAreaRow
+                label="System Prompt"
+                desc="建议要求模型仅返回结构化 JSON。"
+                value={settings.aiThemeLlmPrompt}
+                onChange={(v) => onChange("aiThemeLlmPrompt", v)}
+            />
+            <ToggleRow
+                label="严格 JSON 输出"
+                desc="要求模型只返回 JSON，便于稳定解析。"
+                value={settings.aiThemeStrictJsonOutput}
+                onChange={(v) => onChange("aiThemeStrictJsonOutput", v)}
+            />
+        </Section>
+    </div>
+);
+
 // ==========================================
 // UI Tab
 // ==========================================
@@ -1463,6 +1546,7 @@ export const EmbeddedSettingsPanel: React.FC<EmbeddedSettingsPanelProps> = ({
                 )}
                 {activeTab === "notes" && <NotesTab settings={settings} onChange={handleChange} />}
                 {activeTab === "algo" && <AlgoTab settings={settings} onChange={handleChange} />}
+                {activeTab === "ai" && <AITab settings={settings} onChange={handleChange} />}
                 {activeTab === "ui" && <UITab settings={settings} onChange={handleChange} />}
                 {activeTab === "sync" && <SyncTab settings={settings} onChange={handleChange} />}
                 {activeTab === "license" && (
