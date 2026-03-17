@@ -2,8 +2,9 @@
 
 Syro is an Obsidian plugin for spaced repetition, flashcards, note review, and incremental learning. It helps you review cards and full notes from one workflow without leaving your vault.
 
-- Quick setup guide: [docs/usage.md](./docs/usage.md)
-- 中文说明: [docs/README_ZH.md](./docs/README_ZH.md)
+- Documentation hub: [docs/docs/en/index.md](./docs/docs/en/index.md)
+- Chinese documentation hub: [docs/docs/zh/index.md](./docs/docs/zh/index.md)
+- Chinese repository README: [docs/README_ZH.md](./docs/README_ZH.md)
 - Releases: <https://github.com/baddoor/Syro/releases>
 
 ## What Syro Does
@@ -44,7 +45,7 @@ You can start using Syro from:
 - the sidebars
 - note and folder context actions
 
-For setup details, review flows, and migration advice, see [docs/usage.md](./docs/usage.md).
+For detailed walkthroughs, settings references, and troubleshooting guides, start at [docs/docs/en/index.md](./docs/docs/en/index.md) or jump directly to [docs/docs/zh/index.md](./docs/docs/zh/index.md).
 
 ## Migration Notes
 

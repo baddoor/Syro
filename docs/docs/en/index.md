@@ -1,25 +1,20 @@
-# Syro
+# Syro Documentation
 
-Syro is an Obsidian plugin for spaced repetition, note review, and incremental knowledge workflows.
+Syro is an Obsidian plugin for spaced repetition, flashcards, note review, and incremental learning.
 
-## Status
+## What this site contains
 
-The documentation site is being rewritten to match the current Syro product identity.
+- a lightweight English documentation entry point
+- a complete Chinese documentation hub with detailed guides for every major feature area
+- experimental and advanced notes for AI, supporter features, storage, sync, and compatibility behavior
 
-Until that rewrite is complete, use these entry points first:
+## Start here
 
-- Repository: <https://github.com/baddoor/Syro>
-- Releases: <https://github.com/baddoor/Syro/releases>
-- Root README: <https://github.com/baddoor/Syro/blob/main/README.md>
-
-## Current focus
-
-- flashcard review
-- note review
-- separate review data storage
-- FSRS-based scheduling workflows
-- postpone and statistics tools
+- [English quick start](./getting-started/index.md)
+- [Chinese documentation hub](../zh/)
+- [Releases](https://github.com/baddoor/Syro/releases)
+- [Repository README](https://github.com/baddoor/Syro/blob/main/README.md)
 
 ## Note
 
-Legacy documentation pages may still exist in the repository history while the Syro docs are being rebuilt.
+The repository README stays a quick landing page. The detailed implementation-facing guides live in this docs site and are currently maintained in the Chinese docs hub first. The English pages mirror the navigation and hand off to the matching Chinese pages when a full English rewrite is not ready yet.
