@@ -14,7 +14,14 @@ import { UISettingsState } from "../types/settingsTypes";
 /**
  * Extract the subset of settings needed by the UI.
  */
-export function settingsToUIState(settings: SRSettings): UISettingsState {
+interface SettingsUiRuntimeState {
+    aiThemeRetrieverAvailable?: boolean;
+}
+
+export function settingsToUIState(
+    settings: SRSettings,
+    runtimeState: SettingsUiRuntimeState = {},
+): UISettingsState {
     return {
         // Flashcards
         flashcardTags: settings.flashcardTags || [],
@@ -46,6 +53,7 @@ export function settingsToUIState(settings: SRSettings): UISettingsState {
         // AI theme review
         enableAiThemeReview: settings.enableAiThemeReview ?? false,
         aiThemeRetriever: settings.aiThemeRetriever ?? "smart-connections",
+        aiThemeRetrieverAvailable: runtimeState.aiThemeRetrieverAvailable ?? false,
         aiThemeDefaultFinalEntryLimit: settings.aiThemeDefaultFinalEntryLimit ?? 10,
         aiThemeDefaultOrderMode: settings.aiThemeDefaultOrderMode ?? "relevance",
         aiThemeEnableLlm: settings.aiThemeEnableLlm ?? false,

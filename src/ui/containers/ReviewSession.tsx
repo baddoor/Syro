@@ -27,12 +27,18 @@ import React, { useState, useCallback, useMemo, useEffect, useLayoutEffect, useR
 import { motion, AnimatePresence } from "framer-motion";
 import { MarkdownRenderer, Notice } from "obsidian";
 import { t } from "src/lang/helpers";
+import { AiDeckOptionsPanel } from "../components/AiDeckOptionsPanel";
 import { ReviewContext } from "../context/ReviewContext";
 import { DeckOptionsPanel } from "../components/DeckOptionsPanel";
 import { DeckTree } from "../components/DeckTree";
 import { LinearCard, CardState } from "../components/LinearCard";
+import {
+    aiPacksToDeckStates,
+    createAiDeckDraftInputFromPack,
+    getAiPackIdFromDeckState,
+} from "../adapters/aiDeckAdapter";
 import { deckToUIState, findDeckByPath, saveCollapseState } from "../adapters/deckAdapter";
-import { DeckState } from "../types/deckTypes";
+import { AiDeckDraftInput, DeckSourceTab, DeckState } from "../types/deckTypes";
 import type SRPlugin from "src/main";
 import { IFlashcardReviewSequencer } from "src/FlashcardReviewSequencer";
 import { Deck, DeckTreeFilter, CardListType } from "src/Deck";
@@ -254,6 +260,30 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
         forceUpdate(); // 闁告帡鏀遍弻濠囧礆濡ゅ嫨鈧啰绱掗悢娲诲悁
     }, [plugin, forceUpdate]);
 
+    const handleAiPackClick = useCallback(
+        async (packId: string, deckState: DeckState) => {
+            try {
+                const result = await plugin.startAiThemePackReview(packId, sequencer);
+                for (const warning of result.warnings) {
+                    new Notice(warning, 7000);
+                }
+
+                if (!result.ok || !sequencer.hasCurrentCard) {
+                    new Notice(result.message ?? t("REVIEW_NO_CARDS"));
+                    return;
+                }
+
+                setRecentDeckPath(deckState.fullPath || deckState.deckName);
+                setDirection(1);
+                setView("review");
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                new Notice(`AI 主题复习启动失败：${message}`);
+            }
+        },
+        [plugin, sequencer],
+    );
+
     /**
      * 濠㈣泛瀚幃濠囧炊閻愮數鎽?
      */
@@ -354,9 +384,9 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
                             }}
                         >
                             <DeckListView
-                                sequencer={sequencer}
                                 plugin={plugin}
                                 onDeckClick={handleDeckClick}
+                                onAiPackClick={handleAiPackClick}
                                 onCollapseChange={handleCollapseChange}
                                 tick={tick}
                                 recentDeckPath={recentDeckPath}
@@ -404,9 +434,9 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
 // ==========================================
 
 interface DeckListViewProps {
-    sequencer: IFlashcardReviewSequencer;
     plugin: SRPlugin;
     onDeckClick: (deckState: DeckState) => void;
+    onAiPackClick: (packId: string, deckState: DeckState) => Promise<void> | void;
     onCollapseChange: (fullPath: string, isCollapsed: boolean) => void;
     tick: number;
     recentDeckPath: string | null;
@@ -419,11 +449,16 @@ interface OpenDeckOptionsState {
     deckPath: string;
 }
 
+interface OpenAiDeckOptionsState {
+    mode: "create" | "edit";
+    packId?: string;
+}
+
 
 const DeckListView: React.FC<DeckListViewProps> = ({
-    sequencer,
     plugin,
     onDeckClick,
+    onAiPackClick,
     onCollapseChange,
     tick,
     recentDeckPath,
@@ -434,9 +469,16 @@ const DeckListView: React.FC<DeckListViewProps> = ({
     const treeHostRef = useRef<HTMLDivElement>(null);
     const treeShellRef = useRef<HTMLDivElement>(null);
     const [openDeckOptions, setOpenDeckOptions] = useState<OpenDeckOptionsState | null>(null);
+    const [openAiDeckOptions, setOpenAiDeckOptions] = useState<OpenAiDeckOptionsState | null>(
+        null,
+    );
+    const [activeDeckTab, setActiveDeckTab] = useState<DeckSourceTab>("native");
+    const [aiPacks, setAiPacks] = useState(() => plugin.listAiThemePacks());
     const [isSyncing, setIsSyncing] = useState(plugin.syncLock);
     const initialTreeWidth = Number((plugin.data.settings as any).reactDeckTreeWidth ?? 860);
     const [treeWidth, setTreeWidth] = useState(initialTreeWidth);
+    const aiFeatureEnabled = plugin.data.settings.enableAiThemeReview;
+    const aiRetrieverAvailable = plugin.isAiThemeRetrieverAvailable();
 
     useLayoutEffect(() => {
         const host = treeHostRef.current;
@@ -446,7 +488,7 @@ const DeckListView: React.FC<DeckListViewProps> = ({
 
     // [V3 閻犲鍟€规娊宕抽埡?婵炴挸寮堕悡瀣冀閹存繂鐏欓悶娑辩厜缁变即鎯勭€涙ê澶嶅ù锝堟硶閺併倝宕犻崨顓熷創闁圭鍋撻柡鍫濐槸瀹曢亶鎮ч崶鈺傜暠 remainingDeckTree闁?
     // deckToUIState 闁告垼濮ら弳鐔煎礃閸涙潙鍔ュù鍏间亢閸ゆ粓宕濋妸銉у畨闁?V3 缂佺姵顨嗙涵鍫曟嚊椤忓嫮淇洪柛姘灣缁楀倻鎷嬮敍鍕毈闁哄嫬澧介妵姘跺极閺夎法鎽熼柨?
-    const decks = useMemo(() => {
+    const nativeDecks = useMemo(() => {
         // 闁告绮敮鈧ù婊冩缁狅綁宕滃鍥ㄧ暠 DeckTreeFilter.filterByDailyLimits闁挎稑鐬煎ú鍧楀箳閵夈倖鍞夌紓浣圭懇閳ь剙鍊块崢銈夊闯閵娧冨毐闁轰焦婢橀鐔烘媼閿涘嫮鏆?
         const remainingDeckTree = plugin.remainingDeckTree;
         if (!remainingDeckTree?.subdecks) {
@@ -462,6 +504,26 @@ const DeckListView: React.FC<DeckListViewProps> = ({
         }
         return result;
     }, [plugin.remainingDeckTree, plugin, tick]);
+
+    const aiDecks = useMemo(() => aiPacksToDeckStates(aiPacks), [aiPacks]);
+    const visibleDecks = !aiFeatureEnabled || activeDeckTab === "native" ? nativeDecks : aiDecks;
+
+    const editingAiPack = useMemo(() => {
+        if (!openAiDeckOptions || openAiDeckOptions.mode !== "edit" || !openAiDeckOptions.packId) {
+            return null;
+        }
+        return aiPacks.find((pack) => pack.id === openAiDeckOptions.packId) ?? null;
+    }, [aiPacks, openAiDeckOptions]);
+
+    useEffect(() => {
+        setAiPacks(plugin.listAiThemePacks());
+    }, [plugin]);
+
+    useEffect(() => {
+        if (!aiFeatureEnabled && activeDeckTab !== "native") {
+            setActiveDeckTab("native");
+        }
+    }, [activeDeckTab, aiFeatureEnabled]);
 
     useEffect(() => {
         const unsubStart = plugin.syncEvents.on("sync-start", () => setIsSyncing(true));
@@ -487,6 +549,60 @@ const DeckListView: React.FC<DeckListViewProps> = ({
             deckPath: deck.fullPath || deck.deckName,
         });
     }, []);
+
+    const handleAiDeckSettingsClick = useCallback((deck: DeckState, _anchorEl: HTMLElement) => {
+        const packId = getAiPackIdFromDeckState(deck);
+        if (!packId) return;
+        setOpenAiDeckOptions({
+            mode: "edit",
+            packId,
+        });
+    }, []);
+
+    const handleCreateAiPack = useCallback(() => {
+        setOpenAiDeckOptions({
+            mode: "create",
+        });
+    }, []);
+
+    const handleAiPackSave = useCallback(
+        async (draft: AiDeckDraftInput) => {
+            const result =
+                openAiDeckOptions?.mode === "edit" && openAiDeckOptions.packId
+                    ? await plugin.updateAiThemePack(openAiDeckOptions.packId, draft)
+                    : await plugin.createAiThemePack(draft);
+
+            setAiPacks(plugin.listAiThemePacks());
+            for (const warning of result.warnings) {
+                new Notice(warning, 7000);
+            }
+            new Notice(
+                `已保存 AI 主题包：${result.pack.name}（${result.pack.entryCount} 条 / ${result.pack.cardCount} 卡）`,
+            );
+        },
+        [openAiDeckOptions, plugin],
+    );
+
+    const handleAiPackDelete = useCallback(() => {
+        if (!openAiDeckOptions?.packId) return;
+        return plugin.removeAiThemePack(openAiDeckOptions.packId).then(() => {
+            setAiPacks(plugin.listAiThemePacks());
+            new Notice("已删除 AI 主题包。");
+        });
+    }, [openAiDeckOptions, plugin]);
+
+    const handleActiveDeckClick = useCallback(
+        (deck: DeckState) => {
+            if (!aiFeatureEnabled || activeDeckTab === "native") {
+                onDeckClick(deck);
+                return;
+            }
+            const packId = getAiPackIdFromDeckState(deck);
+            if (!packId) return;
+            void onAiPackClick(packId, deck);
+        },
+        [activeDeckTab, aiFeatureEnabled, onAiPackClick, onDeckClick],
+    );
 
     const handleTreeScroll = useCallback(() => {
         const host = treeHostRef.current;
@@ -567,19 +683,70 @@ const DeckListView: React.FC<DeckListViewProps> = ({
                     ref={treeShellRef}
                     style={{ width: `min(100%, ${treeWidth}px)` }}
                 >
+                    {aiFeatureEnabled && (
+                        <div className="sr-deck-source-toolbar">
+                            <div
+                                className="sr-deck-source-tabs"
+                                role="tablist"
+                                aria-label="deck source tabs"
+                            >
+                                <button
+                                    type="button"
+                                    role="tab"
+                                    aria-selected={activeDeckTab === "native"}
+                                    className={`sr-deck-source-tab ${activeDeckTab === "native" ? "is-active" : ""}`}
+                                    onClick={() => setActiveDeckTab("native")}
+                                >
+                                    牌组
+                                </button>
+                                <button
+                                    type="button"
+                                    role="tab"
+                                    aria-selected={activeDeckTab === "ai"}
+                                    className={`sr-deck-source-tab ${activeDeckTab === "ai" ? "is-active" : ""}`}
+                                    onClick={() => setActiveDeckTab("ai")}
+                                >
+                                    AI 牌组
+                                </button>
+                            </div>
+                            <button
+                                type="button"
+                                className="sr-deck-source-create-btn"
+                                onClick={handleCreateAiPack}
+                            >
+                                + AI
+                            </button>
+                        </div>
+                    )}
                     <div
                         className="sr-deck-tree-resize-handle sr-deck-tree-resize-handle--left"
                         onMouseDown={(e) => handleTreeResizeStart(e, "w")}
                         onTouchStart={(e) => handleTreeResizeStart(e, "w")}
                     />
                     <DeckTree
-                        decks={decks}
-                        onDeckClick={onDeckClick}
-                        onSettingsClick={handleDeckSettingsClick}
-                        onCollapseChange={onCollapseChange}
-                        onSync={handleSync}
+                        decks={visibleDecks}
+                        onDeckClick={handleActiveDeckClick}
+                        onSettingsClick={
+                            activeDeckTab === "native"
+                                ? handleDeckSettingsClick
+                                : handleAiDeckSettingsClick
+                        }
+                        onCollapseChange={
+                            activeDeckTab === "native"
+                                ? onCollapseChange
+                                : () => {
+                                      return;
+                                  }
+                        }
+                        onSync={
+                            !aiFeatureEnabled || activeDeckTab === "native" ? handleSync : undefined
+                        }
                         isSyncing={isSyncing}
-                        recentDeckPath={recentDeckPath}
+                        recentDeckPath={
+                            !aiFeatureEnabled || activeDeckTab === "native"
+                                ? recentDeckPath
+                                : null
+                        }
                     />
                     <div
                         className="sr-deck-tree-resize-handle sr-deck-tree-resize-handle--right"
@@ -587,6 +754,21 @@ const DeckListView: React.FC<DeckListViewProps> = ({
                         onTouchStart={(e) => handleTreeResizeStart(e, "e")}
                     />
                 </div>
+                {aiFeatureEnabled && activeDeckTab === "ai" && aiPacks.length === 0 && (
+                    <div className="sr-ai-pack-empty">
+                        {aiRetrieverAvailable
+                            ? "还没有 AI 主题包。点击 “+ AI” 创建第一个主题复习包。"
+                            : "还没有 AI 主题包。当前未检测到 Smart Connections，可先安装或启用它，再创建主题包。"}
+                    </div>
+                )}
+                {aiFeatureEnabled &&
+                    activeDeckTab === "ai" &&
+                    !aiRetrieverAvailable &&
+                    aiPacks.length > 0 && (
+                        <div className="sr-ai-pack-empty">
+                            Smart Connections 当前不可用。已缓存的 AI 主题包仍可复习，但创建或重生成会被禁用。
+                        </div>
+                    )}
             </div>
             {openDeckOptions && (
                 <DeckOptionsPanel
@@ -601,6 +783,27 @@ const DeckListView: React.FC<DeckListViewProps> = ({
                             console.log("[ReviewSession] DeckOptions saved");
                         }
                     }}
+                />
+            )}
+            {openAiDeckOptions && (
+                <AiDeckOptionsPanel
+                    title={openAiDeckOptions.mode === "create" ? "创建 AI 主题包" : "编辑 AI 主题包"}
+                    containerElement={panelHostRef.current}
+                    preferredWidth={Math.min(treeWidth, 760)}
+                    initialValue={
+                        editingAiPack
+                            ? createAiDeckDraftInputFromPack(editingAiPack)
+                            : {
+                                  finalEntryLimit:
+                                      plugin.data.settings.aiThemeDefaultFinalEntryLimit,
+                                  orderMode: plugin.data.settings.aiThemeDefaultOrderMode,
+                                  llmEnabled: plugin.data.settings.aiThemeEnableLlm,
+                              }
+                    }
+                    retrieverAvailable={aiRetrieverAvailable}
+                    onClose={() => setOpenAiDeckOptions(null)}
+                    onSave={handleAiPackSave}
+                    onDelete={openAiDeckOptions.mode === "edit" ? handleAiPackDelete : undefined}
                 />
             )}
         </div>

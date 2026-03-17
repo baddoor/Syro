@@ -123,6 +123,17 @@ import {
     SerializedNote,
 } from "src/cache/noteCacheStore";
 import { selectionIntersectsLatexFormula } from "src/util/latex-formula";
+import {
+    AiThemeCardRef,
+    AiThemePackBuildResult,
+    AiThemePackRecord,
+    AiThemeQuestionIndexRecord,
+    ThemePackService,
+    normalizeAiThemePath,
+    normalizeObsidianBlockId,
+} from "src/aiTheme";
+import { AiThemeDeckStore } from "src/dataStore/aiThemeDeckStore";
+import { AiDeckDraftInput } from "src/ui/types/deckTypes";
 
 // 每日牌组统计数据结构（持久化存储）
 // 每日牌组统计数据结构（持久化存储）
@@ -211,6 +222,8 @@ export default class SRPlugin extends Plugin {
 
     public easeByPath: NoteEaseList;
     public noteReviewStore: NoteReviewStore;
+    public aiThemeDeckStore: AiThemeDeckStore;
+    public themePackService: ThemePackService;
     private questionPostponementList: QuestionPostponementList;
     // public incomingLinks: Record<string, LinkStat[]> = {}; // del, has linkRank
     // public pageranks: Record<string, number> = {}; // del, has linkRank
@@ -1610,6 +1623,107 @@ export default class SRPlugin extends Plugin {
         return note;
     }
 
+    private toAiThemePackInput(draft: AiDeckDraftInput) {
+        return {
+            name: draft.name,
+            themePrompt: draft.themePrompt,
+            finalEntryLimit: draft.finalEntryLimit,
+            orderMode: draft.orderMode,
+            llmEnabled: draft.llmEnabled,
+            llmProvider: this.data.settings.aiThemeLlmProvider,
+            llmModel: this.data.settings.aiThemeLlmModel,
+            llmSystemPrompt: this.data.settings.aiThemeLlmPrompt,
+            llmStrictJson: this.data.settings.aiThemeStrictJsonOutput,
+            questionIndex: this.buildAiThemeQuestionIndex(),
+        };
+    }
+
+    private buildAiThemeQuestionIndex(): AiThemeQuestionIndexRecord[] {
+        const result: AiThemeQuestionIndexRecord[] = [];
+
+        for (const { note } of this.noteCache.values()) {
+            if (!note?.questionList?.length) continue;
+
+            for (const question of note.questionList) {
+                const cardRefs: AiThemeCardRef[] = (question.cards ?? [])
+                    .filter((card) => typeof card.Id === "number" && card.cardIdx != null)
+                    .map((card) => ({
+                        path: note.filePath,
+                        cardIdx: card.cardIdx,
+                        cardId: card.Id,
+                        obsidianBlockId: question.questionText?.obsidianBlockId ?? undefined,
+                        textHash: question.questionText?.textHash ?? undefined,
+                        lineNo: question.lineNo,
+                    }));
+
+                if (cardRefs.length === 0) continue;
+
+                result.push({
+                    path: note.filePath,
+                    sourceText:
+                        question.questionText?.actualQuestion ?? question.parsedQuestionInfo?.text,
+                    lineNo: question.lineNo,
+                    obsidianBlockId: question.questionText?.obsidianBlockId ?? undefined,
+                    textHash: question.questionText?.textHash ?? undefined,
+                    cardRefs,
+                });
+            }
+        }
+
+        return result;
+    }
+
+    private resolveAiThemeCardRef(cardRef: AiThemeCardRef): Card | null {
+        const targetPath = normalizeAiThemePath(cardRef.path);
+        if (!targetPath) return null;
+
+        const cached =
+            this.noteCache.get(targetPath) ??
+            Array.from(this.noteCache.entries()).find(
+                ([path]) => normalizeAiThemePath(path) === targetPath,
+            )?.[1];
+        const note = cached?.note;
+        if (!note) return null;
+
+        return this.findCardInNoteByRef(note, cardRef);
+    }
+
+    private findCardInNoteByRef(note: Note, cardRef: AiThemeCardRef): Card | null {
+        const blockId = normalizeObsidianBlockId(cardRef.obsidianBlockId);
+        const textHash = (cardRef.textHash ?? "").trim();
+
+        for (const question of note.questionList ?? []) {
+            for (const card of question.cards ?? []) {
+                if (card.cardIdx !== cardRef.cardIdx) continue;
+
+                if (typeof cardRef.cardId === "number" && card.Id === cardRef.cardId) {
+                    return card;
+                }
+
+                if (
+                    blockId &&
+                    normalizeObsidianBlockId(question.questionText?.obsidianBlockId) === blockId
+                ) {
+                    return card;
+                }
+
+                if (textHash && question.questionText?.textHash === textHash) {
+                    return card;
+                }
+
+                if (
+                    typeof cardRef.lineNo === "number" &&
+                    typeof question.lineNo === "number" &&
+                    question.lineNo === cardRef.lineNo
+                ) {
+                    return card;
+                }
+            }
+        }
+
+        return null;
+    }
+
     private getObsidianRtlSetting(): TextDirection {
         // Get the direction with Obsidian's own setting
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1905,6 +2019,106 @@ export default class SRPlugin extends Plugin {
         return new SrTFile(this.app.vault, this.app.metadataCache, note);
     }
 
+    isAiThemeRetrieverAvailable(): boolean {
+        return this.themePackService?.isRetrieverAvailable() ?? false;
+    }
+
+    listAiThemePacks(): AiThemePackRecord[] {
+        return this.themePackService?.listPacks() ?? [];
+    }
+
+    getAiThemePack(id: string): AiThemePackRecord | null {
+        return this.themePackService?.getPack(id) ?? null;
+    }
+
+    async createAiThemePack(draft: AiDeckDraftInput): Promise<AiThemePackBuildResult> {
+        return this.themePackService.createPack(this.toAiThemePackInput(draft));
+    }
+
+    async updateAiThemePack(
+        id: string,
+        draft: AiDeckDraftInput,
+    ): Promise<AiThemePackBuildResult> {
+        return this.themePackService.updatePack({
+            id,
+            ...this.toAiThemePackInput(draft),
+        });
+    }
+
+    async removeAiThemePack(id: string): Promise<boolean> {
+        return this.themePackService.removePack(id);
+    }
+
+    async startAiThemePackReview(
+        packId: string,
+        sequencer: IFlashcardReviewSequencer,
+    ): Promise<{ ok: boolean; warnings: string[]; message?: string; pack?: AiThemePackRecord }> {
+        const pack = this.getAiThemePack(packId);
+        if (!pack) {
+            return {
+                ok: false,
+                warnings: [],
+                message: "未找到该 AI 主题包。",
+            };
+        }
+
+        const warnings: string[] = [];
+        const reviewDeck = new Deck("root", null);
+        const seenCards = new Set<string>();
+        let matchedCards = 0;
+        let missingCards = 0;
+
+        for (const cardRef of pack.cardRefs) {
+            const card = this.resolveAiThemeCardRef(cardRef);
+            if (!card) {
+                missingCards++;
+                continue;
+            }
+
+            const uniqueKey = `${normalizeAiThemePath(card.question?.note?.filePath ?? cardRef.path)}|${card.cardIdx}|${card.Id ?? ""}`;
+            if (seenCards.has(uniqueKey)) continue;
+            seenCards.add(uniqueKey);
+            matchedCards++;
+
+            if (card.question?.topicPathList) {
+                reviewDeck.appendCard(card.question.topicPathList, card);
+            } else {
+                reviewDeck.appendCardToRootDeck(card);
+            }
+        }
+
+        if (missingCards > 0) {
+            warnings.push(`已跳过 ${missingCards} 个失效或无法映射的卡片引用。`);
+        }
+
+        if (matchedCards === 0) {
+            return {
+                ok: false,
+                warnings,
+                message: "该 AI 主题包当前没有可复习卡片。",
+                pack,
+            };
+        }
+
+        sequencer.setDeckTree(this.deckTree, reviewDeck, this.remainingDeckTree);
+        sequencer.setCurrentDeck(TopicPath.emptyPath);
+
+        if (!sequencer.hasCurrentCard) {
+            return {
+                ok: false,
+                warnings,
+                message: "该 AI 主题包当前没有可复习卡片。",
+                pack,
+            };
+        }
+
+        return {
+            ok: true,
+            warnings,
+            pack,
+        };
+    }
+
     async loadPluginData(): Promise<void> {
         const loadedData: PluginData = await this.loadData();
         if (loadedData?.settings) upgradeSettings(loadedData.settings);
@@ -1915,6 +2129,12 @@ export default class SRPlugin extends Plugin {
         this.noteReviewStore = new NoteReviewStore(this.data.settings, this.manifest.dir);
         await this.noteReviewStore.load();
         await this.noteReviewStore.migrateFromLegacyStore(this.store);
+        this.aiThemeDeckStore = new AiThemeDeckStore(this.data.settings, this.manifest.dir);
+        await this.aiThemeDeckStore.load();
+        this.themePackService = new ThemePackService({
+            store: this.aiThemeDeckStore,
+            app: this.app,
+        });
         this.easeByPath = new NoteEaseList(this.data.settings);
         this.linkRank = new LinkRank(this.data.settings, this.app.metadataCache);
         this.reviewDecks = this.noteReviewStore.buildReviewDecks(this.app.vault);

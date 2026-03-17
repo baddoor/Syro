@@ -1,31 +1,44 @@
 /**
- * DeckState 类型定义
- *
- * 用于 React DeckTree 组件的 UI 状态
+ * Deck/UI state types shared by review deck list views.
  */
 
 export interface DeckState {
-    /** 牌组名称 (仅当前层名称) */
     deckName: string;
-
-    /** 完整路径 (用于面包屑导航，例如 "编程/JavaScript/React") */
     fullPath?: string;
-
-    /** 新卡片数量 (本层，不含子牌组) */
     newCount: number;
-
-    /** 学习中卡片数量 */
     learningCount: number;
-
-    /** 到期卡片数量 */
     dueCount: number;
-
-    /** 子牌组 */
     subdecks: DeckState[];
-
-    /** UI 状态：是否折叠 */
     isCollapsed: boolean;
-
-    /** 层级深度 (用于递归渲染时的缩进计算) */
     depth?: number;
+    kind?: "native" | "ai-pack";
+    id?: string;
+    subtitle?: string;
+    entryCount?: number;
+    cardCount?: number;
+}
+
+export type DeckSourceTab = "native" | "ai";
+
+export type AiPackOrderMode = "relevance" | "random";
+
+export interface AiDeckPack {
+    id: string;
+    name: string;
+    themePrompt: string;
+    finalEntryLimit: number;
+    entryCount: number;
+    cardCount: number;
+    orderMode: AiPackOrderMode;
+    llmEnabled: boolean;
+    createdAt: number;
+    updatedAt: number;
+}
+
+export interface AiDeckDraftInput {
+    name: string;
+    themePrompt: string;
+    finalEntryLimit: number;
+    orderMode: AiPackOrderMode;
+    llmEnabled: boolean;
 }

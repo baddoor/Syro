@@ -1181,8 +1181,19 @@ const AITab: React.FC<TabProps> = ({ settings, onChange }) => (
                 <div className="setting-item-info">
                     <div className="setting-item-name">Smart Connections 状态</div>
                     <div className="setting-item-description">
-                        运行时自动检测安装与接口可用性。未安装或接口不可用时，AI 主题检索将自动降级。
+                        {settings.aiThemeRetrieverAvailable
+                            ? "已检测到可用接口，可直接用于 AI 主题召回。"
+                            : "当前未检测到可用接口。已有主题包仍可复习，但创建或重生成会降级失败。"}
                     </div>
+                </div>
+                <div className="setting-item-control">
+                    <span
+                        className={`sr-settings-status-pill ${
+                            settings.aiThemeRetrieverAvailable ? "is-ready" : "is-missing"
+                        }`}
+                    >
+                        {settings.aiThemeRetrieverAvailable ? "可用" : "不可用"}
+                    </span>
                 </div>
             </div>
         </Section>

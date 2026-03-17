@@ -72,6 +72,84 @@
     padding: 8px;
 }
 
+.sr-deck-source-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+    gap: 8px;
+}
+
+.sr-deck-source-tabs {
+    display: inline-flex;
+    align-items: center;
+    background: var(--background-secondary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+    padding: 2px;
+    gap: 2px;
+}
+
+.sr-deck-source-tab {
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 600;
+    padding: 5px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.sr-deck-source-tab:hover {
+    color: var(--text-normal);
+    background: var(--background-modifier-hover);
+}
+
+.sr-deck-source-tab.is-active {
+    color: var(--text-on-accent);
+    background: var(--interactive-accent);
+}
+
+.sr-deck-source-create-btn {
+    border: 1px solid var(--background-modifier-border);
+    background: var(--background-secondary);
+    color: var(--text-normal);
+    border-radius: 8px;
+    padding: 5px 10px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.sr-deck-source-create-btn:hover {
+    background: var(--background-modifier-hover);
+}
+
+.sr-ai-pack-empty {
+    margin: 10px auto 0;
+    max-width: 860px;
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px dashed var(--background-modifier-border);
+    color: var(--text-muted);
+    font-size: 13px;
+    text-align: center;
+}
+
+.sr-ai-pack-panel-status {
+    display: flex;
+    justify-content: flex-start;
+}
+
+.sr-ai-pack-panel-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
 /* ==========================================
    卡片复习视图也使用全宽
    ========================================== */
@@ -350,6 +428,34 @@
     /* Reduced gap */
 }
 
+.sr-deck-name-copy {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.sr-deck-name-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+.sr-deck-kind-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 22px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--interactive-accent) 15%, transparent);
+    color: var(--interactive-accent);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
 /* ==========================================
    折叠箭头
    ========================================== */
@@ -398,6 +504,15 @@
 /* 移动端：稍大字号 */
 .is-mobile .sr-deck-name {
     font-size: 15px;
+}
+
+.sr-deck-subtitle {
+    font-size: 11px;
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-top: 1px;
 }
 
 /* ==========================================
@@ -460,6 +575,26 @@
 /* 零值淡化 */
 .sr-deck-stat.zero {
     opacity: 0.3;
+}
+
+.sr-settings-status-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.sr-settings-status-pill.is-ready {
+    background: color-mix(in srgb, var(--color-green) 16%, transparent);
+    color: var(--color-green);
+}
+
+.sr-settings-status-pill.is-missing {
+    background: color-mix(in srgb, var(--color-orange) 18%, transparent);
+    color: var(--color-orange);
 }
 
 /* ==========================================

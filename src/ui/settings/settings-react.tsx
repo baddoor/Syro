@@ -45,7 +45,9 @@ export class SRSettingTab extends PluginSettingTab {
         this.root = createRoot(reactContainer);
 
         // 获取当前设置并转换为 UI 状态
-        const uiSettings = settingsToUIState(this.plugin.data.settings);
+        const uiSettings = settingsToUIState(this.plugin.data.settings, {
+            aiThemeRetrieverAvailable: this.plugin.isAiThemeRetrieverAvailable(),
+        });
 
         // 渲染 React 组件
         this.root.render(

@@ -37,6 +37,7 @@ export interface UISettingsState {
     // AI Theme Review
     enableAiThemeReview: boolean;
     aiThemeRetriever: string;
+    aiThemeRetrieverAvailable: boolean;
     aiThemeDefaultFinalEntryLimit: number;
     aiThemeDefaultOrderMode: "relevance" | "random";
     aiThemeEnableLlm: boolean;

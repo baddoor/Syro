@@ -98,6 +98,9 @@ interface DeckHeaderProps {
     totalNew: number;
     totalLearn: number;
     totalDue: number;
+    newLabel?: string;
+    learnLabel?: string;
+    dueLabel?: string;
     onSync?: () => void;
     isSyncing?: boolean;
 }
@@ -106,19 +109,22 @@ const DeckHeader: React.FC<DeckHeaderProps> = ({
     totalNew,
     totalLearn,
     totalDue,
+    newLabel,
+    learnLabel,
+    dueLabel,
     onSync,
     isSyncing = false,
 }) => (
     <div className="sr-deck-header sr-deck-header-desktop">
         <div className="sr-deck-header-name">{t("DECK_TREE_HEADER_DECK")}</div>
         <div className={`sr-deck-header-stat new ${totalNew === 0 ? "dimmed" : ""}`}>
-            {t("DECK_TREE_HEADER_NEW")}
+            {newLabel ?? t("DECK_TREE_HEADER_NEW")}
         </div>
         <div className={`sr-deck-header-stat learning ${totalLearn === 0 ? "dimmed" : ""}`}>
-            {t("DECK_TREE_HEADER_LEARN")}
+            {learnLabel ?? t("DECK_TREE_HEADER_LEARN")}
         </div>
         <div className={`sr-deck-header-stat due ${totalDue === 0 ? "dimmed" : ""}`}>
-            {t("DECK_TREE_HEADER_DUE")}
+            {dueLabel ?? t("DECK_TREE_HEADER_DUE")}
         </div>
         <div className="sr-deck-header-action">
             {onSync && (
@@ -243,7 +249,13 @@ const DeckRow: React.FC<DeckRowProps> = ({
                     </span>
 
                     {/* 牌组名 */}
-                    <span className="sr-deck-name">{deck.deckName}</span>
+                    <div className="sr-deck-name-copy">
+                        <div className="sr-deck-name-row">
+                            {deck.kind === "ai-pack" && <span className="sr-deck-kind-badge">AI</span>}
+                            <span className="sr-deck-name">{deck.deckName}</span>
+                        </div>
+                        {deck.subtitle && <div className="sr-deck-subtitle">{deck.subtitle}</div>}
+                    </div>
                 </div>
 
                 {/* 统计数字 */}
@@ -327,6 +339,10 @@ export const DeckTree: React.FC<DeckTreeProps> = ({
 }) => {
     // 排序：文件夹优先
     const sortedDecks = useMemo(() => sortDecksWithFoldersFirst(decks), [decks]);
+    const isAiPackList = useMemo(
+        () => decks.length > 0 && decks.every((deck) => deck.kind === "ai-pack"),
+        [decks],
+    );
 
     // 计算总计统计数据 (用于表头颜色控制)
     const totalStats = useMemo(() => calculateTotalStats(decks), [decks]);
@@ -337,6 +353,9 @@ export const DeckTree: React.FC<DeckTreeProps> = ({
                 totalNew={totalStats.new}
                 totalLearn={totalStats.learn}
                 totalDue={totalStats.due}
+                newLabel={isAiPackList ? "条目" : undefined}
+                learnLabel={isAiPackList ? "-" : undefined}
+                dueLabel={isAiPackList ? "卡片" : undefined}
                 onSync={onSync}
                 isSyncing={isSyncing}
             />
