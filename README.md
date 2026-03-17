@@ -1,73 +1,114 @@
-# Syro
+Of course. Here is the professional English translation of the README.md file.
 
-Syro is an Obsidian plugin for spaced repetition, flashcards, note review, and incremental learning. It helps you review cards and full notes from one workflow without leaving your vault.
+This version is not a literal word-for-word translation; it has been localized to use idiomatic English and phrasing common within the Personal Knowledge Management (PKM) and Obsidian communities, ensuring it resonates effectively with an international audience while preserving the original's professional and sincere tone.
 
-- Documentation hub: [docs/docs/en/index.md](./docs/docs/en/index.md)
-- Chinese documentation hub: [docs/docs/zh/index.md](./docs/docs/zh/index.md)
-- Chinese repository README: [docs/README_ZH.md](./docs/README_ZH.md)
-- Releases: <https://github.com/baddoor/Syro/releases>
+---
 
-## What Syro Does
+# Syro: Reshape Your Memory and Reading in Obsidian
 
-- Review flashcards and full notes in one workflow
-- Build incremental learning flows from notes, folders, and review groups
-- Use FSRS and multiple queue strategies for spaced repetition
-- Store review data in notes or in a separate data file
-- Manage postponing, rescheduling, and review statistics from inside Obsidian
+> **Seamlessly integrate the scientific principles of Spaced Repetition and Incremental Reading into your plain-text knowledge base.**
 
-If you are looking for an Obsidian plugin for spaced repetition, flashcards, note review, or incremental learning, Syro is designed for that workflow.
+[中文文档 (Chinese)](./docs/README_ZH.md) | **English**
 
-## Install
+## When Your Knowledge Vault Becomes a Collection Graveyard
 
-### Community Plugins
+Many of us face a common dilemma: we meticulously collect a vast library of web pages, articles, and notes in Obsidian, only for these valuable resources to sink into oblivion after being saved. Traditional note-taking methods like passive re-reading and highlighting are often ineffective for long-term retention, trapping our knowledge bases in a "write-and-forget" cycle.
 
-Search for `Syro` in Obsidian Community Plugins after the plugin is published there.
+Syro aims to provide a solution. It is not designed to replace your existing note-taking habits, but to introduce the dimension of "time," transforming your static knowledge vault into a dynamic memory system that actively and intelligently helps you learn and remember.
 
-### BRAT
+## Who Is This For?
+Syro's core mechanics—Spaced Repetition and Incremental Reading—are especially suited for the following types of Obsidian users:
 
-Add `baddoor/Syro` in BRAT and install the latest release.
+-   **Digital Hoarders Battling the "Collector's Fallacy"**
+    For those who have clipped a massive amount of content but lack the capacity to read it all, Syro's Incremental Reading feature breaks down overwhelming backlogs into daily, digestible micro-tasks. The algorithm periodically brings this content to the surface, helping you transform a static "digital filing cabinet" into a dynamic stream of absorbed knowledge.
 
-### Manual Install
+-   **Practitioners of Zettelkasten and Evergreen Notes**
+    Syro allows knowledge to grow and mature over time. The algorithm periodically resurfaces your fleeting ideas and half-formed draft notes, encouraging you to refine, elaborate, and form new connections over multiple encounters. This facilitates a process of "incremental thinking" and "incremental writing."
 
-1. Download `main.js`, `manifest.json`, and `styles.css` from the latest release.
-2. Create the folder `.obsidian/plugins/syro` in your vault.
-3. Copy those files into that folder.
-4. Reload Obsidian and enable `Syro`.
+-   **Creative Workers Seeking Interdisciplinary Sparks**
+    By facilitating interleaved learning across different topics and notes, Syro can help generate unexpected semantic connections. This "neuro-creativity" fosters an environment ripe for breakthroughs and deep insights when tackling complex problems.
 
-Current manifest/plugin ID: `syro`. If the final public plugin ID changes before release packaging, the manual install folder name must change with it.
+-   **Professionals and Students Tackling Complex Knowledge**
+    When facing dense subjects, Syro allows you to turn essential terminology, formulas, and core definitions into flashcards. Train these concepts to the point of automatic recall, freeing up valuable cognitive resources for higher-order reasoning and conceptual integration.
 
-## Open Syro
+-   **Implementers Who Need "Programmable Attention"**
+    The system takes over the tedious task of review scheduling, eliminating the "what should I study today?" decision fatigue. It acts like a "cron job for your brain," generating a scientifically-backed set of micro-tasks each day, allowing you to efficiently combat forgetting simply by following its lead.
 
-You can start using Syro from:
+## 🌟 Core Features
 
-- the command palette by searching `Syro`
-- the status bar
-- the sidebars
-- note and folder context actions
+-   **Contextual Flashcards**
+    Create flashcards directly within your notes using natural Markdown syntax (e.g., `==highlighting==` or `::`). If you forget an answer during review, you can instantly jump back to the original source. This **helps you** memorize in full context, rather than relying on isolated rote learning.
 
-For detailed walkthroughs, settings references, and troubleshooting guides, start at [docs/docs/en/index.md](./docs/docs/en/index.md) or jump directly to [docs/docs/zh/index.md](./docs/docs/zh/index.md).
+-   **Incremental Reading**
+    Add long-form articles or notes to a review queue. The algorithm intelligently breaks them down for future reading sessions. A Timeline feature tracks your reading position, enabling **effortless, pressure-free, long-term learning**.
 
-## Migration Notes
+-   **Advanced Scheduling Algorithm**
+    Powered by the cutting-edge **FSRS** (Free Spaced Repetition Scheduler) algorithm. Compared to traditional algorithms, it more accurately predicts your forgetting curve, **aiming to** achieve higher retention with fewer reviews.
 
-- Back up the vault before changing storage mode or importing review data from another plugin.
-- If you previously used an older internal or historical folder name, move the installed plugin to `.obsidian/plugins/syro`.
-- `obsidian-Syro` is no longer the formal public plugin ID or install directory name.
+-   **Local-First and Secure**
+    Built on the Obsidian philosophy. All review data is stored securely in plain-text JSON files within your local vault. Your knowledge remains yours, and yours alone.
 
-## Commercial and Service Disclosure
+## 📖 Explore the Documentation
 
-This section is reserved for future monetization, CDK sales, account features, or network-dependent services. Current status:
+To dive deeper into Syro's potential, please consult our documentation (currently available in Chinese, with English translation in progress).
 
-- Paid license or CDK requirement: Not enabled yet
-- Account sign-in requirement: Not enabled yet
-- Cloud sync or required external service: Not enabled yet
-- Data sent to third-party services for core review features: Not enabled yet
+-   🏠 **[Syro Documentation Hub (Chinese)](./docs/docs/zh/index.md)**
+-   🚀 **[5-Minute Quick Start (Chinese)](./docs/docs/zh/getting-started/quick-start.md)**
+-   🧠 **[Flashcard Workflow: From Creation to Memorization (Chinese)](./docs/docs/zh/flashcards/index.md)**
+-   📚 **[Note Review Workflow: Mastering Your Reading Queue (Chinese)](./docs/docs/zh/note-review/index.md)**
+-   🛠️ **[Data, Sync, and Troubleshooting (Chinese)](./docs/docs/zh/advanced-and-faq/faq-troubleshooting.md)**
+
+## ⬇️ Installation Guide
+
+### Via BRAT (Recommended for now)
+
+As the plugin is currently under review for the community store, we **strongly recommend** installing it via the `BRAT` plugin. This ensures you get the latest, most stable version and receive updates promptly.
+
+**Detailed Steps:**
+
+1.  **Install BRAT**
+    -   If you don't have BRAT installed, go to `Settings` > `Community plugins` > `Browse`.
+    -   Search for `BRAT`, find `Obsidian42 - BRAT`, and click `Install`, then `Enable`.
+
+2.  **Add Syro's Repository**
+    -   Open the BRAT settings (`Settings` > `Community Plugins` > `BRAT`).
+    -   Click the `Add Beta plugin` button.
+
+3.  **Paste the Repository URL**
+    -   In the prompt, paste this repository's URL:
+        ```
+        baddoor/Syro
+        ```
+    -   Then click `Add Plugin`. BRAT will automatically download the latest version of Syro.
+
+4.  **Enable the Plugin**
+    -   After BRAT finishes, go back to your `Settings` > `Community Plugins` list.
+    -   Find `Syro` and toggle it on.
+
+Syro is now installed and ready to use!
+
+### Community Plugins Store (Pending Review)
+
+This plugin has been submitted to the official Obsidian Community Plugins store and is awaiting review. Once approved, you will be able to search for `Syro` and install it directly, which will be the most convenient method in the future.
+
+### Manual Installation (Alternative)
+
+1.  Go to the [Releases](https://github.com/baddoor/Syro/releases) page of this repository and download `main.js`, `manifest.json`, and `styles.css` from the latest version.
+2.  Create a new folder named `syro` inside your vault's `.obsidian/plugins/` directory.
+3.  Copy the downloaded files into this new folder.
+4.  Restart Obsidian and enable `Syro` in `Settings` > `Community Plugins`.
 
 ## Acknowledgements
 
-Syro builds on open-source ideas and libraries from the Obsidian ecosystem.
+Syro's development is deeply indebted to the open-source community and inspired by many outstanding projects. We extend our sincere gratitude and respect to the following projects and their contributors:
 
-- FSRS: <https://github.com/open-spaced-repetition/ts-fsrs>
-- cMenu inspiration: <https://github.com/chetachiezikeuzor/cMenu-Plugin>
-- Excalidraw release notes inspiration: <https://zsolt.blog>
+-   **[Obsidian](https://obsidian.md/)**: For creating this free, open, and privacy-focused plain-text ecosystem that makes everything possible.
+-   **[Anki](https://apps.ankiweb.net/)**: A titan in the field of spaced repetition. We salute its role in popularizing active recall worldwide.
+-   **[FSRS](https://github.com/open-spaced-repetition/fsrs4anki)**: For its outstanding open-source algorithm, which has significantly advanced the science of review scheduling.
+-   A special acknowledgement goes to **[Jarrett Ye (L-M-Sherlock)](https://github.com/L-M-Sherlock)**. Thank you, not only as a core contributor to the FSRS algorithm, but also as a passionate evangelist for the popularization of spaced repetition and advanced educational concepts.
+-   **[Obsidian Spaced Repetitions](https://github.com/st3v3nmw/obsidian-spaced-repetition)**: The original source of inspiration for this plugin. Thank you for bringing the spark of spaced repetition to the Obsidian community.
+-   **[Obsidian Smart Connections](https://github.com/brianpetro/obsidian-smart-connections)**: Its excellent engineering architecture and innovative ideas provided invaluable inspiration when exploring the integration of AI with local knowledge bases.
 
-For license details, see [LICENSE](./LICENSE).
+---
+**License**: [MIT License](./LICENSE)  
+*(Commercialization and Connectivity Disclosure: Most core Syro features are free to use, while some supporter-only features require a CDK. The current version has no mandatory account system. It does perform online CDK verification, but it does not send core review data, note content, or other learning content to external services.)*
