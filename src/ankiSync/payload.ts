@@ -6,6 +6,8 @@ import { CardQueue, RepetitionItem } from "src/dataStore/repetitionItem";
 import { SRSettings } from "src/settings";
 import { cyrb53, findLineIndexOfSearchStringIgnoringWs } from "src/util/utils";
 import {
+    AnkiMediaFieldName,
+    AnkiMediaReferenceCandidate,
     AnkiSyncItemState,
     BuiltSyroCardSnapshot,
     DEFAULT_ANKI_MODEL_NAME,
@@ -17,6 +19,9 @@ import {
 const DEFAULT_FACTOR = 2500;
 const SYRO_ANKI_DECK_ROOT = "Syro";
 const DEFAULT_ANKI_DECK_SEGMENT = "default";
+const HTML_IMG_SRC_REGEX = /<img\b[^>]*\bsrc=(["'])(.*?)\1[^>]*>/giu;
+const MARKDOWN_IMAGE_REGEX = /!\[[^\]]*\]\((.+?)\)/gu;
+const WIKILINK_IMAGE_REGEX = /!\[\[(.+?)\]\]/gu;
 
 export interface AnkiPayloadTrackedFileStore {
     getTrackedFile(path: string): TrackedFile | null;
@@ -54,6 +59,33 @@ interface BlockRenderContext {
 
 function normalizeText(value: string | null | undefined): string {
     return (value ?? "").trim();
+}
+
+function decodeHtmlAttribute(value: string): string {
+    return value
+        .replace(/&amp;/g, "&")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'");
+}
+
+function normalizeMediaTarget(value: string): string {
+    const trimmed = normalizeText(value);
+    if (!trimmed) {
+        return "";
+    }
+
+    if (trimmed.startsWith("<") && trimmed.endsWith(">")) {
+        return normalizeText(trimmed.slice(1, -1));
+    }
+
+    const titled = trimmed.match(/^(.*?)(?:\s+["'][^"']*["'])$/u);
+    return normalizeText(titled?.[1] ?? trimmed);
+}
+
+function normalizeWikilinkTarget(value: string): string {
+    return normalizeMediaTarget(value.split("|")[0] ?? "");
 }
 
 function normalizeDeckSegments(value: string | null | undefined): string[] {
@@ -238,6 +270,78 @@ function createLinkFields(
             ? buildAdvancedUriLink(vaultName, filePath, lineNo)
             : "",
     };
+}
+
+function collectMediaCandidates(
+    regex: RegExp,
+    markdown: string,
+    fieldName: AnkiMediaFieldName,
+    sourceType: AnkiMediaReferenceCandidate["sourceType"],
+    normalize: (value: string) => string,
+): AnkiMediaReferenceCandidate[] {
+    const matches: AnkiMediaReferenceCandidate[] = [];
+    let match: RegExpExecArray | null;
+
+    while ((match = regex.exec(markdown)) !== null) {
+        const originalPath = normalize(match[2] ?? match[1] ?? "");
+        if (!originalPath) {
+            continue;
+        }
+
+        matches.push({
+            fieldName,
+            originalPath,
+            index: match.index,
+            sourceType,
+        });
+    }
+
+    return matches;
+}
+
+export function extractMarkdownMediaReferenceCandidates(
+    markdown: string,
+    fieldName: AnkiMediaFieldName,
+): AnkiMediaReferenceCandidate[] {
+    const normalized = markdown ?? "";
+    return [
+        ...collectMediaCandidates(
+            WIKILINK_IMAGE_REGEX,
+            normalized,
+            fieldName,
+            "wikilink",
+            normalizeWikilinkTarget,
+        ),
+        ...collectMediaCandidates(
+            MARKDOWN_IMAGE_REGEX,
+            normalized,
+            fieldName,
+            "markdown",
+            normalizeMediaTarget,
+        ),
+        ...collectMediaCandidates(
+            HTML_IMG_SRC_REGEX,
+            normalized,
+            fieldName,
+            "html",
+            (value) => normalizeMediaTarget(decodeHtmlAttribute(value)),
+        ),
+    ].sort((left, right) => left.index - right.index);
+}
+
+function escapeMediaPathSegment(value: string): string {
+    return encodeURIComponent(value).replace(/%/g, "_");
+}
+
+export function buildAnkiMediaFilename(vaultPath: string): string {
+    const normalizedSegments = normalizeText(vaultPath)
+        .replace(/\\/g, "/")
+        .split("/")
+        .map((segment) => segment.trim())
+        .filter(Boolean)
+        .map(escapeMediaPathSegment);
+
+    return `syro__${normalizedSegments.length > 0 ? normalizedSegments.join("__") : "media"}`;
 }
 
 function createFallbackContextField(card: Card): string {
@@ -843,6 +947,7 @@ export function buildSyroAnkiCardPayload(
         lineNo: renderedFields.lineNo,
         warnings: renderedFields.warnings,
         renderSource: renderedFields.renderSource,
+        mediaRefs: [],
         cardHash,
         snapshot,
         fields: {

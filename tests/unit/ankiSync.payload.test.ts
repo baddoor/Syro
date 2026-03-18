@@ -1,7 +1,11 @@
 import { Card } from "src/Card";
 import { CardType } from "src/Question";
 import { TopicPath } from "src/TopicPath";
-import { buildSyroAnkiCardPayload } from "src/ankiSync/payload";
+import {
+    buildAnkiMediaFilename,
+    buildSyroAnkiCardPayload,
+    extractMarkdownMediaReferenceCandidates,
+} from "src/ankiSync/payload";
 import { TrackedFile, TrackedItem } from "src/dataStore/trackedFile";
 import { CardQueue, RepetitionItem, RPITEMTYPE } from "src/dataStore/repetitionItem";
 import { DEFAULT_SETTINGS } from "src/settings";
@@ -92,7 +96,7 @@ describe("ankiSync payload", () => {
     });
 
     it("renders cloze cards from locator spans instead of legacy front/back markers", () => {
-        const noteText = "这是一个非常完善的重构蓝图。基于你提供的决策，我为你制定了一份详细的**分步修复计划**。";
+        const noteText = "这是一个非常完整的重构蓝图。基于你的决策，我为你制定了一份详细的**分步修复计划**。";
         const card = createCard({
             front: "legacy-front",
             back: "legacy-back",
@@ -209,6 +213,25 @@ describe("ankiSync payload", () => {
         expect(payload?.openLink).toContain("vault=plugin_test");
         expect(payload?.exactLink).toContain("obsidian://advanced-uri");
         expect(payload?.exactLink).toContain("line=11");
+    });
+
+    it("extracts wikilink, markdown, and html image references in source order", () => {
+        const candidates = extractMarkdownMediaReferenceCandidates(
+            'before ![[assets/图.png]] middle ![alt](imgs/img 1.png) <img src="../raw/pic.jpg">',
+            "Front",
+        );
+
+        expect(candidates.map((candidate) => candidate.originalPath)).toEqual([
+            "assets/图.png",
+            "imgs/img 1.png",
+            "../raw/pic.jpg",
+        ]);
+        expect(candidates.map((candidate) => candidate.sourceType)).toEqual(["wikilink", "markdown", "html"]);
+    });
+
+    it("builds stable escaped Anki media filenames from vault paths", () => {
+        expect(buildAnkiMediaFilename("assets/cards/img 1.png")).toBe("syro__assets__cards__img_201.png");
+        expect(buildAnkiMediaFilename("资料/图.png")).toBe("syro___E8_B5_84_E6_96_99___E5_9B_BE.png");
     });
 
 });

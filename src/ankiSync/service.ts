@@ -1,18 +1,27 @@
 import { Card } from "src/Card";
 import { CardListType, Deck } from "src/Deck";
 import { NoteCardScheduleParser } from "src/CardSchedule";
-import { MarkdownRenderer } from "obsidian";
+import { MarkdownRenderer, TFile } from "obsidian";
 import { DataStore } from "src/dataStore/data";
 import { Iadapter } from "src/dataStore/adapter";
 import { CardQueue, RPITEMTYPE, RepetitionItem } from "src/dataStore/repetitionItem";
 import { SRSettings } from "src/settings";
 import { AnkiConnectClient } from "src/ankiSync/AnkiConnectClient";
-import { buildSyroAnkiCardSnapshotMap, createReviewSnapshotFromItem } from "src/ankiSync/payload";
+import {
+    buildAnkiMediaFilename,
+    buildSyroAnkiCardSnapshotMap,
+    createReviewSnapshotFromItem,
+    extractMarkdownMediaReferenceCandidates,
+} from "src/ankiSync/payload";
 import { chooseLatestSnapshot, areSnapshotsEquivalent, planAnkiSyncOperations } from "src/ankiSync/planner";
 import { AnkiSyncStateStore, ensureAnkiSyncItemState, pruneAnkiSyncState } from "src/ankiSync/stateStore";
 import {
+    AnkiBinaryMediaAsset,
     AnkiCanAddNoteResult,
     AnkiCardInfo,
+    AnkiMediaFieldName,
+    AnkiMediaReference,
+    AnkiMediaReferenceCandidate,
     AnkiNoteInfo,
     AnkiSyncPhase,
     AnkiSyncPlanOperation,
@@ -33,6 +42,9 @@ import {
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DETACHED_DECK_NAME = "Syro::Detached";
 const REMOTE_DISCOVERY_QUERY = "tag:syro-sync";
+const ANKI_SUSPENDED_QUEUE = -1;
+const ANKI_SCHED_BURIED_QUEUE = -2;
+const ANKI_USER_BURIED_QUEUE = -3;
 
 export interface AnkiSyncPluginAdapter {
     data: { settings: SRSettings };
@@ -40,6 +52,13 @@ export interface AnkiSyncPluginAdapter {
         vault?: {
             getName?: () => string;
             configDir?: string;
+            getAbstractFileByPath?: (path: string) => unknown;
+            adapter?: {
+                readBinary?: (path: string) => Promise<ArrayBuffer>;
+            };
+        };
+        metadataCache?: {
+            getFirstLinkpathDest?: (linkpath: string, sourcePath: string) => TFile | null;
         };
     };
     manifest: { dir?: string };
@@ -55,6 +74,12 @@ interface AnkiSyncServiceDeps {
 interface PreparedCreateNote {
     op: AnkiSyncPlanOperation;
     noteInput: Record<string, unknown>;
+}
+
+interface RenderedFieldResult {
+    html: string;
+    mediaRefs: AnkiMediaReference[];
+    warnings: string[];
 }
 
 function safeJsonParse<T>(value: string | null | undefined): T | null {
@@ -86,8 +111,60 @@ function chunkArray<T>(values: T[], chunkSize = 25): T[][] {
     return result;
 }
 
+function isBuriedQueue(queue: number | null | undefined): boolean {
+    return queue === ANKI_SCHED_BURIED_QUEUE || queue === ANKI_USER_BURIED_QUEUE;
+}
+
+function isRemoteUrl(value: string): boolean {
+    return /^(?:https?:|data:|ftp:|mailto:)/i.test(value);
+}
+
+function normalizeVaultPath(value: string): string {
+    const normalized = value.replace(/\\/g, "/");
+    const segments = normalized
+        .split("/")
+        .map((segment) => segment.trim())
+        .filter((segment) => segment.length > 0 && segment !== ".");
+    const resolved: string[] = [];
+
+    for (const segment of segments) {
+        if (segment === "..") {
+            resolved.pop();
+            continue;
+        }
+
+        resolved.push(segment);
+    }
+
+    return resolved.join("/");
+}
+
+function dirname(filePath: string): string {
+    const normalized = normalizeVaultPath(filePath);
+    const segments = normalized.split("/");
+    segments.pop();
+    return segments.join("/");
+}
+
+function joinVaultPath(baseDir: string, target: string): string {
+    const normalizedTarget = target.replace(/\\/g, "/");
+    if (normalizedTarget.startsWith("/")) {
+        return normalizeVaultPath(normalizedTarget.slice(1));
+    }
+    return normalizeVaultPath(baseDir ? `${baseDir}/${normalizedTarget}` : normalizedTarget);
+}
+
+function getAbstractPath(value: unknown): string | null {
+    if (!value || typeof value !== "object") {
+        return null;
+    }
+
+    const path = (value as { path?: unknown }).path;
+    return typeof path === "string" && path.length > 0 ? path : null;
+}
+
 function toCardQueue(value: number): CardQueue {
-    if (value === CardQueue.Learn || value === CardQueue.Review || value === CardQueue.Suspended) {
+    if (value === CardQueue.Learn || value === CardQueue.Review || value === ANKI_SUSPENDED_QUEUE) {
         return value as CardQueue;
     }
 
@@ -157,6 +234,7 @@ export class AnkiSyncService {
             "writeback",
             "pull",
             "ensure-decks",
+            "media",
             "create",
             "update",
             "delete",
@@ -310,40 +388,163 @@ export class AnkiSyncService {
             .replace(/\r?\n/g, "<br>");
     }
 
-    private async renderMarkdownFragment(
+    private resolveVaultMediaPath(originalPath: string, sourcePath: string): string | null {
+        const normalizedPath = (originalPath ?? "").trim();
+        if (!normalizedPath || isRemoteUrl(normalizedPath)) {
+            return null;
+        }
+
+        const app = this.plugin.app as any;
+        const metadataCache = app?.metadataCache;
+        const vault = app?.vault;
+        const cleanedPath = normalizedPath.replace(/^app:\/\/local\//i, "").replace(/^app:\/\/obsidian\.md\//i, "");
+        let decodedPath = cleanedPath;
+        try {
+            decodedPath = decodeURIComponent(cleanedPath);
+        } catch {
+            decodedPath = cleanedPath;
+        }
+
+        const sourceDir = dirname(sourcePath);
+        const directCandidates = [
+            cleanedPath,
+            decodedPath,
+            joinVaultPath(sourceDir, cleanedPath),
+            joinVaultPath(sourceDir, decodedPath),
+        ].filter(Boolean);
+
+        const directMatch = directCandidates.find((candidate) =>
+            typeof getAbstractPath(vault?.getAbstractFileByPath?.(candidate)) === "string",
+        );
+        if (directMatch) {
+            return normalizeVaultPath(directMatch);
+        }
+
+        const linked = metadataCache?.getFirstLinkpathDest?.(cleanedPath, sourcePath);
+        const linkedPath = getAbstractPath(linked);
+        if (linkedPath) {
+            return normalizeVaultPath(linkedPath);
+        }
+
+        return null;
+    }
+
+    private async loadBinaryMediaAsset(vaultPath: string): Promise<AnkiBinaryMediaAsset | null> {
+        const binaryReader = this.plugin.app?.vault?.adapter?.readBinary;
+        if (!binaryReader) {
+            return null;
+        }
+
+        try {
+            const data = await binaryReader.call(this.plugin.app?.vault?.adapter, vaultPath);
+            return {
+                filename: buildAnkiMediaFilename(vaultPath),
+                base64Data: Buffer.from(data).toString("base64"),
+                vaultPath,
+            };
+        } catch (error) {
+            console.warn(`[Syro-Anki] Failed to load media asset ${vaultPath}:`, error);
+            return null;
+        }
+    }
+
+    private async rewriteRenderedMedia(
+        container: HTMLElement,
+        fieldName: AnkiMediaFieldName,
+        sourcePath: string,
+        candidates: AnkiMediaReferenceCandidate[],
+    ): Promise<RenderedFieldResult> {
+        const mediaRefs: AnkiMediaReference[] = [];
+        const warnings: string[] = [];
+        const images = Array.from(container.querySelectorAll("img"));
+
+        for (let index = 0; index < images.length; index += 1) {
+            const image = images[index];
+            const candidate = candidates[index];
+            const candidatePath = candidate?.originalPath ?? image.getAttribute("src") ?? "";
+            if (!candidatePath || candidatePath.startsWith("data:") || isRemoteUrl(candidatePath)) {
+                continue;
+            }
+
+            const vaultPath = this.resolveVaultMediaPath(candidatePath, sourcePath);
+            if (!vaultPath) {
+                warnings.push(
+                    `[media:${fieldName}] unresolved image path=${candidatePath} source=${sourcePath || "unknown"}`,
+                );
+                continue;
+            }
+
+            const filename = buildAnkiMediaFilename(vaultPath);
+            image.setAttribute("src", filename);
+            mediaRefs.push({
+                fieldName,
+                vaultPath,
+                filename,
+                originalPath: candidatePath,
+            });
+        }
+
+        return {
+            html: container.innerHTML.trim(),
+            mediaRefs,
+            warnings,
+        };
+    }
+
+    private async renderMarkdownField(
         markdown: string,
         sourcePath: string,
         side: "front" | "back" | "context",
-    ): Promise<string> {
+        fieldName: AnkiMediaFieldName,
+    ): Promise<RenderedFieldResult> {
         const normalized = this.normalizeLegacyClozeMarkers(markdown, side).trim();
         if (!normalized) {
-            return "";
+            return { html: "", mediaRefs: [], warnings: [] };
         }
 
+        const mediaCandidates = extractMarkdownMediaReferenceCandidates(normalized, fieldName);
         const app = this.plugin.app;
         if (!app || typeof document === "undefined") {
-            return this.renderFallbackHtml(normalized);
+            return {
+                html: this.renderFallbackHtml(normalized),
+                mediaRefs: [],
+                warnings:
+                    mediaCandidates.length > 0
+                        ? [`[media:${fieldName}] media rendering unavailable for ${sourcePath || "unknown"}`]
+                        : [],
+            };
         }
 
         try {
             const container = document.createElement("div");
             await MarkdownRenderer.render(app as any, normalized, container, sourcePath, this.plugin as any);
-            return container.innerHTML.trim();
+            return this.rewriteRenderedMedia(container, fieldName, sourcePath, mediaCandidates);
         } catch {
-            return this.renderFallbackHtml(normalized);
+            return {
+                html: this.renderFallbackHtml(normalized),
+                mediaRefs: [],
+                warnings:
+                    mediaCandidates.length > 0
+                        ? [`[media:${fieldName}] media rendering failed for ${sourcePath || "unknown"}`]
+                        : [],
+            };
         }
     }
 
-    private async renderSnapshotFields(
-        builtSnapshots: Map<string, BuiltSyroCardSnapshot>,
-    ): Promise<void> {
+    private async renderSnapshotFields(builtSnapshots: Map<string, BuiltSyroCardSnapshot>): Promise<void> {
         for (const { payload } of builtSnapshots.values()) {
             const sourcePath = payload.filePath ?? "";
-            payload.front = await this.renderMarkdownFragment(payload.front, sourcePath, "front");
-            payload.back = await this.renderMarkdownFragment(payload.back, sourcePath, "back");
-            payload.context = await this.renderMarkdownFragment(payload.context, sourcePath, "context");
+            const front = await this.renderMarkdownField(payload.front, sourcePath, "front", "Front");
+            const back = await this.renderMarkdownField(payload.back, sourcePath, "back", "Back");
+            const context = await this.renderMarkdownField(payload.context, sourcePath, "context", "Context");
+
+            payload.front = front.html;
+            payload.back = back.html;
+            payload.context = context.html;
             payload.breadcrumb = this.buildBreadcrumbHtml(payload.breadcrumb, payload.openLink, payload.exactLink);
             payload.source = this.buildSourceHtml(payload.source, payload.openLink, payload.exactLink);
+            payload.mediaRefs = [...front.mediaRefs, ...back.mediaRefs, ...context.mediaRefs];
+            payload.warnings.push(...front.warnings, ...back.warnings, ...context.warnings);
 
             payload.fields.Front = payload.front;
             payload.fields.Back = payload.back;
@@ -353,6 +554,46 @@ export class AnkiSyncService {
             payload.fields.OpenLink = payload.openLink;
             payload.fields.ExactLink = payload.exactLink;
         }
+    }
+
+    private async uploadSnapshotMedia(
+        client: AnkiConnectClient,
+        builtSnapshots: Map<string, BuiltSyroCardSnapshot>,
+        result: AnkiSyncRunResult,
+        onProgress?: (current: number, total: number, message: string) => void,
+    ): Promise<void> {
+        const mediaRefs = Array.from(
+            new Map(
+                Array.from(builtSnapshots.values())
+                    .flatMap((snapshot) => snapshot.payload.mediaRefs)
+                    .map((mediaRef) => [mediaRef.filename, mediaRef]),
+            ).values(),
+        );
+        if (mediaRefs.length === 0) {
+            onProgress?.(0, 0, "No Anki media files to upload");
+            return;
+        }
+
+        const assets: AnkiBinaryMediaAsset[] = [];
+        for (const mediaRef of mediaRefs) {
+            const asset = await this.loadBinaryMediaAsset(mediaRef.vaultPath);
+            if (!asset) {
+                result.errors.push(
+                    `[media:${mediaRef.fieldName}] failed to load asset path=${mediaRef.vaultPath} file=${mediaRef.filename}`,
+                );
+                continue;
+            }
+            assets.push(asset);
+        }
+
+        if (assets.length === 0) {
+            onProgress?.(mediaRefs.length, mediaRefs.length, "Anki media upload skipped");
+            return;
+        }
+
+        await client.ensureBinaryMediaFiles(assets, (current, total, filename) =>
+            onProgress?.(current, total, `正在上传 Anki 图片媒体 (${current}/${total}): ${filename}`),
+        );
     }
 
     private getPendingWritebackTargets(
@@ -655,33 +896,86 @@ export class AnkiSyncService {
         };
     }
 
+    private inferQueueFromType(type: number | null | undefined): CardQueue {
+        if (type === 2) {
+            return CardQueue.Review;
+        }
+        if (type === 1) {
+            return CardQueue.Learn;
+        }
+        return CardQueue.New;
+    }
+
+    private chooseNonBuriedBaselineSnapshot(
+        itemState: AnkiSyncItemState,
+        hiddenSnapshot: ReviewSnapshot | null,
+    ): ReviewSnapshot | null {
+        const hiddenRawQueue = Number(hiddenSnapshot?.raw?.queue);
+        if (hiddenSnapshot && !isBuriedQueue(hiddenRawQueue)) {
+            return hiddenSnapshot;
+        }
+
+        const remoteRawQueue = Number(itemState.lastRemoteSnapshot?.raw?.queue);
+        if (itemState.lastRemoteSnapshot && !isBuriedQueue(remoteRawQueue)) {
+            return itemState.lastRemoteSnapshot;
+        }
+
+        const localRawQueue = Number(itemState.lastLocalSnapshot?.raw?.queue);
+        if (itemState.lastLocalSnapshot && !isBuriedQueue(localRawQueue)) {
+            return itemState.lastLocalSnapshot;
+        }
+
+        return null;
+    }
+
     private buildCardSnapshot(
         cardInfo: AnkiCardInfo,
         itemState: AnkiSyncItemState,
         reviewDueOffset: number | null,
+        hiddenSnapshot: ReviewSnapshot | null,
     ): ReviewSnapshot {
-        let nextReview = 0;
-        if (cardInfo.queue === CardQueue.Review && reviewDueOffset !== null && cardInfo.due !== null) {
-            nextReview = Math.max(0, (cardInfo.due - reviewDueOffset) * DAY_MS);
-        } else if (cardInfo.queue === CardQueue.Learn && cardInfo.due !== null) {
-            nextReview = cardInfo.due * 1000;
-        } else {
-            nextReview =
-                itemState.lastRemoteSnapshot?.nextReview ?? itemState.lastLocalSnapshot?.nextReview ?? 0;
+        const buried = isBuriedQueue(cardInfo.queue);
+        const baselineSnapshot = this.chooseNonBuriedBaselineSnapshot(itemState, hiddenSnapshot);
+        const projectedQueue = buried
+            ? baselineSnapshot?.queue ?? this.inferQueueFromType(cardInfo.type)
+            : toCardQueue(cardInfo.queue);
+
+        let computedNextReview = 0;
+        if (projectedQueue === CardQueue.Review && reviewDueOffset !== null && cardInfo.due !== null) {
+            computedNextReview = Math.max(0, (cardInfo.due - reviewDueOffset) * DAY_MS);
+        } else if (projectedQueue === CardQueue.Learn && cardInfo.due !== null) {
+            computedNextReview = cardInfo.due * 1000;
         }
 
-        const reps = cardInfo.reps ?? 0;
-        const lapses = cardInfo.lapses ?? 0;
+        const baselineNextReview =
+            baselineSnapshot?.nextReview ??
+            itemState.lastRemoteSnapshot?.nextReview ??
+            itemState.lastLocalSnapshot?.nextReview ??
+            0;
+        const nextReview = buried
+            ? Math.max(baselineNextReview, computedNextReview || 0)
+            : computedNextReview || baselineNextReview;
+
+        const reps = buried ? baselineSnapshot?.reps ?? cardInfo.reps ?? 0 : cardInfo.reps ?? 0;
+        const lapses = buried ? baselineSnapshot?.lapses ?? cardInfo.lapses ?? 0 : cardInfo.lapses ?? 0;
         return {
-            queue: toCardQueue(cardInfo.queue),
+            queue: projectedQueue,
             nextReview,
-            interval: Math.max(0, cardInfo.interval ?? 0),
-            factor: cardInfo.factor ?? null,
+            interval: buried
+                ? Math.max(0, baselineSnapshot?.interval ?? cardInfo.interval ?? 0)
+                : Math.max(0, cardInfo.interval ?? 0),
+            factor: buried ? baselineSnapshot?.factor ?? cardInfo.factor ?? null : cardInfo.factor ?? null,
             reps,
             lapses,
-            timesReviewed: reps,
-            timesCorrect: Math.max(reps - lapses, 0),
-            errorStreak: cardInfo.queue === CardQueue.Learn && lapses > 0 ? 1 : 0,
+            timesReviewed: buried ? baselineSnapshot?.timesReviewed ?? reps : reps,
+            timesCorrect: buried
+                ? baselineSnapshot?.timesCorrect ?? Math.max(reps - lapses, 0)
+                : Math.max(reps - lapses, 0),
+            errorStreak: buried
+                ? baselineSnapshot?.errorStreak ?? 0
+                : projectedQueue === CardQueue.Learn && lapses > 0
+                  ? 1
+                  : 0,
             updatedAt: (cardInfo.mod ?? 0) * 1000,
             dueValue: cardInfo.due ?? null,
             left: cardInfo.left ?? null,
@@ -707,6 +1001,7 @@ export class AnkiSyncService {
         itemState: AnkiSyncItemState,
         reviewDueOffset: number | null,
     ): AnkiRemoteRecord {
+        const hiddenSnapshot = this.buildHiddenSnapshot(noteInfo.fields);
         return {
             itemUuid,
             noteId: noteInfo.noteId,
@@ -715,8 +1010,8 @@ export class AnkiSyncService {
             cardHash: noteInfo.fields.syro_card_hash ?? itemState.mapping?.cardHash ?? "",
             filePath: noteInfo.fields.syro_file_path ?? itemState.mapping?.filePath ?? "",
             mod: (cardInfo.mod ?? 0) * 1000,
-            hiddenSnapshot: this.buildHiddenSnapshot(noteInfo.fields),
-            cardSnapshot: this.buildCardSnapshot(cardInfo, itemState, reviewDueOffset),
+            hiddenSnapshot,
+            cardSnapshot: this.buildCardSnapshot(cardInfo, itemState, reviewDueOffset, hiddenSnapshot),
             fields: noteInfo.fields,
         };
     }
@@ -1244,6 +1539,9 @@ export class AnkiSyncService {
                 reportProgress("ensure-decks", 0, 0, "无需创建 Anki 牌组");
             }
 
+            await this.uploadSnapshotMedia(client, builtSnapshots, result, (current, total, message) =>
+                reportProgress("media", current, total, message),
+            );
             await this.createNotes(client, ops, state, result, (current, total, message) =>
                 reportProgress("create", current, total, message),
             );

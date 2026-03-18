@@ -1,3 +1,4 @@
+import { MarkdownRenderer } from "obsidian";
 import { Card } from "src/Card";
 import { Deck } from "src/Deck";
 import { buildSyroAnkiCardSnapshotMap, createReviewSnapshotFromItem } from "src/ankiSync/payload";
@@ -69,9 +70,14 @@ function createDeckWithCard(item: RepetitionItem): { deck: Deck; cardHash: strin
 
 describe("ankiSync service", () => {
     const files = new Map<string, string>();
+    const binaryFiles = new Map<string, Uint8Array>();
     const adapter = {
         exists: jest.fn(async (path: string) => files.has(path)),
         read: jest.fn(async (path: string) => files.get(path) ?? ""),
+        readBinary: jest.fn(async (path: string) => {
+            const value = binaryFiles.get(path);
+            return value ? value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength) : new Uint8Array().buffer;
+        }),
         write: jest.fn(async (path: string, value: string) => {
             files.set(path, value);
         }),
@@ -79,6 +85,7 @@ describe("ankiSync service", () => {
 
     beforeEach(() => {
         files.clear();
+        binaryFiles.clear();
         jest.clearAllMocks();
         (Iadapter as any)._instance = { adapter };
     });
@@ -192,6 +199,7 @@ describe("ankiSync service", () => {
             ]),
             addNotes: jest.fn(async () => []),
             ensureDecks: jest.fn(async () => []),
+            ensureBinaryMediaFiles: jest.fn(async () => undefined),
             changeDeck: jest.fn(async () => undefined),
             deleteNotes: jest.fn(async () => undefined),
         };
@@ -269,6 +277,7 @@ describe("ankiSync service", () => {
             ]),
             addNotes: jest.fn(async () => []),
             ensureDecks: jest.fn(async () => []),
+            ensureBinaryMediaFiles: jest.fn(async () => undefined),
             changeDeck: jest.fn(async () => undefined),
             deleteNotes: jest.fn(async () => undefined),
         };
@@ -348,6 +357,7 @@ describe("ankiSync service", () => {
                 throw new Error("should not create");
             }),
             ensureDecks: jest.fn(async () => []),
+            ensureBinaryMediaFiles: jest.fn(async () => undefined),
             changeDeck: jest.fn(async () => undefined),
             deleteNotes: jest.fn(async () => undefined),
         };
@@ -403,6 +413,7 @@ describe("ankiSync service", () => {
             notesInfoByQuery: jest.fn(async () => []),
             canAddNotesWithErrorDetail: jest.fn(async () => []),
             ensureDecks: jest.fn(async () => []),
+            ensureBinaryMediaFiles: jest.fn(async () => undefined),
             updateNoteFields: jest.fn(async () => undefined),
             setSpecificCardValues: jest.fn(async () => undefined),
             notesInfo: jest.fn(async (noteIds: number[]) =>
@@ -453,6 +464,7 @@ describe("ankiSync service", () => {
             notesInfoByQuery: jest.fn(async () => []),
             canAddNotesWithErrorDetail: jest.fn(async () => [{ canAdd: true }]),
             ensureDecks: jest.fn(async () => []),
+            ensureBinaryMediaFiles: jest.fn(async () => undefined),
             updateNoteFields: jest.fn(async () => undefined),
             setSpecificCardValues: jest.fn(async () => undefined),
             notesInfo: jest.fn(async (noteIds: number[]) =>
@@ -487,6 +499,176 @@ describe("ankiSync service", () => {
         expect(breadcrumb).not.toContain("obsidian://open");
     });
 
+    it("treats buried remote cards as delayed schedule updates without changing the local queue", async () => {
+        const item = createItem();
+        const { deck, cardHash, filePath } = createDeckWithCard(item);
+        const store = new AnkiSyncStateStore(() => ".obsidian/plugins/syro/tracked_files.json");
+        const state = await store.load();
+        state.global.reviewDueOffset = 0;
+        const itemState = ensureAnkiSyncItemState(state, item.uuid);
+        const baseline = {
+            ...createReviewSnapshotFromItem(item),
+            updatedAt: 1000,
+            raw: { queue: 2, type: 2, due: 10 },
+        };
+        itemState.mapping = {
+            noteId: 10,
+            cardId: 20,
+            modelName: "Syro::Card",
+            deckName: "Syro::Deck",
+            filePath,
+            cardHash,
+        };
+        itemState.lastRemoteSnapshot = baseline;
+        itemState.lastRemoteUpdatedAt = baseline.updatedAt;
+        await store.save(state);
+
+        const client = {
+            getVersion: jest.fn(async () => 6),
+            ensureModel: jest.fn(async () => undefined),
+            notesInfoByQuery: jest.fn(async () => []),
+            canAddNotesWithErrorDetail: jest.fn(async () => []),
+            ensureDecks: jest.fn(async () => []),
+            ensureBinaryMediaFiles: jest.fn(async () => undefined),
+            updateNoteFields: jest.fn(async () => undefined),
+            setSpecificCardValues: jest.fn(async () => undefined),
+            notesInfo: jest.fn(async () => [
+                {
+                    noteId: 10,
+                    cards: [20],
+                    modelName: "Syro::Card",
+                    tags: ["syro-sync"],
+                    mod: 20,
+                    fields: {
+                        syro_item_uuid: item.uuid,
+                        syro_file_path: filePath,
+                        syro_card_hash: cardHash,
+                        syro_snapshot: JSON.stringify(baseline),
+                        syro_updated_at: "1000",
+                    },
+                },
+            ]),
+            cardsInfo: jest.fn(async () => [
+                {
+                    cardId: 20,
+                    noteId: 10,
+                    deckName: "Syro::Deck",
+                    factor: 2500,
+                    interval: 3,
+                    type: 2,
+                    queue: -2,
+                    due: 25,
+                    reps: 99,
+                    lapses: 33,
+                    left: 0,
+                    mod: 20,
+                },
+            ]),
+            addNotes: jest.fn(async () => []),
+            changeDeck: jest.fn(async () => undefined),
+            deleteNotes: jest.fn(async () => undefined),
+        };
+        const service = new AnkiSyncService(createPlugin(item), {
+            stateStore: store,
+            clientFactory: () => client as any,
+            now: () => 3900,
+        });
+        await service.initialize();
+        jest.spyOn(service as any, "refreshCardRuntime").mockImplementation(() => undefined);
+
+        const result = await service.sync(deck, "sig-bury");
+
+        expect(item.queue).toBe(CardQueue.Review);
+        expect(item.nextReview).toBe(25 * DAY_MS);
+        expect(item.timesReviewed).toBe(3);
+        expect((item.data as any).ease).toBeCloseTo(2.5);
+        expect(result.pulled).toBe(1);
+    });
+
+    it("uploads local image media and rewrites the rendered Anki html to the media filename", async () => {
+        const originalRender = (MarkdownRenderer as any).render;
+        (MarkdownRenderer as any).render = jest.fn(
+            async (_app: any, markdown: string, container: HTMLElement) => {
+                container.innerHTML = markdown.replace(
+                    /!\[[^\]]*]\((.+?)\)/g,
+                    (_match, src) => `<p><img src="${src}" alt="img"></p>`,
+                );
+            },
+        );
+        const item = createItem();
+        const card = new Card({ front: "![diagram](../assets/img 1.png)", back: "back", cardIdx: 0 });
+        card.repetitionItem = item;
+        card.question = {
+            topicPathList: { list: [new TopicPath(["Deck"])] },
+            note: { filePath: "notes/topic.md" },
+            questionContext: ["context"],
+            lineNo: 10,
+        } as any;
+        const deck = new Deck("root", null);
+        deck.dueFlashcards.push(card);
+        binaryFiles.set("assets/img 1.png", new Uint8Array([1, 2, 3, 4]));
+
+        const plugin = createPlugin(item);
+        plugin.app = {
+            vault: {
+                getName: () => "plugin_test",
+                getAbstractFileByPath: (path: string) =>
+                    binaryFiles.has(path) ? ({ path } as any) : null,
+                adapter,
+            },
+            metadataCache: {
+                getFirstLinkpathDest: (): null => null,
+            },
+        };
+        const client = {
+            getVersion: jest.fn(async () => 6),
+            ensureModel: jest.fn(async () => undefined),
+            notesInfoByQuery: jest.fn(async () => []),
+            canAddNotesWithErrorDetail: jest.fn(async () => []),
+            ensureDecks: jest.fn(async () => []),
+            ensureBinaryMediaFiles: jest.fn(async () => undefined),
+            updateNoteFields: jest.fn(async () => undefined),
+            setSpecificCardValues: jest.fn(async () => undefined),
+            notesInfo: jest.fn(async (noteIds: number[]) =>
+                noteIds.map((noteId) => ({
+                    noteId,
+                    cards: [noteId + 100],
+                    modelName: "Syro::Card",
+                    tags: [],
+                    fields: {},
+                })),
+            ),
+            cardsInfo: jest.fn(async () => []),
+            addNotes: jest.fn(async () => [10]),
+            changeDeck: jest.fn(async () => undefined),
+            deleteNotes: jest.fn(async () => undefined),
+        };
+        const service = new AnkiSyncService(plugin, {
+            clientFactory: () => client as any,
+            now: () => 3920,
+        });
+        await service.initialize();
+
+        const result = await service.sync(deck, "sig-media");
+        const uploadedAssets = (client.ensureBinaryMediaFiles as jest.Mock).mock.calls[0][0] as Array<{
+            filename: string;
+            base64Data: string;
+            vaultPath: string;
+        }>;
+        const createdBatch = (client.addNotes.mock.calls as any[][])[0][0] as Array<Record<string, any>>;
+        const frontHtml = createdBatch[0].fields.Front as string;
+
+        expect(result.errors).toEqual([]);
+        expect(uploadedAssets).toHaveLength(1);
+        expect(uploadedAssets[0]).toMatchObject({
+            filename: "syro__assets__img_201.png",
+            vaultPath: "assets/img 1.png",
+        });
+        expect(uploadedAssets[0].base64Data).toBe("AQIDBA==");
+        expect(frontHtml).toContain('src="syro__assets__img_201.png"');
+        (MarkdownRenderer as any).render = originalRender;
+    });
+
     it("records detailed create failure reasons when Anki returns null", async () => {
         const item = createItem();
         const { deck } = createDeckWithCard(item);
@@ -498,6 +680,7 @@ describe("ankiSync service", () => {
                 { canAdd: false, error: "cannot create note because it is a duplicate" },
             ]),
             ensureDecks: jest.fn(async () => []),
+            ensureBinaryMediaFiles: jest.fn(async () => undefined),
             updateNoteFields: jest.fn(async () => undefined),
             setSpecificCardValues: jest.fn(async () => undefined),
             notesInfo: jest.fn(async () => []),
@@ -556,6 +739,7 @@ describe("ankiSync service", () => {
                 { canAdd: true },
             ]),
             ensureDecks: jest.fn(async () => []),
+            ensureBinaryMediaFiles: jest.fn(async () => undefined),
             updateNoteFields: jest.fn(async () => undefined),
             setSpecificCardValues: jest.fn(async () => undefined),
             notesInfo: jest.fn(async (noteIds: number[]) =>
@@ -600,6 +784,7 @@ describe("ankiSync service", () => {
                 deckNames.forEach((deckName, index) => onProgress?.(index + 1, deckNames.length, deckName));
                 return [];
             }),
+            ensureBinaryMediaFiles: jest.fn(async () => undefined),
             updateNoteFields: jest.fn(async () => undefined),
             setSpecificCardValues: jest.fn(async () => undefined),
             notesInfo: jest.fn(async (noteIds: number[]) =>
@@ -659,6 +844,7 @@ describe("ankiSync service", () => {
             notesInfoByQuery: jest.fn(async () => []),
             canAddNotesWithErrorDetail: jest.fn(async () => []),
             ensureDecks: jest.fn(async () => []),
+            ensureBinaryMediaFiles: jest.fn(async () => undefined),
             updateNoteFields: jest.fn(async () => undefined),
             setSpecificCardValues: jest.fn(async () => undefined),
             notesInfo: jest.fn(async () => [

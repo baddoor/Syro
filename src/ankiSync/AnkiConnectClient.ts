@@ -1,5 +1,6 @@
 import { requestUrl } from "obsidian";
 import {
+    AnkiBinaryMediaAsset,
     AnkiCanAddNoteResult,
     AnkiCardInfo,
     AnkiNoteInfo,
@@ -129,7 +130,7 @@ export class AnkiConnectClient {
         return this.invoke<number>("version");
     }
 
-    async storeMediaFile(filename: string, data: string): Promise<void> {
+    async storeTextMediaFile(filename: string, data: string): Promise<void> {
         await this.invoke("storeMediaFile", {
             filename,
             data: Buffer.from(data, "utf8").toString("base64"),
@@ -138,7 +139,33 @@ export class AnkiConnectClient {
 
     async ensureMediaFiles(mediaFiles: Record<string, string>): Promise<void> {
         for (const [filename, data] of Object.entries(mediaFiles)) {
-            await this.storeMediaFile(filename, data);
+            await this.storeTextMediaFile(filename, data);
+        }
+    }
+
+    async storeBinaryMediaFile(filename: string, base64Data: string): Promise<void> {
+        await this.invoke("storeMediaFile", {
+            filename,
+            data: base64Data,
+        });
+    }
+
+    async ensureBinaryMediaFiles(
+        assets: AnkiBinaryMediaAsset[],
+        onProgress?: (current: number, total: number, filename: string) => void,
+    ): Promise<void> {
+        const uniqueAssets = Array.from(
+            new Map(
+                assets
+                    .filter((asset) => !!asset.filename && !!asset.base64Data)
+                    .map((asset) => [asset.filename, asset]),
+            ).values(),
+        );
+
+        for (let index = 0; index < uniqueAssets.length; index += 1) {
+            const asset = uniqueAssets[index];
+            await this.storeBinaryMediaFile(asset.filename, asset.base64Data);
+            onProgress?.(index + 1, uniqueAssets.length, asset.filename);
         }
     }
 

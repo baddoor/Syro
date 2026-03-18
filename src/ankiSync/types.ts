@@ -9,11 +9,13 @@ export type AnkiDeletePolicy = "delete" | "detach";
 export type ReviewSnapshotSource = "syro" | "anki-card" | "anki-hidden";
 export type AnkiOperationType = "create" | "update" | "delete" | "detach" | "noop";
 export type SyroAnkiRenderSource = "locator" | "fallback";
+export type AnkiMediaFieldName = "Front" | "Back" | "Context";
 export type AnkiSyncPhase =
     | "prepare"
     | "writeback"
     | "pull"
     | "ensure-decks"
+    | "media"
     | "create"
     | "update"
     | "delete"
@@ -94,6 +96,26 @@ export interface AnkiSyncStateFile {
     items: Record<string, AnkiSyncItemState>;
 }
 
+export interface AnkiMediaReferenceCandidate {
+    fieldName: AnkiMediaFieldName;
+    originalPath: string;
+    index: number;
+    sourceType: "wikilink" | "markdown" | "html";
+}
+
+export interface AnkiMediaReference {
+    fieldName: AnkiMediaFieldName;
+    vaultPath: string;
+    filename: string;
+    originalPath: string;
+}
+
+export interface AnkiBinaryMediaAsset {
+    filename: string;
+    base64Data: string;
+    vaultPath: string;
+}
+
 export interface SyroAnkiCardPayload {
     itemUuid: string;
     deckName: string;
@@ -109,6 +131,7 @@ export interface SyroAnkiCardPayload {
     lineNo: number | null;
     warnings: string[];
     renderSource: SyroAnkiRenderSource;
+    mediaRefs: AnkiMediaReference[];
     cardHash: string;
     snapshot: ReviewSnapshot;
     fields: Record<string, string>;

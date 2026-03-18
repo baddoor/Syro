@@ -227,4 +227,34 @@ describe("AnkiConnectClient", () => {
             }),
         });
     });
+
+    it("uploads binary media without utf8 re-encoding and deduplicates filenames", async () => {
+        mockedRequestUrl.mockResolvedValue({
+            status: 200,
+            headers: {},
+            arrayBuffer: new ArrayBuffer(0),
+            json: { error: null, result: null },
+            text: JSON.stringify({ error: null, result: null }),
+        } as any);
+
+        const client = new AnkiConnectClient("http://127.0.0.1:8765");
+        const progress = jest.fn();
+
+        await client.ensureBinaryMediaFiles(
+            [
+                { filename: "syro__assets__img.png", base64Data: "AQID", vaultPath: "assets/img.png" },
+                { filename: "syro__assets__img.png", base64Data: "AQID", vaultPath: "assets/img.png" },
+                { filename: "syro__assets__other.png", base64Data: "BAUG", vaultPath: "assets/other.png" },
+            ],
+            progress,
+        );
+
+        const storeMediaCalls = mockedRequestUrl.mock.calls.filter(
+            (call) => JSON.parse((call[0] as any).body).action === "storeMediaFile",
+        );
+        expect(storeMediaCalls).toHaveLength(2);
+        expect(JSON.parse((storeMediaCalls[0][0] as any).body).params.data).toBe("AQID");
+        expect(progress).toHaveBeenNthCalledWith(1, 1, 2, "syro__assets__img.png");
+        expect(progress).toHaveBeenNthCalledWith(2, 2, 2, "syro__assets__other.png");
+    });
 });
