@@ -139,7 +139,7 @@ describe("ankiSync service", () => {
             noteId: 10,
             cardId: 20,
             modelName: "Syro::Card",
-            deckName: "Deck",
+            deckName: "Syro::Deck",
             filePath,
             cardHash,
         };
@@ -175,7 +175,7 @@ describe("ankiSync service", () => {
                 {
                     cardId: 20,
                     noteId: 10,
-                    deckName: "Deck",
+                    deckName: "Syro::Deck",
                     factor: 2500,
                     interval: 3,
                     type: 2,
@@ -216,7 +216,7 @@ describe("ankiSync service", () => {
             noteId: 10,
             cardId: 20,
             modelName: "Syro::Card",
-            deckName: "Deck",
+            deckName: "Syro::Deck",
             filePath,
             cardHash,
         };
@@ -250,7 +250,7 @@ describe("ankiSync service", () => {
                 {
                     cardId: 20,
                     noteId: 10,
-                    deckName: "Deck",
+                    deckName: "Syro::Deck",
                     factor: 2500,
                     interval: 3,
                     type: 2,
@@ -305,7 +305,7 @@ describe("ankiSync service", () => {
             cardsInfo: jest.fn(async () => []),
             addNotes: jest
                 .fn()
-                .mockRejectedValueOnce(new Error("deck was not found: Deck"))
+                .mockRejectedValueOnce(new Error("deck was not found: Syro::Deck"))
                 .mockResolvedValueOnce([10]),
             changeDeck: jest.fn(async () => undefined),
             deleteNotes: jest.fn(async () => undefined),
@@ -318,7 +318,7 @@ describe("ankiSync service", () => {
 
         const result = await service.sync(deck, "sig-2", { onProgress: progress });
 
-        expect(client.ensureDecks).toHaveBeenCalledWith(["Deck"], expect.any(Function));
+        expect(client.ensureDecks).toHaveBeenCalledWith(["Syro::Deck"], expect.any(Function));
         expect(client.addNotes).toHaveBeenCalledTimes(2);
         expect(result.created).toBe(1);
         expect(progress.mock.calls.some(([update]) => update.phase === "ensure-decks")).toBe(true);
@@ -338,7 +338,7 @@ describe("ankiSync service", () => {
             noteId: 10,
             cardId: 20,
             modelName: "Syro::Card",
-            deckName: "Deck",
+            deckName: "Syro::Deck",
             filePath: "note.md",
             cardHash: "hash-1",
         };
@@ -363,7 +363,7 @@ describe("ankiSync service", () => {
                 {
                     cardId: 20,
                     noteId: 10,
-                    deckName: "Deck",
+                    deckName: "Syro::Deck",
                     factor: 2500,
                     interval: 3,
                     type: 2,

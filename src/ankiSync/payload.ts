@@ -11,27 +11,46 @@ import {
 } from "src/ankiSync/types";
 
 const DEFAULT_FACTOR = 2500;
+const SYRO_ANKI_DECK_ROOT = "Syro";
+const DEFAULT_ANKI_DECK_SEGMENT = "default";
 
 function normalizeText(value: string | null | undefined): string {
     return (value ?? "").trim();
 }
 
-function stripDeckPrefix(value: string | null | undefined): string {
-    const raw = normalizeText(value);
+function normalizeDeckSegments(value: string | null | undefined): string[] {
+    const raw = normalizeText(value).replace(/^#+/, "").replace(/\//g, "::");
     if (!raw) {
-        return "Syro";
+        return [];
     }
 
-    return raw.replace(/^#+/, "").replace(/\//g, "::");
+    return raw
+        .split("::")
+        .map((segment) => segment.trim())
+        .filter(Boolean);
+}
+
+function buildSyroDeckName(segments: string[]): string {
+    const normalizedSegments = segments.length > 0 ? [...segments] : [DEFAULT_ANKI_DECK_SEGMENT];
+    while (
+        normalizedSegments.length > 0 &&
+        normalizedSegments[0].toLowerCase() === SYRO_ANKI_DECK_ROOT.toLowerCase()
+    ) {
+        normalizedSegments.shift();
+    }
+
+    return [SYRO_ANKI_DECK_ROOT, ...(normalizedSegments.length > 0 ? normalizedSegments : [DEFAULT_ANKI_DECK_SEGMENT])].join(
+        "::",
+    );
 }
 
 function buildDeckName(card: Card): string {
     const topicPath = card.question?.topicPathList?.list?.[0];
     if (topicPath?.path?.length) {
-        return topicPath.path.map((part) => stripDeckPrefix(part)).join("::");
+        return buildSyroDeckName(topicPath.path.flatMap((part) => normalizeDeckSegments(part)));
     }
 
-    return stripDeckPrefix(card.repetitionItem?.deckName);
+    return buildSyroDeckName(normalizeDeckSegments(card.repetitionItem?.deckName));
 }
 
 function resolveFactor(item: RepetitionItem, itemState?: AnkiSyncItemState): number | null {
