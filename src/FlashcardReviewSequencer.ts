@@ -530,6 +530,10 @@ export class FlashcardReviewSequencer implements IFlashcardReviewSequencer {
             this.syncGlobalRemainingDeckTree(card, false);
         }
 
+        if (item) {
+            await SRPlugin.getInstance()?.queueAnkiReviewWriteback?.(item);
+        }
+
         if (this._isLearning) this._currentCard = null;
 
         // [核心修复] 必须重新计算该卡片真正所属的牌组的统计
@@ -748,6 +752,7 @@ export class FlashcardReviewSequencer implements IFlashcardReviewSequencer {
             item.learningStep = lastAction.learningStepSnapshot;
         }
         await store.saveReviewItemDelta(item);
+        await SRPlugin.getInstance()?.rewriteAnkiReviewWriteback?.(item);
 
         const deck = lastAction.originalDeck;
 

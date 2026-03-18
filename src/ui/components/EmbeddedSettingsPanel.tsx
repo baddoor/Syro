@@ -1143,6 +1143,36 @@ const SyncTab: React.FC<TabProps> = ({ settings, onChange }) => (
                 onChange={(v) => onChange("syncProgressDisplayMode", v as any)}
             />
         </Section>
+        <Section title={"Anki Sync"}>
+            <ToggleRow
+                label={"Enable Anki sync"}
+                desc={"Sync flashcards to a dedicated Anki model and merge review snapshots by latest update time."}
+                value={settings.ankiSyncEnabled}
+                onChange={(v) => onChange("ankiSyncEnabled", v)}
+            />
+            <InputRow
+                label={"AnkiConnect endpoint"}
+                desc={"Desktop Anki endpoint used for incremental sync."}
+                value={settings.ankiSyncEndpoint}
+                onChange={(v) => onChange("ankiSyncEndpoint", v)}
+            />
+            <InputRow
+                label={"Anki model name"}
+                desc={"Dedicated model for Syro cards. One Syro card maps to one Anki note/card."}
+                value={settings.ankiSyncModelName}
+                onChange={(v) => onChange("ankiSyncModelName", v)}
+            />
+            <SelectRow
+                label={"Delete policy"}
+                desc={"Delete removes missing Syro cards from Anki. Detach keeps the Anki note and clears the Syro mapping."}
+                value={settings.ankiSyncDeletePolicy}
+                options={[
+                    { label: "Delete in Anki", value: "delete" },
+                    { label: "Detach only", value: "detach" },
+                ]}
+                onChange={(v) => onChange("ankiSyncDeletePolicy", v as "delete" | "detach")}
+            />
+        </Section>
     </div>
 );
 

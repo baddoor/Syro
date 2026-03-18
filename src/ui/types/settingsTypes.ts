@@ -2,8 +2,15 @@
  * UI-specific settings types used by the settings screens.
  */
 
+import type { StatusBarAnimationStyle } from "../../settings";
+
 // Re-export full plugin settings types for adapter code.
-export type { SRSettings, DeckOptionsPreset, ProgressBarStyle } from "../../settings";
+export type {
+    SRSettings,
+    DeckOptionsPreset,
+    ProgressBarStyle,
+    StatusBarAnimationStyle,
+} from "../../settings";
 
 /**
  * Subset of settings exposed to the settings UI.
@@ -23,6 +30,10 @@ export interface UISettingsState {
     enableNoteCachePersistence: boolean;
     autoIncrementalSync: boolean;
     syncProgressDisplayMode: "always" | "full-only" | "never";
+    ankiSyncEnabled: boolean;
+    ankiSyncEndpoint: string;
+    ankiSyncDeletePolicy: "delete" | "detach";
+    ankiSyncModelName: string;
     parseClozesInCodeBlocks: boolean; // Parse {{c1::...}} cloze syntax in code blocks
     codeContextLines: number; // code context lines
     clozeContextMode: string;

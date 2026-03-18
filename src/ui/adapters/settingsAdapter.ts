@@ -30,6 +30,10 @@ export function settingsToUIState(settings: SRSettings): UISettingsState {
         enableNoteCachePersistence: settings.enableNoteCachePersistence ?? true,
         autoIncrementalSync: settings.autoIncrementalSync ?? true,
         syncProgressDisplayMode: settings.syncProgressDisplayMode ?? "always",
+        ankiSyncEnabled: settings.ankiSyncEnabled ?? false,
+        ankiSyncEndpoint: settings.ankiSyncEndpoint ?? "http://127.0.0.1:8765",
+        ankiSyncDeletePolicy: settings.ankiSyncDeletePolicy ?? "delete",
+        ankiSyncModelName: settings.ankiSyncModelName ?? "Syro::Card",
         parseClozesInCodeBlocks: settings.parseClozesInCodeBlocks ?? false,
         codeContextLines: settings.codeContextLines ?? 15,
         clozeContextMode: settings.clozeContextMode ?? "single",
@@ -135,6 +139,13 @@ export function mergeUIStateToSettings(
         merged.autoIncrementalSync = uiChanges.autoIncrementalSync;
     if (uiChanges.syncProgressDisplayMode !== undefined)
         merged.syncProgressDisplayMode = uiChanges.syncProgressDisplayMode;
+    if (uiChanges.ankiSyncEnabled !== undefined) merged.ankiSyncEnabled = uiChanges.ankiSyncEnabled;
+    if (uiChanges.ankiSyncEndpoint !== undefined)
+        merged.ankiSyncEndpoint = uiChanges.ankiSyncEndpoint;
+    if (uiChanges.ankiSyncDeletePolicy !== undefined)
+        merged.ankiSyncDeletePolicy = uiChanges.ankiSyncDeletePolicy;
+    if (uiChanges.ankiSyncModelName !== undefined)
+        merged.ankiSyncModelName = uiChanges.ankiSyncModelName;
     if (uiChanges.parseClozesInCodeBlocks !== undefined)
         merged.parseClozesInCodeBlocks = uiChanges.parseClozesInCodeBlocks;
     if (uiChanges.codeContextLines !== undefined)

@@ -119,6 +119,7 @@ import {
     serializeNote,
     SerializedNote,
 } from "src/cache/noteCacheStore";
+import { AnkiSyncService } from "src/ankiSync";
 
 // 每日牌组统计数据结构（持久化存储）
 // 每日牌组统计数据结构（持久化存储）
@@ -233,6 +234,7 @@ export default class SRPlugin extends Plugin {
     public algorithm: SrsAlgorithm;
     public reviewFloatBar: reviewResponseModal;
     public settingTab: SRSettingTab;
+    public ankiSyncService: AnkiSyncService | null = null;
 
     /** 事件总线：同步完成后广播消息，通知已打开的 UI 组件局部刷新数字 */
     public syncEvents: SyncEvents = new SyncEvents();
@@ -1380,6 +1382,13 @@ export default class SRPlugin extends Plugin {
                     fullDeckTree.getCardCount(CardListType.All, true),
                 );
             }
+            if (this.ankiSyncService) {
+                progressTip?.update(totalNotes, totalNotes, "正在同步 Anki...");
+                const ankiSyncResult = await this.ankiSyncService.sync(fullDeckTree, currentSignature);
+                if (ankiSyncResult.errors.length > 0 && settings.showRuntimeDebugMessages) {
+                    console.warn("[Syro-Anki] Sync finished with warnings:", ankiSyncResult.errors);
+                }
+            }
             progressTip?.update(totalNotes, totalNotes, "正在构建牌组树...");
             if (releaseSaveSuppression) {
                 releaseSaveSuppression();
@@ -1889,6 +1898,8 @@ export default class SRPlugin extends Plugin {
         this.data.settings = Object.assign({}, DEFAULT_SETTINGS, this.data.settings);
         this.store = new DataStore(this.data.settings, this.manifest.dir);
         await this.store.load();
+        this.ankiSyncService = new AnkiSyncService(this);
+        await this.ankiSyncService.initialize();
         this.noteReviewStore = new NoteReviewStore(this.data.settings, this.manifest.dir);
         await this.noteReviewStore.load();
         await this.noteReviewStore.migrateFromLegacyStore(this.store);
@@ -1918,6 +1929,14 @@ export default class SRPlugin extends Plugin {
                 // 校验失败不影响正常保存
             }
         }
+    }
+
+    public async queueAnkiReviewWriteback(item: RepetitionItem | null | undefined): Promise<void> {
+        await this.ankiSyncService?.queueLocalReviewWriteback(item);
+    }
+
+    public async rewriteAnkiReviewWriteback(item: RepetitionItem | null | undefined): Promise<void> {
+        await this.ankiSyncService?.rewritePendingWriteback(item);
     }
 
     private getActiveLeaf(type: string): WorkspaceLeaf | null {

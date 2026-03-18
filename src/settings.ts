@@ -29,6 +29,7 @@ export type StatusBarAnimationStyle = "None" | "Breathing";
 export type ClozeContextMode = "single" | "double-break" | "expanded" | "full";
 export type ClozeContextPerformanceMode = "off" | "safe-trim";
 export type SyncProgressDisplayMode = "always" | "full-only" | "never";
+export type AnkiDeletePolicySetting = "delete" | "detach";
 
 // ============ Deck Option Presets ===========
 // Per-preset configuration.
@@ -82,6 +83,10 @@ export interface SRSettings {
     enableNoteCachePersistence: boolean;
     autoIncrementalSync: boolean;
     syncProgressDisplayMode: SyncProgressDisplayMode;
+    ankiSyncEnabled: boolean;
+    ankiSyncEndpoint: string;
+    ankiSyncDeletePolicy: AnkiDeletePolicySetting;
+    ankiSyncModelName: string;
     cardBlockID: boolean;
     randomizeCardOrder: boolean;
     flashcardCardOrder: string;
@@ -234,6 +239,10 @@ export const DEFAULT_SETTINGS: SRSettings = {
     enableNoteCachePersistence: true,
     autoIncrementalSync: true,
     syncProgressDisplayMode: "always",
+    ankiSyncEnabled: false,
+    ankiSyncEndpoint: "http://127.0.0.1:8765",
+    ankiSyncDeletePolicy: "delete",
+    ankiSyncModelName: "Syro::Card",
     cardBlockID: false,
     randomizeCardOrder: null,
     flashcardCardOrder: "DueFirstRandom",
@@ -435,6 +444,22 @@ export function upgradeSettings(settings: SRSettings) {
 
     if (settings.syncProgressDisplayMode === undefined) {
         settings.syncProgressDisplayMode = "always";
+    }
+
+    if (settings.ankiSyncEnabled === undefined) {
+        settings.ankiSyncEnabled = false;
+    }
+
+    if (!settings.ankiSyncEndpoint) {
+        settings.ankiSyncEndpoint = "http://127.0.0.1:8765";
+    }
+
+    if (settings.ankiSyncDeletePolicy === undefined) {
+        settings.ankiSyncDeletePolicy = "delete";
+    }
+
+    if (!settings.ankiSyncModelName) {
+        settings.ankiSyncModelName = "Syro::Card";
     }
 
     if (settings.showRuntimeDebugMessages === undefined) {
