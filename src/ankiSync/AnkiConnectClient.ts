@@ -1,3 +1,4 @@
+import { requestUrl } from "obsidian";
 import {
     AnkiCardInfo,
     AnkiNoteInfo,
@@ -73,15 +74,26 @@ function normalizeCardInfo(raw: RawCardInfo): AnkiCardInfo {
     };
 }
 
+function normalizeInvokeResponse<T>(action: string, payload: unknown): AnkiInvokeResponse<T> {
+    if (payload && typeof payload === "object" && "result" in payload && "error" in payload) {
+        return payload as AnkiInvokeResponse<T>;
+    }
+
+    throw new Error(`AnkiConnect ${action} returned an invalid payload`);
+}
+
 export class AnkiConnectClient {
     constructor(private readonly endpoint = DEFAULT_ANKI_SYNC_ENDPOINT) {}
 
     private async invoke<T>(action: string, params: Record<string, unknown> = {}): Promise<T> {
-        const response = await fetch(this.endpoint, {
+        const response = await requestUrl({
+            url: this.endpoint,
             method: "POST",
+            contentType: "application/json",
             headers: {
-                "Content-Type": "application/json",
+                Accept: "application/json",
             },
+            throw: false,
             body: JSON.stringify({
                 action,
                 version: 6,
@@ -89,11 +101,11 @@ export class AnkiConnectClient {
             }),
         });
 
-        if (!response.ok) {
+        if (response.status < 200 || response.status >= 300) {
             throw new Error(`AnkiConnect HTTP ${response.status} for action ${action}`);
         }
 
-        const payload = (await response.json()) as AnkiInvokeResponse<T>;
+        const payload = normalizeInvokeResponse<T>(action, response.json ?? JSON.parse(response.text));
         if (payload.error) {
             throw new Error(`AnkiConnect ${action} failed: ${payload.error}`);
         }

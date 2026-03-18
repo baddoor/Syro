@@ -123,6 +123,7 @@ module.exports = new Proxy(
         Platform: {
             isMobile: false,
         },
+        requestUrl: jest.fn(),
         Scope,
         TAbstractFile,
         TFile,
