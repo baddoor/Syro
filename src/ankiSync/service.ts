@@ -1,6 +1,7 @@
 import { Card } from "src/Card";
 import { CardListType, Deck } from "src/Deck";
 import { NoteCardScheduleParser } from "src/CardSchedule";
+import { MarkdownRenderer } from "obsidian";
 import { DataStore } from "src/dataStore/data";
 import { Iadapter } from "src/dataStore/adapter";
 import { CardQueue, RPITEMTYPE, RepetitionItem } from "src/dataStore/repetitionItem";
@@ -35,6 +36,12 @@ const REMOTE_DISCOVERY_QUERY = "tag:syro-sync";
 
 export interface AnkiSyncPluginAdapter {
     data: { settings: SRSettings };
+    app?: {
+        vault?: {
+            getName?: () => string;
+            configDir?: string;
+        };
+    };
     manifest: { dir?: string };
     store: DataStore;
 }
@@ -85,6 +92,23 @@ function toCardQueue(value: number): CardQueue {
     }
 
     return CardQueue.New;
+}
+
+function escapeHtml(value: string): string {
+    return value
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
+
+function createMaskMarkup(label = "[...]"): string {
+    return `<span class="syro-anki-mask">${escapeHtml(label)}</span>`;
+}
+
+function createAnswerMarkup(value: string): string {
+    return `<span class="syro-anki-answer">${escapeHtml(value)}</span>`;
 }
 
 export class AnkiSyncService {
@@ -195,6 +219,139 @@ export class AnkiSyncService {
         }
 
         return fileTextByPath;
+    }
+
+    private async hasAdvancedUriPlugin(): Promise<boolean> {
+        const adapter = Iadapter.instance?.adapter;
+        const configDir = this.plugin.app?.vault?.configDir;
+        if (!adapter || !configDir) {
+            return false;
+        }
+
+        try {
+            return await adapter.exists(`${configDir}/plugins/obsidian-advanced-uri/manifest.json`);
+        } catch {
+            return false;
+        }
+    }
+
+    private buildBreadcrumbHtml(label: string, openLink: string): string {
+        const safeLabel = escapeHtml(label);
+        if (!safeLabel) {
+            return "";
+        }
+
+        if (!openLink) {
+            return `<span class="syro-anki-badge">${safeLabel}</span>`;
+        }
+
+        return `<span class="syro-anki-badge"><a href="${escapeHtml(openLink)}">${safeLabel}</a></span>`;
+    }
+
+    private buildSourceHtml(label: string, openLink: string, exactLink: string): string {
+        const safeLabel = escapeHtml(label);
+        const links: string[] = [];
+        if (openLink) {
+            links.push(`<a href="${escapeHtml(openLink)}">Open file</a>`);
+        }
+        if (exactLink) {
+            links.push(`<a href="${escapeHtml(exactLink)}">Locate line</a>`);
+        }
+
+        const actions = links.length > 0 ? ` <span class="syro-anki-source-links">(${links.join(" · ")})</span>` : "";
+        return `${safeLabel}${actions}`.trim();
+    }
+
+    private normalizeLegacyClozeMarkers(markdown: string, side: "front" | "back" | "context"): string {
+        let normalized = markdown.replace(/<!--SR_CODE_CLOZE:\d+:\d+-->\r?\n?/g, "");
+        normalized = normalized.replace(/芦芦SR_H:([^禄]+)禄禄/g, (_match, encoded) => {
+            try {
+                return createMaskMarkup(decodeURIComponent(encoded));
+            } catch {
+                return createMaskMarkup();
+            }
+        });
+        normalized = normalized.replace(/芦芦SR_S:([^禄]+)禄禄/g, (_match, encoded) => {
+            try {
+                return createAnswerMarkup(decodeURIComponent(encoded));
+            } catch {
+                return createAnswerMarkup(encoded);
+            }
+        });
+        normalized = normalized.replace(/««SR_CLOZE_FRONT»»/g, createMaskMarkup());
+        normalized = normalized.replace(/««SR_CLOZE_BACK:([^»]+)»»/g, (_match, encoded) => {
+            try {
+                return createAnswerMarkup(decodeURIComponent(encoded));
+            } catch {
+                return createAnswerMarkup(encoded);
+            }
+        });
+        normalized = normalized.replace(/««SR_CLOZE:([^»]+)»»/g, (_match, encoded) => {
+            try {
+                return side === "front"
+                    ? createMaskMarkup()
+                    : createAnswerMarkup(decodeURIComponent(encoded));
+            } catch {
+                return side === "front" ? createMaskMarkup() : createAnswerMarkup(encoded);
+            }
+        });
+        normalized = normalized.replace(/\{\{c\d+(?:::|：：)(.*?)(?:(?:::|：：).*?)?\}\}/giu, (_match, content) =>
+            createAnswerMarkup(content),
+        );
+        return normalized;
+    }
+
+    private renderFallbackHtml(markdown: string): string {
+        return escapeHtml(markdown)
+            .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+            .replace(/(^|[^*])\*(.+?)\*/g, "$1<em>$2</em>")
+            .replace(/==(.*?)==/g, "<mark>$1</mark>")
+            .replace(/\r?\n/g, "<br>");
+    }
+
+    private async renderMarkdownFragment(
+        markdown: string,
+        sourcePath: string,
+        side: "front" | "back" | "context",
+    ): Promise<string> {
+        const normalized = this.normalizeLegacyClozeMarkers(markdown, side).trim();
+        if (!normalized) {
+            return "";
+        }
+
+        const app = this.plugin.app;
+        if (!app || typeof document === "undefined") {
+            return this.renderFallbackHtml(normalized);
+        }
+
+        try {
+            const container = document.createElement("div");
+            await MarkdownRenderer.render(app as any, normalized, container, sourcePath, this.plugin as any);
+            return container.innerHTML.trim();
+        } catch {
+            return this.renderFallbackHtml(normalized);
+        }
+    }
+
+    private async renderSnapshotFields(
+        builtSnapshots: Map<string, BuiltSyroCardSnapshot>,
+    ): Promise<void> {
+        for (const { payload } of builtSnapshots.values()) {
+            const sourcePath = payload.filePath ?? "";
+            payload.front = await this.renderMarkdownFragment(payload.front, sourcePath, "front");
+            payload.back = await this.renderMarkdownFragment(payload.back, sourcePath, "back");
+            payload.context = await this.renderMarkdownFragment(payload.context, sourcePath, "context");
+            payload.breadcrumb = this.buildBreadcrumbHtml(payload.breadcrumb, payload.openLink);
+            payload.source = this.buildSourceHtml(payload.source, payload.openLink, payload.exactLink);
+
+            payload.fields.Front = payload.front;
+            payload.fields.Back = payload.back;
+            payload.fields.Context = payload.context;
+            payload.fields.Breadcrumb = payload.breadcrumb;
+            payload.fields.Source = payload.source;
+            payload.fields.OpenLink = payload.openLink;
+            payload.fields.ExactLink = payload.exactLink;
+        }
     }
 
     private getPendingWritebackTargets(
@@ -1026,11 +1183,16 @@ export class AnkiSyncService {
             reportProgress("prepare", 1, 1, "Anki 已连接");
 
             const fileTextByPath = await this.buildFileTextMap(deckTree);
+            const vaultName = this.plugin.app?.vault?.getName?.() ?? "";
+            const hasAdvancedUri = await this.hasAdvancedUriPlugin();
             const builtSnapshots = buildSyroAnkiCardSnapshotMap(deckTree, state.items, modelName, {
                 settings,
                 store: this.plugin.store,
                 fileTextByPath,
+                vaultName,
+                hasAdvancedUri,
             });
+            await this.renderSnapshotFields(builtSnapshots);
             for (const [itemUuid, builtSnapshot] of builtSnapshots.entries()) {
                 for (const warning of builtSnapshot.payload.warnings) {
                     result.errors.push(`[render:${itemUuid}] ${warning}`);

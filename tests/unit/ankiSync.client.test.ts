@@ -53,6 +53,37 @@ describe("AnkiConnectClient", () => {
         await expect(client.getVersion()).resolves.toBe(6);
     });
 
+    it("ensures the Syro model templates, fields, and media assets", async () => {
+        mockedRequestUrl.mockResolvedValue({
+            status: 200,
+            headers: {},
+            arrayBuffer: new ArrayBuffer(0),
+            json: { error: null, result: null },
+            text: JSON.stringify({ error: null, result: null }),
+        } as any);
+
+        const client = new AnkiConnectClient("http://127.0.0.1:8765");
+        await client.ensureModel("Syro::Card");
+
+        const actions = mockedRequestUrl.mock.calls.map(
+            (call) => JSON.parse((call[0] as any).body).action,
+        );
+        expect(actions).toContain("createModel");
+        expect(actions).toContain("updateModelTemplates");
+        expect(actions).toContain("updateModelStyling");
+        expect(actions.filter((action) => action === "modelFieldAdd").length).toBeGreaterThanOrEqual(12);
+        expect(actions.filter((action) => action === "storeMediaFile").length).toBe(2);
+
+        const createModelRequest = mockedRequestUrl.mock.calls.find(
+            (call) => JSON.parse((call[0] as any).body).action === "createModel",
+        );
+        expect(createModelRequest).toBeDefined();
+        expect(
+            createModelRequest &&
+                JSON.parse((createModelRequest[0] as any).body).params.inOrderFields,
+        ).toEqual(expect.arrayContaining(["Breadcrumb", "OpenLink", "ExactLink"]));
+    });
+
     it("ensures decks and ignores already-existing deck errors", async () => {
         mockedRequestUrl
             .mockResolvedValueOnce({

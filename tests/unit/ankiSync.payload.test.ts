@@ -129,7 +129,8 @@ describe("ankiSync payload", () => {
         expect(payload?.renderSource).toBe("locator");
         expect(payload?.fields.Front).toContain("[...]");
         expect(payload?.fields.Front).not.toContain("legacy-front");
-        expect(payload?.fields.Back).toContain("<mark>分步修复计划</mark>");
+        expect(payload?.fields.Back).toContain('class="syro-anki-answer"');
+        expect(payload?.fields.Back).not.toContain("legacy-back");
         expect(payload?.warnings).toEqual([]);
     });
 
@@ -196,4 +197,18 @@ describe("ankiSync payload", () => {
         expect(payload?.fields.Front).toBe("legacy-front");
         expect(payload?.warnings[0]).toContain("locator fallback");
     });
+    it("builds Obsidian source links and one-based breadcrumb lines when vault context is available", () => {
+        const payload = buildSyroAnkiCardPayload(createCard({ filePath: "zh/test.md" }), undefined, undefined, {
+            vaultName: "plugin_test",
+            hasAdvancedUri: true,
+        });
+
+        expect(payload?.breadcrumb).toContain("zh / test.md");
+        expect(payload?.breadcrumb).toContain("L11");
+        expect(payload?.openLink).toContain("obsidian://open");
+        expect(payload?.openLink).toContain("vault=plugin_test");
+        expect(payload?.exactLink).toContain("obsidian://advanced-uri");
+        expect(payload?.exactLink).toContain("line=11");
+    });
+
 });

@@ -102,7 +102,10 @@ export interface SyroAnkiCardPayload {
     front: string;
     back: string;
     context: string;
+    breadcrumb: string;
     source: string;
+    openLink: string;
+    exactLink: string;
     lineNo: number | null;
     warnings: string[];
     renderSource: SyroAnkiRenderSource;

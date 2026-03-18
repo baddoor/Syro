@@ -27,13 +27,18 @@ export interface AnkiPayloadBuildContext {
     settings?: SRSettings;
     store?: AnkiPayloadTrackedFileStore | null;
     fileTextByPath?: Map<string, string> | null;
+    vaultName?: string | null;
+    hasAdvancedUri?: boolean;
 }
 
 interface RenderedPayloadFields {
     front: string;
     back: string;
     context: string;
+    breadcrumb: string;
     source: string;
+    openLink: string;
+    exactLink: string;
     lineNo: number | null;
     warnings: string[];
     renderSource: SyroAnkiRenderSource;
@@ -155,6 +160,10 @@ function resolveSnapshotUpdatedAt(item: RepetitionItem, itemState?: AnkiSyncItem
     return 0;
 }
 
+function toDisplayLineNumber(lineNo: number | null | undefined): number | null {
+    return lineNo != null && lineNo >= 0 ? lineNo + 1 : null;
+}
+
 export function createReviewSnapshotFromItem(
     item: RepetitionItem | null | undefined,
     itemState?: AnkiSyncItemState,
@@ -179,7 +188,56 @@ export function createReviewSnapshotFromItem(
 }
 
 function createSourceField(filePath: string, lineNo: number | null): string {
-    return filePath && lineNo != null && lineNo > 0 ? `${filePath}:L${lineNo}` : filePath;
+    const displayLine = toDisplayLineNumber(lineNo);
+    return filePath && displayLine != null ? `${filePath}:L${displayLine}` : filePath;
+}
+
+function buildObsidianOpenLink(vaultName: string, filePath: string): string {
+    return `obsidian://open?vault=${encodeURIComponent(vaultName)}&file=${encodeURIComponent(filePath)}`;
+}
+
+function buildAdvancedUriLink(vaultName: string, filePath: string, lineNo: number | null): string {
+    const displayLine = toDisplayLineNumber(lineNo);
+    if (displayLine == null) {
+        return "";
+    }
+
+    return `obsidian://advanced-uri?vault=${encodeURIComponent(vaultName)}&filepath=${encodeURIComponent(filePath)}&line=${displayLine}`;
+}
+
+function createBreadcrumbField(filePath: string, lineNo: number | null): string {
+    const displayLine = toDisplayLineNumber(lineNo);
+    if (!filePath) {
+        return displayLine != null ? `L${displayLine}` : "";
+    }
+
+    const parts = filePath
+        .split("/")
+        .map((part) => part.trim())
+        .filter(Boolean);
+    const label = parts.length > 0 ? parts.join(" / ") : filePath;
+    return displayLine != null ? `${label} · L${displayLine}` : label;
+}
+
+function createLinkFields(
+    filePath: string,
+    lineNo: number | null,
+    buildContext?: AnkiPayloadBuildContext,
+): { openLink: string; exactLink: string } {
+    const vaultName = normalizeText(buildContext?.vaultName);
+    if (!vaultName || !filePath) {
+        return {
+            openLink: "",
+            exactLink: "",
+        };
+    }
+
+    return {
+        openLink: buildObsidianOpenLink(vaultName, filePath),
+        exactLink: buildContext?.hasAdvancedUri
+            ? buildAdvancedUriLink(vaultName, filePath, lineNo)
+            : "",
+    };
 }
 
 function createFallbackContextField(card: Card): string {
@@ -187,13 +245,22 @@ function createFallbackContextField(card: Card): string {
     return lines.join("\n").trim();
 }
 
-function createFallbackRenderedFields(card: Card, filePath: string, warning?: string): RenderedPayloadFields {
+function createFallbackRenderedFields(
+    card: Card,
+    filePath: string,
+    buildContext?: AnkiPayloadBuildContext,
+    warning?: string,
+): RenderedPayloadFields {
     const lineNo = card.question?.lineNo ?? null;
+    const links = createLinkFields(filePath, lineNo, buildContext);
     return {
         front: normalizeText(card.front),
         back: normalizeText(card.back),
         context: createFallbackContextField(card),
+        breadcrumb: createBreadcrumbField(filePath, lineNo),
         source: createSourceField(filePath, lineNo),
+        openLink: links.openLink,
+        exactLink: links.exactLink,
         lineNo,
         warnings: warning ? [warning] : [],
         renderSource: "fallback",
@@ -209,19 +276,6 @@ function escapeHtml(value: string): string {
         .replace(/'/g, "&#39;");
 }
 
-function renderPlainText(text: string): string {
-    return escapeHtml(text).replace(/\r?\n/g, "<br>");
-}
-
-function renderWithReplacement(
-    text: string,
-    start: number,
-    end: number,
-    replacementHtml: string,
-): string {
-    return `${renderPlainText(text.slice(0, start))}${replacementHtml}${renderPlainText(text.slice(end))}`;
-}
-
 function createCardHash(
     deckName: string,
     filePath: string,
@@ -229,6 +283,9 @@ function createCardHash(
     back: string,
     context: string,
     source: string,
+    breadcrumb: string,
+    openLink: string,
+    exactLink: string,
 ): string {
     return cyrb53(
         JSON.stringify({
@@ -238,6 +295,9 @@ function createCardHash(
             back,
             context,
             source,
+            breadcrumb,
+            openLink,
+            exactLink,
         }),
     );
 }
@@ -454,7 +514,113 @@ function splitQuestionAnswer(
     return null;
 }
 
-function renderClozeFields(renderContext: BlockRenderContext): { front: string; back: string } | null {
+function replaceRange(text: string, start: number, end: number, replacement: string): string {
+    return `${text.slice(0, start)}${replacement}${text.slice(end)}`;
+}
+
+function createMaskMarkup(): string {
+    return '<span class="syro-anki-mask">[...]</span>';
+}
+
+function createAnswerMarkup(text: string): string {
+    return `<span class="syro-anki-answer">${escapeHtml(text)}</span>`;
+}
+
+function createInactiveAnkiClozeMarkup(text: string): string {
+    return `<span class="syro-anki-inline-cloze">${escapeHtml(text)}</span>`;
+}
+
+function shouldShowOtherAnkiClozeVisual(settings: SRSettings): boolean {
+    return !settings.convertAnkiClozesToClozes || settings.showOtherAnkiClozeVisual;
+}
+
+function extractAnkiClozeInfos(text: string): Array<{ id: number; content: string; start: number; end: number }> {
+    const infos: Array<{ id: number; content: string; start: number; end: number }> = [];
+    const regex = /\{\{c(\d+)(?:::|：：)/gi;
+
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(text)) !== null) {
+        const id = Number(match[1]);
+        const start = match.index;
+        const contentStart = start + match[0].length;
+        let braceDepth = 0;
+        let end = -1;
+
+        for (let index = contentStart; index < text.length; index += 1) {
+            if (braceDepth === 0 && text.startsWith("}}", index)) {
+                end = index + 2;
+                break;
+            }
+            if (text[index] === "{") {
+                braceDepth += 1;
+            } else if (text[index] === "}" && braceDepth > 0) {
+                braceDepth -= 1;
+            }
+        }
+
+        if (end !== -1) {
+            infos.push({
+                id,
+                content: text.slice(contentStart, end - 2).replace(/(?:::|：：)[^:：]*$/u, ""),
+                start,
+                end,
+            });
+            regex.lastIndex = end;
+        }
+    }
+
+    return infos;
+}
+
+function renderAnkiClozeFields(
+    renderContext: BlockRenderContext,
+    trackedItem: TrackedItem,
+    settings: SRSettings,
+): { front: string; back: string } | null {
+    const clozeInfos = extractAnkiClozeInfos(renderContext.displayBlock);
+    if (clozeInfos.length === 0) {
+        return null;
+    }
+
+    const activeId = Number((trackedItem.clozeId ?? "").replace(/^c/i, ""));
+    if (!activeId) {
+        return null;
+    }
+
+    let front = "";
+    let back = "";
+    let lastEnd = 0;
+    for (const info of clozeInfos) {
+        front += renderContext.displayBlock.slice(lastEnd, info.start);
+        back += renderContext.displayBlock.slice(lastEnd, info.start);
+
+        if (info.id === activeId) {
+            front += createMaskMarkup();
+            back += createAnswerMarkup(info.content);
+        } else if (shouldShowOtherAnkiClozeVisual(settings)) {
+            const markup = createInactiveAnkiClozeMarkup(info.content);
+            front += markup;
+            back += markup;
+        } else {
+            front += info.content;
+            back += info.content;
+        }
+
+        lastEnd = info.end;
+    }
+
+    front += renderContext.displayBlock.slice(lastEnd);
+    back += renderContext.displayBlock.slice(lastEnd);
+
+    return {
+        front: front.trim(),
+        back: back.trim(),
+    };
+}
+
+function renderStandardClozeFields(
+    renderContext: BlockRenderContext,
+): { front: string; back: string } | null {
     const answerText = renderContext.displayBlock.slice(
         renderContext.activeStart,
         renderContext.activeEnd,
@@ -464,17 +630,17 @@ function renderClozeFields(renderContext: BlockRenderContext): { front: string; 
     }
 
     return {
-        front: renderWithReplacement(
+        front: replaceRange(
             renderContext.displayBlock,
             renderContext.activeStart,
             renderContext.activeEnd,
-            '<span class="syro-anki-mask">[...]</span>',
+            createMaskMarkup(),
         ),
-        back: renderWithReplacement(
+        back: replaceRange(
             renderContext.displayBlock,
             renderContext.activeStart,
             renderContext.activeEnd,
-            `<mark>${renderPlainText(answerText)}</mark>`,
+            createAnswerMarkup(answerText),
         ),
     };
 }
@@ -494,8 +660,8 @@ function renderQaFields(
         const backText = isReverse ? split.question : split.answer;
         if (normalizeText(frontText) && normalizeText(backText)) {
             return {
-                front: renderPlainText(frontText.trim()),
-                back: renderPlainText(backText.trim()),
+                front: frontText.trim(),
+                back: backText.trim(),
             };
         }
     }
@@ -509,12 +675,12 @@ function renderQaFields(
     }
 
     return {
-        front: renderPlainText(renderContext.displayBlock.trim()),
-        back: renderWithReplacement(
+        front: renderContext.displayBlock.trim(),
+        back: replaceRange(
             renderContext.displayBlock,
             renderContext.activeStart,
             renderContext.activeEnd,
-            `<mark>${renderPlainText(answerText)}</mark>`,
+            createAnswerMarkup(answerText),
         ),
     };
 }
@@ -525,6 +691,7 @@ function buildLocatorRenderedFields(
     fileText: string,
     filePath: string,
     settings: SRSettings,
+    buildContext?: AnkiPayloadBuildContext,
 ): RenderedPayloadFields | null {
     const renderContext = createBlockRenderContext(card, trackedItem, fileText, filePath, settings);
     if (!renderContext) {
@@ -532,18 +699,26 @@ function buildLocatorRenderedFields(
     }
 
     const cardType = trackedItem.cardType ?? card.question?.questionType;
-    const rendered = isClozeType(cardType)
-        ? renderClozeFields(renderContext)
-        : renderQaFields(card, renderContext, settings, cardType);
+    const rendered =
+        cardType === CardType.AnkiCloze
+            ? renderAnkiClozeFields(renderContext, trackedItem, settings)
+            : isClozeType(cardType)
+              ? renderStandardClozeFields(renderContext)
+              : renderQaFields(card, renderContext, settings, cardType);
     if (!rendered) {
         return null;
     }
 
+    const links = createLinkFields(renderContext.filePath, renderContext.lineNo, buildContext);
+
     return {
         front: rendered.front,
         back: rendered.back,
-        context: renderPlainText(renderContext.displayBlock.trim()),
-        source: renderPlainText(createSourceField(renderContext.filePath, renderContext.lineNo)),
+        context: renderContext.displayBlock.trim(),
+        breadcrumb: createBreadcrumbField(renderContext.filePath, renderContext.lineNo),
+        source: createSourceField(renderContext.filePath, renderContext.lineNo),
+        openLink: links.openLink,
+        exactLink: links.exactLink,
         lineNo: renderContext.lineNo,
         warnings: [],
         renderSource: "locator",
@@ -567,7 +742,14 @@ function tryBuildLocatorRenderedFields(
 
     let trackedItem = findTrackedItem(card, trackedFile);
     let rendered = trackedItem
-        ? buildLocatorRenderedFields(card, trackedItem, fileText, filePath, buildContext.settings)
+        ? buildLocatorRenderedFields(
+              card,
+              trackedItem,
+              fileText,
+              filePath,
+              buildContext.settings,
+              buildContext,
+          )
         : null;
     if (rendered) {
         return rendered;
@@ -579,7 +761,14 @@ function tryBuildLocatorRenderedFields(
         return null;
     }
 
-    return buildLocatorRenderedFields(card, trackedItem, fileText, filePath, buildContext.settings);
+    return buildLocatorRenderedFields(
+        card,
+        trackedItem,
+        fileText,
+        filePath,
+        buildContext.settings,
+        buildContext,
+    );
 }
 
 function shouldWarnOnLocatorFallback(buildContext?: AnkiPayloadBuildContext): boolean {
@@ -609,7 +798,7 @@ function renderVisibleFields(
     const warning = shouldWarnOnLocatorFallback(buildContext)
         ? createLocatorFallbackWarning(card, filePath, "tracked item or locator span unavailable")
         : undefined;
-    return createFallbackRenderedFields(card, filePath, warning);
+    return createFallbackRenderedFields(card, filePath, buildContext, warning);
 }
 
 export function buildSyroAnkiCardPayload(
@@ -634,6 +823,9 @@ export function buildSyroAnkiCardPayload(
         renderedFields.back,
         renderedFields.context,
         renderedFields.source,
+        renderedFields.breadcrumb,
+        renderedFields.openLink,
+        renderedFields.exactLink,
     );
 
     return {
@@ -644,7 +836,10 @@ export function buildSyroAnkiCardPayload(
         front: renderedFields.front,
         back: renderedFields.back,
         context: renderedFields.context,
+        breadcrumb: renderedFields.breadcrumb,
         source: renderedFields.source,
+        openLink: renderedFields.openLink,
+        exactLink: renderedFields.exactLink,
         lineNo: renderedFields.lineNo,
         warnings: renderedFields.warnings,
         renderSource: renderedFields.renderSource,
@@ -655,6 +850,9 @@ export function buildSyroAnkiCardPayload(
             Back: renderedFields.back,
             Context: renderedFields.context,
             Source: renderedFields.source,
+            Breadcrumb: renderedFields.breadcrumb,
+            OpenLink: renderedFields.openLink,
+            ExactLink: renderedFields.exactLink,
             syro_item_uuid: item.uuid,
             syro_file_path: filePath,
             syro_card_hash: cardHash,

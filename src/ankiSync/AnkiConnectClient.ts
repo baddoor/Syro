@@ -6,6 +6,13 @@ import {
     DEFAULT_ANKI_MODEL_NAME,
     DEFAULT_ANKI_SYNC_ENDPOINT,
 } from "src/ankiSync/types";
+import {
+    buildSyroAnkiModelCss,
+    buildSyroAnkiTemplateBack,
+    buildSyroAnkiTemplateFront,
+    SYRO_ANKI_MEDIA_FILES,
+    SYRO_ANKI_MODEL_FIELDS,
+} from "src/ankiSync/template";
 
 interface AnkiInvokeResponse<T> {
     error: string | null;
@@ -122,30 +129,36 @@ export class AnkiConnectClient {
         return this.invoke<number>("version");
     }
 
+    async storeMediaFile(filename: string, data: string): Promise<void> {
+        await this.invoke("storeMediaFile", {
+            filename,
+            data: Buffer.from(data, "utf8").toString("base64"),
+        });
+    }
+
+    async ensureMediaFiles(mediaFiles: Record<string, string>): Promise<void> {
+        for (const [filename, data] of Object.entries(mediaFiles)) {
+            await this.storeMediaFile(filename, data);
+        }
+    }
+
     async ensureModel(modelName = DEFAULT_ANKI_MODEL_NAME): Promise<void> {
-        const fieldNames = [
-            "Front",
-            "Back",
-            "Context",
-            "Source",
-            "syro_item_uuid",
-            "syro_file_path",
-            "syro_card_hash",
-            "syro_snapshot",
-            "syro_updated_at",
-        ];
+        const fieldNames = SYRO_ANKI_MODEL_FIELDS;
+        const css = buildSyroAnkiModelCss();
+        const frontTemplate = buildSyroAnkiTemplateFront();
+        const backTemplate = buildSyroAnkiTemplateBack();
 
         try {
             await this.invoke("createModel", {
                 modelName,
                 inOrderFields: fieldNames,
-                css: `.card { font-family: Arial, sans-serif; font-size: 18px; text-align: left; color: #222; background: white; } .syro-context { margin-top: 1rem; color: #666; font-size: 0.85em; white-space: pre-wrap; } .syro-source { margin-top: 0.75rem; color: #999; font-size: 0.75em; }`,
+                css,
                 isCloze: false,
                 cardTemplates: [
                     {
                         Name: "Card 1",
-                        Front: "{{Front}}",
-                        Back: "{{FrontSide}}<hr id=answer>{{Back}}<div class=\"syro-context\">{{Context}}</div><div class=\"syro-source\">{{Source}}</div>",
+                        Front: frontTemplate,
+                        Back: backTemplate,
                     },
                 ],
             });
@@ -173,12 +186,27 @@ export class AnkiConnectClient {
                 name: modelName,
                 templates: {
                     "Card 1": {
-                        Front: "{{Front}}",
-                        Back: "{{FrontSide}}<hr id=answer>{{Back}}<div class=\"syro-context\">{{Context}}</div><div class=\"syro-source\">{{Source}}</div>",
+                        Front: frontTemplate,
+                        Back: backTemplate,
                     },
                 },
             },
         });
+
+        try {
+            await this.invoke("updateModelStyling", {
+                model: {
+                    name: modelName,
+                    css,
+                },
+            });
+        } catch (error) {
+            if (!String(error).includes("updateModelStyling")) {
+                throw error;
+            }
+        }
+
+        await this.ensureMediaFiles(SYRO_ANKI_MEDIA_FILES);
     }
 
     async createDeck(deckName: string): Promise<void> {
