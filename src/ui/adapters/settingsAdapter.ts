@@ -31,7 +31,6 @@ export function settingsToUIState(settings: SRSettings): UISettingsState {
         autoIncrementalSync: settings.autoIncrementalSync ?? true,
         syncProgressDisplayMode: settings.syncProgressDisplayMode ?? "always",
         parseClozesInCodeBlocks: settings.parseClozesInCodeBlocks ?? false,
-        enableLatexPopover: settings.enableLatexPopover ?? true,
         codeContextLines: settings.codeContextLines ?? 15,
         clozeContextMode: settings.clozeContextMode ?? "single",
         clozeContextPerformanceMode: settings.clozeContextPerformanceMode ?? "off",
@@ -138,8 +137,6 @@ export function mergeUIStateToSettings(
         merged.syncProgressDisplayMode = uiChanges.syncProgressDisplayMode;
     if (uiChanges.parseClozesInCodeBlocks !== undefined)
         merged.parseClozesInCodeBlocks = uiChanges.parseClozesInCodeBlocks;
-    if (uiChanges.enableLatexPopover !== undefined)
-        merged.enableLatexPopover = uiChanges.enableLatexPopover;
     if (uiChanges.codeContextLines !== undefined)
         merged.codeContextLines = uiChanges.codeContextLines;
     if (uiChanges.clozeContextMode !== undefined)

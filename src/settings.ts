@@ -250,7 +250,7 @@ export const DEFAULT_SETTINGS: SRSettings = {
     multilineReversedCardSeparator: "??",
     multilineCardEndMarker: "",
     parseClozesInCodeBlocks: false, // Disabled by default
-    enableLatexPopover: true,
+    enableLatexPopover: false,
     codeContextLines: 15, // default code context lines
     clozeContextMode: "single",
     clozeContextPerformanceMode: "off",
@@ -422,9 +422,8 @@ export function upgradeSettings(settings: SRSettings) {
         settings.convertAnkiClozesToClozes = true;
     }
 
-    if (settings.enableLatexPopover === undefined) {
-        settings.enableLatexPopover = true;
-    }
+    // Keep the unfinished popover disabled for all vaults until it is production-ready.
+    settings.enableLatexPopover = false;
 
     if (settings.enableNoteCachePersistence === undefined) {
         settings.enableNoteCachePersistence = true;

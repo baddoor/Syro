@@ -11,11 +11,11 @@ import { LatexPopover } from "../ui/components/LatexPopover";
 import { hasClozeSyntax } from "../utils/latexTransformer";
 
 let appInstance: App | null = null;
-let isLatexPopoverEnabled: () => boolean = () => true;
+let isLatexPopoverEnabled: () => boolean = () => false;
 
 export function initializeLatexPopover(app: App, options?: { isEnabled?: () => boolean }) {
     appInstance = app;
-    isLatexPopoverEnabled = options?.isEnabled ?? (() => true);
+    isLatexPopoverEnabled = options?.isEnabled ?? (() => false);
 }
 
 interface MathMatch {

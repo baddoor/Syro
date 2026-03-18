@@ -387,12 +387,6 @@ const FlashcardsTab: React.FC<TabProps> = ({ settings, onChange }) => {
                         onChange("clozeContextSoftLimitLines", Math.max(1, Math.min(1000, v)))
                     }
                 />
-                <ToggleRow
-                    label="Enable LaTeX Popover"
-                    desc="Show preview popover when editing LaTeX cloze."
-                    value={settings.enableLatexPopover}
-                    onChange={(v) => onChange("enableLatexPopover", v)}
-                />
                 {settings.parseClozesInCodeBlocks && (
                     <div
                         style={{

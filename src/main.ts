@@ -276,7 +276,7 @@ export default class SRPlugin extends Plugin {
 
         // 注册 LaTeX Cloze 编辑器扩展
         initializeLatexPopover(this.app, {
-            isEnabled: () => this.data.settings.enableLatexPopover !== false,
+            isEnabled: () => this.data.settings.enableLatexPopover === true,
         });
         this.registerEditorExtension(latexPopoverExtension);
 

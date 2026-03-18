@@ -24,7 +24,6 @@ export interface UISettingsState {
     autoIncrementalSync: boolean;
     syncProgressDisplayMode: "always" | "full-only" | "never";
     parseClozesInCodeBlocks: boolean; // Parse {{c1::...}} cloze syntax in code blocks
-    enableLatexPopover: boolean; // Enable the LaTeX cloze popover
     codeContextLines: number; // code context lines
     clozeContextMode: string;
     clozeContextPerformanceMode: string;
