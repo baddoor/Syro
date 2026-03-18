@@ -8,6 +8,15 @@ export const DEFAULT_ANKI_DELETE_POLICY: AnkiDeletePolicy = "delete";
 export type AnkiDeletePolicy = "delete" | "detach";
 export type ReviewSnapshotSource = "syro" | "anki-card" | "anki-hidden";
 export type AnkiOperationType = "create" | "update" | "delete" | "detach" | "noop";
+export type AnkiSyncPhase =
+    | "prepare"
+    | "writeback"
+    | "pull"
+    | "ensure-decks"
+    | "create"
+    | "update"
+    | "delete"
+    | "finalize";
 
 export interface ReviewSnapshot {
     queue: CardQueue;
@@ -128,6 +137,19 @@ export interface AnkiSyncRunResult {
     writebacks: number;
     noop: number;
     errors: string[];
+}
+
+export interface AnkiSyncProgress {
+    phase: AnkiSyncPhase;
+    current: number;
+    total: number;
+    overallCurrent: number;
+    overallTotal: number;
+    message: string;
+}
+
+export interface AnkiSyncRunOptions {
+    onProgress?: (progress: AnkiSyncProgress) => void;
 }
 
 export interface AnkiCardInfo {

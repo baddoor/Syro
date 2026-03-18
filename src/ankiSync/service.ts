@@ -11,7 +11,11 @@ import { AnkiSyncStateStore, ensureAnkiSyncItemState, pruneAnkiSyncState } from 
 import {
     AnkiCardInfo,
     AnkiNoteInfo,
+    AnkiSyncPhase,
+    AnkiSyncPlanOperation,
+    AnkiSyncProgress,
     AnkiRemoteRecord,
+    AnkiSyncRunOptions,
     AnkiSyncItemState,
     AnkiSyncRunResult,
     AnkiSyncStateFile,
@@ -59,6 +63,14 @@ function createPendingId(itemUuid: string, now: number): string {
     return `${itemUuid}:${now}`;
 }
 
+function chunkArray<T>(values: T[], chunkSize = 25): T[][] {
+    const result: T[][] = [];
+    for (let index = 0; index < values.length; index += chunkSize) {
+        result.push(values.slice(index, index + chunkSize));
+    }
+    return result;
+}
+
 function toCardQueue(value: number): CardQueue {
     if (value === CardQueue.Learn || value === CardQueue.Review || value === CardQueue.Suspended) {
         return value as CardQueue;
@@ -103,6 +115,120 @@ export class AnkiSyncService {
         if (this.state) {
             await this.stateStore.save(this.state);
         }
+    }
+
+    private createProgressReporter(
+        options: AnkiSyncRunOptions | undefined,
+    ): (phase: AnkiSyncPhase, current: number, total: number, message: string) => void {
+        const phaseOrder: AnkiSyncPhase[] = [
+            "prepare",
+            "writeback",
+            "pull",
+            "ensure-decks",
+            "create",
+            "update",
+            "delete",
+            "finalize",
+        ];
+        const phaseTotals = new Map<AnkiSyncPhase, number>(phaseOrder.map((phase) => [phase, 0]));
+        const phaseCurrents = new Map<AnkiSyncPhase, number>(phaseOrder.map((phase) => [phase, 0]));
+
+        return (phase: AnkiSyncPhase, current: number, total: number, message: string) => {
+            phaseTotals.set(phase, Math.max(total, 0));
+            phaseCurrents.set(phase, Math.max(current, 0));
+
+            let overallCurrent = 0;
+            let overallTotal = 0;
+            for (const orderedPhase of phaseOrder) {
+                overallCurrent += phaseCurrents.get(orderedPhase) ?? 0;
+                overallTotal += phaseTotals.get(orderedPhase) ?? 0;
+            }
+
+            overallTotal = Math.max(overallTotal, 1);
+            overallCurrent = Math.min(overallCurrent, overallTotal);
+
+            options?.onProgress?.({
+                phase,
+                current,
+                total,
+                overallCurrent,
+                overallTotal,
+                message,
+            } satisfies AnkiSyncProgress);
+        };
+    }
+
+    private getPendingWritebackTargets(
+        state: AnkiSyncStateFile,
+    ): Array<[string, AnkiSyncItemState]> {
+        return Object.entries(state.items).filter(([, itemState]) => {
+            const pending = itemState.pendingReviewWritebacks?.[0];
+            const mapping = itemState.mapping;
+            return !!pending && !!mapping?.noteId && !!mapping.cardId;
+        });
+    }
+
+    private getMappedEntries(state: AnkiSyncStateFile): Array<[string, AnkiSyncItemState]> {
+        return Object.entries(state.items).filter(([, itemState]) => !!itemState.mapping);
+    }
+
+    private collectDeckNames(ops: AnkiSyncPlanOperation[]): string[] {
+        const deckNames = new Set<string>();
+        for (const op of ops) {
+            if ((op.type === "create" || op.type === "update") && op.payload?.deckName) {
+                deckNames.add(op.payload.deckName);
+            }
+            if (op.type === "delete" || op.type === "detach") {
+                deckNames.add(DETACHED_DECK_NAME);
+            }
+        }
+        return Array.from(deckNames);
+    }
+
+    private buildAddNoteInput(op: AnkiSyncPlanOperation): Record<string, unknown> {
+        return {
+            deckName: op.payload?.deckName,
+            modelName: op.payload?.modelName,
+            fields: op.payload?.fields,
+            tags: ["syro-sync"],
+            options: {
+                allowDuplicate: false,
+            },
+        };
+    }
+
+    private async loadNoteInfoMap(
+        client: AnkiConnectClient,
+        noteIds: number[],
+    ): Promise<Map<number, AnkiNoteInfo>> {
+        const noteInfos = new Map<number, AnkiNoteInfo>();
+        const createdIds = noteIds.filter((value): value is number => typeof value === "number" && value > 0);
+        for (const noteInfo of await client.notesInfo(createdIds)) {
+            noteInfos.set(noteInfo.noteId, noteInfo);
+        }
+        return noteInfos;
+    }
+
+    private registerCreatedNote(
+        op: AnkiSyncPlanOperation,
+        noteId: number,
+        noteInfo: AnkiNoteInfo | undefined,
+        state: AnkiSyncStateFile,
+        result: AnkiSyncRunResult,
+    ): void {
+        const cardId = noteInfo?.cards?.[0] ?? 0;
+        const itemState = ensureAnkiSyncItemState(state, op.itemUuid);
+        itemState.mapping = {
+            noteId,
+            cardId,
+            modelName: op.payload?.modelName ?? DEFAULT_ANKI_MODEL_NAME,
+            deckName: op.payload?.deckName ?? "Syro",
+            filePath: op.payload?.filePath ?? "",
+            cardHash: op.payload?.cardHash ?? "",
+        };
+        itemState.lastKnownCardHash = op.payload?.cardHash ?? "";
+        itemState.lastKnownFilePath = op.payload?.filePath ?? "";
+        result.created += 1;
     }
 
     private shouldTrackItem(item: RepetitionItem | null | undefined): boolean {
@@ -334,14 +460,19 @@ export class AnkiSyncService {
         client: AnkiConnectClient,
         state: AnkiSyncStateFile,
         result: AnkiSyncRunResult,
+        onProgress?: (current: number, total: number, message: string) => void,
     ): Promise<void> {
-        for (const [itemUuid, itemState] of Object.entries(state.items)) {
-            const pending = itemState.pendingReviewWritebacks?.[0];
-            const mapping = itemState.mapping;
-            if (!pending || !mapping?.noteId || !mapping.cardId) {
-                continue;
-            }
+        const targets = this.getPendingWritebackTargets(state);
+        const total = targets.length;
+        if (total === 0) {
+            onProgress?.(0, 0, "No Anki review writebacks");
+            return;
+        }
 
+        let processed = 0;
+        for (const [itemUuid, itemState] of targets) {
+            const pending = itemState.pendingReviewWritebacks[0];
+            const mapping = itemState.mapping!;
             try {
                 await client.updateNoteFields(mapping.noteId, {
                     syro_snapshot: JSON.stringify(pending.snapshot),
@@ -363,6 +494,13 @@ export class AnkiSyncService {
                 pending.attempts += 1;
                 pending.lastError = String(error);
                 result.errors.push(`[writeback:${itemUuid}] ${String(error)}`);
+            } finally {
+                processed += 1;
+                onProgress?.(
+                    processed,
+                    total,
+                    `正在写回 Anki 复习数据 (${processed}/${total})...`,
+                );
             }
         }
     }
@@ -372,9 +510,11 @@ export class AnkiSyncService {
         state: AnkiSyncStateFile,
         builtSnapshots: Map<string, BuiltSyroCardSnapshot>,
         result: AnkiSyncRunResult,
+        onProgress?: (current: number, total: number, message: string) => void,
     ): Promise<void> {
-        const mappedEntries = Object.entries(state.items).filter(([, itemState]) => !!itemState.mapping);
+        const mappedEntries = this.getMappedEntries(state);
         if (mappedEntries.length === 0) {
+            onProgress?.(0, 0, "No remote Anki cards to pull");
             return;
         }
 
@@ -395,148 +535,192 @@ export class AnkiSyncService {
         }
 
         let maxCursor = state.global.lastPullCursor;
+        let processed = 0;
         for (const [itemUuid, itemState] of mappedEntries) {
-            const mapping = itemState.mapping;
-            const noteInfo = mapping ? noteInfoById.get(mapping.noteId) : null;
-            const cardInfo = mapping ? cardInfoById.get(mapping.cardId) : null;
-            if (!mapping || !noteInfo || !cardInfo) {
-                itemState.mapping = null;
-                continue;
-            }
+            try {
+                const mapping = itemState.mapping;
+                const noteInfo = mapping ? noteInfoById.get(mapping.noteId) : null;
+                const cardInfo = mapping ? cardInfoById.get(mapping.cardId) : null;
+                if (!mapping || !noteInfo || !cardInfo) {
+                    itemState.mapping = null;
+                    continue;
+                }
 
-            const remoteRecord = this.buildRemoteRecord(
-                itemUuid,
-                noteInfo,
-                cardInfo,
-                itemState,
-                state.global.reviewDueOffset,
-            );
-            const calibrationSource =
-                remoteRecord.hiddenSnapshot?.nextReview ??
-                itemState.lastRemoteSnapshot?.nextReview ??
-                itemState.lastLocalSnapshot?.nextReview ??
-                0;
-            if (cardInfo.queue === CardQueue.Review && cardInfo.due !== null && calibrationSource > 0) {
-                state.global.reviewDueOffset = cardInfo.due - Math.floor(calibrationSource / DAY_MS);
-            }
+                const remoteRecord = this.buildRemoteRecord(
+                    itemUuid,
+                    noteInfo,
+                    cardInfo,
+                    itemState,
+                    state.global.reviewDueOffset,
+                );
+                const calibrationSource =
+                    remoteRecord.hiddenSnapshot?.nextReview ??
+                    itemState.lastRemoteSnapshot?.nextReview ??
+                    itemState.lastLocalSnapshot?.nextReview ??
+                    0;
+                if (
+                    cardInfo.queue === CardQueue.Review &&
+                    cardInfo.due !== null &&
+                    calibrationSource > 0
+                ) {
+                    state.global.reviewDueOffset =
+                        cardInfo.due - Math.floor(calibrationSource / DAY_MS);
+                }
 
-            itemState.mapping = {
-                ...mapping,
-                deckName: remoteRecord.deckName,
-                filePath: remoteRecord.filePath,
-                cardHash: remoteRecord.cardHash,
-            };
-            itemState.lastKnownCardHash = remoteRecord.cardHash;
-            itemState.lastKnownFilePath = remoteRecord.filePath;
+                itemState.mapping = {
+                    ...mapping,
+                    deckName: remoteRecord.deckName,
+                    filePath: remoteRecord.filePath,
+                    cardHash: remoteRecord.cardHash,
+                };
+                itemState.lastKnownCardHash = remoteRecord.cardHash;
+                itemState.lastKnownFilePath = remoteRecord.filePath;
 
-            const remoteSnapshot = chooseLatestSnapshot(
-                remoteRecord.cardSnapshot,
-                remoteRecord.hiddenSnapshot,
-            );
-            const remoteChangedAt = Math.max(
-                remoteRecord.mod,
-                remoteRecord.hiddenSnapshot?.updatedAt ?? 0,
-                remoteSnapshot?.updatedAt ?? 0,
-            );
-            maxCursor = Math.max(maxCursor, remoteChangedAt);
+                const remoteSnapshot = chooseLatestSnapshot(
+                    remoteRecord.cardSnapshot,
+                    remoteRecord.hiddenSnapshot,
+                );
+                const remoteChangedAt = Math.max(
+                    remoteRecord.mod,
+                    remoteRecord.hiddenSnapshot?.updatedAt ?? 0,
+                    remoteSnapshot?.updatedAt ?? 0,
+                );
+                maxCursor = Math.max(maxCursor, remoteChangedAt);
 
-            if (!remoteSnapshot || remoteChangedAt <= state.global.lastPullCursor) {
-                continue;
-            }
+                if (!remoteSnapshot || remoteChangedAt <= state.global.lastPullCursor) {
+                    continue;
+                }
 
-            const localBaseline = chooseLatestSnapshot(
-                itemState.lastLocalSnapshot,
-                itemState.lastRemoteSnapshot,
-            );
-            if (localBaseline && remoteSnapshot.updatedAt <= localBaseline.updatedAt) {
+                const localBaseline = chooseLatestSnapshot(
+                    itemState.lastLocalSnapshot,
+                    itemState.lastRemoteSnapshot,
+                );
+                if (localBaseline && remoteSnapshot.updatedAt <= localBaseline.updatedAt) {
+                    itemState.lastRemoteSnapshot = remoteSnapshot;
+                    itemState.lastRemoteUpdatedAt = remoteSnapshot.updatedAt;
+                    continue;
+                }
+
+                const item = this.findCardItemByUuid(itemUuid);
+                if (!item) {
+                    itemState.lastRemoteSnapshot = remoteSnapshot;
+                    itemState.lastRemoteUpdatedAt = remoteSnapshot.updatedAt;
+                    continue;
+                }
+
+                this.applySnapshotToItem(item, remoteSnapshot);
+                const builtSnapshot = builtSnapshots.get(itemUuid);
+                if (builtSnapshot) {
+                    this.refreshCardRuntime(builtSnapshot.card, item);
+                }
+                await this.plugin.store.saveReviewItemDelta(item);
+
                 itemState.lastRemoteSnapshot = remoteSnapshot;
                 itemState.lastRemoteUpdatedAt = remoteSnapshot.updatedAt;
-                continue;
+                itemState.lastMergedUpdatedAt = remoteSnapshot.updatedAt;
+                result.pulled += 1;
+            } finally {
+                processed += 1;
+                onProgress?.(
+                    processed,
+                    mappedEntries.length,
+                    `正在拉取 Anki 远端变更 (${processed}/${mappedEntries.length})...`,
+                );
             }
-
-            const item = this.findCardItemByUuid(itemUuid);
-            if (!item) {
-                itemState.lastRemoteSnapshot = remoteSnapshot;
-                itemState.lastRemoteUpdatedAt = remoteSnapshot.updatedAt;
-                continue;
-            }
-
-            this.applySnapshotToItem(item, remoteSnapshot);
-            const builtSnapshot = builtSnapshots.get(itemUuid);
-            if (builtSnapshot) {
-                this.refreshCardRuntime(builtSnapshot.card, item);
-            }
-            await this.plugin.store.saveReviewItemDelta(item);
-
-            itemState.lastRemoteSnapshot = remoteSnapshot;
-            itemState.lastRemoteUpdatedAt = remoteSnapshot.updatedAt;
-            itemState.lastMergedUpdatedAt = remoteSnapshot.updatedAt;
-            result.pulled += 1;
         }
 
         state.global.lastPullCursor = maxCursor;
     }
 
-    private async createNotes(
+    private async createSingleNote(
         client: AnkiConnectClient,
-        ops: ReturnType<typeof planAnkiSyncOperations>,
+        op: AnkiSyncPlanOperation,
         state: AnkiSyncStateFile,
         result: AnkiSyncRunResult,
     ): Promise<void> {
-        const createOps = ops.filter((op) => op.type === "create" && op.payload);
-        if (createOps.length === 0) {
-            return;
-        }
-
-        const addResults = await client.addNotes(
-            createOps.map((op) => ({
-                deckName: op.payload?.deckName,
-                modelName: op.payload?.modelName,
-                fields: op.payload?.fields,
-                tags: ["syro-sync"],
-                options: {
-                    allowDuplicate: false,
-                },
-            })),
-        );
-
-        const createdIds = addResults.filter((value): value is number => typeof value === "number");
-        const noteInfos = new Map<number, AnkiNoteInfo>();
-        for (const noteInfo of await client.notesInfo(createdIds)) {
-            noteInfos.set(noteInfo.noteId, noteInfo);
-        }
-
-        createOps.forEach((op, index) => {
-            const noteId = addResults[index];
+        try {
+            const addResults = await client.addNotes([this.buildAddNoteInput(op)]);
+            const noteId = addResults[0];
             if (typeof noteId !== "number") {
                 result.errors.push(`[create:${op.itemUuid}] addNotes returned null`);
                 return;
             }
 
-            const noteInfo = noteInfos.get(noteId);
-            const cardId = noteInfo?.cards?.[0] ?? 0;
-            const itemState = ensureAnkiSyncItemState(state, op.itemUuid);
-            itemState.mapping = {
-                noteId,
-                cardId,
-                modelName: op.payload?.modelName ?? DEFAULT_ANKI_MODEL_NAME,
-                deckName: op.payload?.deckName ?? "Syro",
-                filePath: op.payload?.filePath ?? "",
-                cardHash: op.payload?.cardHash ?? "",
-            };
-            itemState.lastKnownCardHash = op.payload?.cardHash ?? "";
-            itemState.lastKnownFilePath = op.payload?.filePath ?? "";
-            result.created += 1;
-        });
+            const noteInfo = (await client.notesInfo([noteId]))[0];
+            this.registerCreatedNote(op, noteId, noteInfo, state, result);
+        } catch (error) {
+            result.errors.push(`[create:${op.itemUuid}] ${String(error)}`);
+        }
+    }
+
+    private async createNotes(
+        client: AnkiConnectClient,
+        ops: AnkiSyncPlanOperation[],
+        state: AnkiSyncStateFile,
+        result: AnkiSyncRunResult,
+        onProgress?: (current: number, total: number, message: string) => void,
+    ): Promise<void> {
+        const createOps = ops.filter((op) => op.type === "create" && op.payload);
+        if (createOps.length === 0) {
+            onProgress?.(0, 0, "No new Anki cards to create");
+            return;
+        }
+
+        let processed = 0;
+        for (const chunk of chunkArray(createOps)) {
+            try {
+                const addResults = await client.addNotes(
+                    chunk.map((op) => this.buildAddNoteInput(op)),
+                );
+                const noteInfos = await this.loadNoteInfoMap(
+                    client,
+                    addResults.filter((value): value is number => typeof value === "number"),
+                );
+
+                for (let index = 0; index < chunk.length; index += 1) {
+                    const op = chunk[index];
+                    const noteId = addResults[index];
+                    if (typeof noteId === "number") {
+                        this.registerCreatedNote(op, noteId, noteInfos.get(noteId), state, result);
+                    } else {
+                        await this.createSingleNote(client, op, state, result);
+                    }
+                    processed += 1;
+                    onProgress?.(
+                        processed,
+                        createOps.length,
+                        `正在创建 Anki 卡片 (${processed}/${createOps.length})...`,
+                    );
+                }
+            } catch (error) {
+                result.errors.push(`[create:batch] ${String(error)}`);
+                for (const op of chunk) {
+                    await this.createSingleNote(client, op, state, result);
+                    processed += 1;
+                    onProgress?.(
+                        processed,
+                        createOps.length,
+                        `正在创建 Anki 卡片 (${processed}/${createOps.length})...`,
+                    );
+                }
+            }
+        }
     }
 
     private async updateNotes(
         client: AnkiConnectClient,
-        ops: ReturnType<typeof planAnkiSyncOperations>,
+        ops: AnkiSyncPlanOperation[],
         state: AnkiSyncStateFile,
         result: AnkiSyncRunResult,
+        onProgress?: (current: number, total: number, message: string) => void,
     ): Promise<void> {
         const updateOps = ops.filter((op) => op.type === "update" && op.payload && op.mapping);
+        if (updateOps.length === 0) {
+            onProgress?.(0, 0, "No Anki cards to update");
+            return;
+        }
+
+        let processed = 0;
         for (const op of updateOps) {
             try {
                 await client.updateNoteFields(op.mapping!.noteId, op.payload!.fields);
@@ -557,6 +741,13 @@ export class AnkiSyncService {
                 result.updated += 1;
             } catch (error) {
                 result.errors.push(`[update:${op.itemUuid}] ${String(error)}`);
+            } finally {
+                processed += 1;
+                onProgress?.(
+                    processed,
+                    updateOps.length,
+                    `正在更新 Anki 卡片 (${processed}/${updateOps.length})...`,
+                );
             }
         }
     }
@@ -574,11 +765,18 @@ export class AnkiSyncService {
 
     private async removeNotes(
         client: AnkiConnectClient,
-        ops: ReturnType<typeof planAnkiSyncOperations>,
+        ops: AnkiSyncPlanOperation[],
         state: AnkiSyncStateFile,
         result: AnkiSyncRunResult,
+        onProgress?: (current: number, total: number, message: string) => void,
     ): Promise<void> {
         const destructiveOps = ops.filter((op) => (op.type === "delete" || op.type === "detach") && op.mapping);
+        if (destructiveOps.length === 0) {
+            onProgress?.(0, 0, "No Anki cards to remove");
+            return;
+        }
+
+        let processed = 0;
         for (const op of destructiveOps) {
             const mapping = op.mapping!;
             const itemState = ensureAnkiSyncItemState(state, op.itemUuid);
@@ -600,11 +798,22 @@ export class AnkiSyncService {
                 itemState.pendingReviewWritebacks = [];
             } catch (error) {
                 result.errors.push(`[${op.type}:${op.itemUuid}] ${String(error)}`);
+            } finally {
+                processed += 1;
+                onProgress?.(
+                    processed,
+                    destructiveOps.length,
+                    `正在清理 Anki 卡片 (${processed}/${destructiveOps.length})...`,
+                );
             }
         }
     }
 
-    async sync(deckTree: Deck, syncSignature: string): Promise<AnkiSyncRunResult> {
+    async sync(
+        deckTree: Deck,
+        syncSignature: string,
+        options: AnkiSyncRunOptions = {},
+    ): Promise<AnkiSyncRunResult> {
         const result = createEmptyRunResult();
         if (!this.isEnabled()) {
             return result;
@@ -617,6 +826,8 @@ export class AnkiSyncService {
         const state = await this.getState();
         state.global.endpoint = endpoint;
         state.global.connection.endpoint = endpoint;
+        const reportProgress = this.createProgressReporter(options);
+        reportProgress("prepare", 0, 1, "正在准备 Anki 同步...");
 
         try {
             const client = this.clientFactory(endpoint);
@@ -625,10 +836,15 @@ export class AnkiSyncService {
             state.global.connection.lastVerifiedAt = this.now();
             await client.ensureModel(modelName);
             state.global.connection.modelReady = true;
+            reportProgress("prepare", 1, 1, "Anki 已连接");
 
             const builtSnapshots = buildSyroAnkiCardSnapshotMap(deckTree, state.items, modelName);
-            await this.flushPendingWritebacks(client, state, result);
-            await this.pullRemoteChanges(client, state, builtSnapshots, result);
+            await this.flushPendingWritebacks(client, state, result, (current, total, message) =>
+                reportProgress("writeback", current, total, message),
+            );
+            await this.pullRemoteChanges(client, state, builtSnapshots, result, (current, total, message) =>
+                reportProgress("pull", current, total, message),
+            );
 
             const payloadsByUuid = new Map(
                 Array.from(builtSnapshots.entries()).map(([itemUuid, builtSnapshot]) => [
@@ -637,9 +853,37 @@ export class AnkiSyncService {
                 ]),
             );
             const ops = planAnkiSyncOperations(payloadsByUuid, state.items, deletePolicy);
-            await this.createNotes(client, ops, state, result);
-            await this.updateNotes(client, ops, state, result);
-            await this.removeNotes(client, ops, state, result);
+            const deckNames = this.collectDeckNames(ops);
+            if (deckNames.length > 0) {
+                const deckErrors = await client.ensureDecks(
+                    deckNames,
+                    (current, total, deckName) =>
+                        reportProgress(
+                            "ensure-decks",
+                            current,
+                            total,
+                            `正在确保 Anki 牌组 (${current}/${total}): ${deckName}`,
+                        ),
+                );
+                result.errors.push(
+                    ...deckErrors.map(
+                        (deckError) => `[deck:${deckError.deckName}] ${deckError.error}`,
+                    ),
+                );
+            } else {
+                reportProgress("ensure-decks", 0, 0, "无需创建 Anki 牌组");
+            }
+
+            await this.createNotes(client, ops, state, result, (current, total, message) =>
+                reportProgress("create", current, total, message),
+            );
+            await this.updateNotes(client, ops, state, result, (current, total, message) =>
+                reportProgress("update", current, total, message),
+            );
+            await this.removeNotes(client, ops, state, result, (current, total, message) =>
+                reportProgress("delete", current, total, message),
+            );
+            reportProgress("finalize", 0, 1, "正在完成 Anki 同步...");
 
             for (const op of ops) {
                 if (op.type !== "noop") {
@@ -657,12 +901,14 @@ export class AnkiSyncService {
             state.global.lastFullSignature = syncSignature;
             pruneAnkiSyncState(state, new Set(builtSnapshots.keys()));
             await this.persistState();
+            reportProgress("finalize", 1, 1, "Anki 同步完成");
         } catch (error) {
             state.global.retry.consecutiveFailures += 1;
             state.global.retry.lastFailureAt = this.now();
             state.global.retry.lastFailureMessage = String(error);
             result.errors.push(String(error));
             await this.persistState();
+            reportProgress("finalize", 1, 1, "Anki 同步失败");
             console.warn("[Syro-Anki] Sync skipped due to Anki error:", error);
         }
 

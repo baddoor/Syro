@@ -188,6 +188,7 @@ describe("ankiSync service", () => {
                 },
             ]),
             addNotes: jest.fn(async () => []),
+            ensureDecks: jest.fn(async () => []),
             changeDeck: jest.fn(async () => undefined),
             deleteNotes: jest.fn(async () => undefined),
         };
@@ -262,6 +263,7 @@ describe("ankiSync service", () => {
                 },
             ]),
             addNotes: jest.fn(async () => []),
+            ensureDecks: jest.fn(async () => []),
             changeDeck: jest.fn(async () => undefined),
             deleteNotes: jest.fn(async () => undefined),
         };
@@ -276,5 +278,120 @@ describe("ankiSync service", () => {
         const reloaded = await store.load();
         expect(reloaded.items[item.uuid].pendingReviewWritebacks).toHaveLength(0);
         expect(result.writebacks).toBe(1);
+    });
+
+    it("ensures decks, falls back to single-note creation, and reports progress", async () => {
+        const item = createItem();
+        const { deck } = createDeckWithCard(item);
+        const progress = jest.fn();
+        const client = {
+            getVersion: jest.fn(async () => 6),
+            ensureModel: jest.fn(async () => undefined),
+            ensureDecks: jest.fn(async (deckNames: string[], onProgress?: Function) => {
+                deckNames.forEach((deckName, index) => onProgress?.(index + 1, deckNames.length, deckName));
+                return [];
+            }),
+            updateNoteFields: jest.fn(async () => undefined),
+            setSpecificCardValues: jest.fn(async () => undefined),
+            notesInfo: jest.fn(async (noteIds: number[]) =>
+                noteIds.map((noteId) => ({
+                    noteId,
+                    cards: [noteId + 100],
+                    modelName: "Syro::Card",
+                    tags: [],
+                    fields: {},
+                })),
+            ),
+            cardsInfo: jest.fn(async () => []),
+            addNotes: jest
+                .fn()
+                .mockRejectedValueOnce(new Error("deck was not found: Deck"))
+                .mockResolvedValueOnce([10]),
+            changeDeck: jest.fn(async () => undefined),
+            deleteNotes: jest.fn(async () => undefined),
+        };
+        const service = new AnkiSyncService(createPlugin(item), {
+            clientFactory: () => client as any,
+            now: () => 4000,
+        });
+        await service.initialize();
+
+        const result = await service.sync(deck, "sig-2", { onProgress: progress });
+
+        expect(client.ensureDecks).toHaveBeenCalledWith(["Deck"], expect.any(Function));
+        expect(client.addNotes).toHaveBeenCalledTimes(2);
+        expect(result.created).toBe(1);
+        expect(progress.mock.calls.some(([update]) => update.phase === "ensure-decks")).toBe(true);
+        expect(progress.mock.calls.some(([update]) => update.phase === "create")).toBe(true);
+        expect(progress.mock.calls.at(-1)?.[0]).toMatchObject({
+            phase: "finalize",
+            message: "Anki 同步完成",
+        });
+    });
+
+    it("ensures the detached deck before delete fallback moves cards there", async () => {
+        const item = createItem();
+        const store = new AnkiSyncStateStore(() => ".obsidian/plugins/syro/tracked_files.json");
+        const state = await store.load();
+        const itemState = ensureAnkiSyncItemState(state, item.uuid);
+        itemState.mapping = {
+            noteId: 10,
+            cardId: 20,
+            modelName: "Syro::Card",
+            deckName: "Deck",
+            filePath: "note.md",
+            cardHash: "hash-1",
+        };
+        await store.save(state);
+
+        const client = {
+            getVersion: jest.fn(async () => 6),
+            ensureModel: jest.fn(async () => undefined),
+            ensureDecks: jest.fn(async () => []),
+            updateNoteFields: jest.fn(async () => undefined),
+            setSpecificCardValues: jest.fn(async () => undefined),
+            notesInfo: jest.fn(async () => [
+                {
+                    noteId: 10,
+                    cards: [20],
+                    modelName: "Syro::Card",
+                    tags: [],
+                    fields: {},
+                },
+            ]),
+            cardsInfo: jest.fn(async () => [
+                {
+                    cardId: 20,
+                    noteId: 10,
+                    deckName: "Deck",
+                    factor: 2500,
+                    interval: 3,
+                    type: 2,
+                    queue: 2,
+                    due: 100,
+                    reps: 3,
+                    lapses: 1,
+                    left: 0,
+                    mod: 1,
+                },
+            ]),
+            addNotes: jest.fn(async () => []),
+            changeDeck: jest.fn(async () => undefined),
+            deleteNotes: jest.fn(async () => {
+                throw new Error("delete blocked");
+            }),
+        };
+        const service = new AnkiSyncService(createPlugin(item), {
+            stateStore: store,
+            clientFactory: () => client as any,
+            now: () => 5000,
+        });
+        await service.initialize();
+
+        const result = await service.sync(new Deck("root", null), "sig-3");
+
+        expect(client.ensureDecks).toHaveBeenCalledWith(["Syro::Detached"], expect.any(Function));
+        expect(result.detached).toBe(1);
+        expect(client.changeDeck).toHaveBeenCalledWith([20], "Syro::Detached");
     });
 });

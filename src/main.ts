@@ -1383,8 +1383,20 @@ export default class SRPlugin extends Plugin {
                 );
             }
             if (this.ankiSyncService) {
-                progressTip?.update(totalNotes, totalNotes, "正在同步 Anki...");
-                const ankiSyncResult = await this.ankiSyncService.sync(fullDeckTree, currentSignature);
+                progressTip?.update(0, 1, "正在准备 Anki 同步...");
+                const ankiSyncResult = await this.ankiSyncService.sync(
+                    fullDeckTree,
+                    currentSignature,
+                    {
+                        onProgress: (progress) => {
+                            progressTip?.update(
+                                progress.overallCurrent,
+                                progress.overallTotal,
+                                progress.message,
+                            );
+                        },
+                    },
+                );
                 if (ankiSyncResult.errors.length > 0 && settings.showRuntimeDebugMessages) {
                     console.warn("[Syro-Anki] Sync finished with warnings:", ankiSyncResult.errors);
                 }

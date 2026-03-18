@@ -176,6 +176,37 @@ export class AnkiConnectClient {
         });
     }
 
+    async createDeck(deckName: string): Promise<void> {
+        await this.invoke("createDeck", {
+            deck: deckName,
+        });
+    }
+
+    async ensureDecks(
+        deckNames: string[],
+        onProgress?: (current: number, total: number, deckName: string) => void,
+    ): Promise<Array<{ deckName: string; error: string }>> {
+        const uniqueDecks = Array.from(
+            new Set(deckNames.map((deckName) => deckName?.trim()).filter(Boolean)),
+        ) as string[];
+        const errors: Array<{ deckName: string; error: string }> = [];
+
+        for (let index = 0; index < uniqueDecks.length; index += 1) {
+            const deckName = uniqueDecks[index];
+            try {
+                await this.createDeck(deckName);
+            } catch (error) {
+                const message = String(error);
+                if (!message.toLowerCase().includes("already exists")) {
+                    errors.push({ deckName, error: message });
+                }
+            }
+            onProgress?.(index + 1, uniqueDecks.length, deckName);
+        }
+
+        return errors;
+    }
+
     async addNotes(notes: Array<Record<string, unknown>>): Promise<Array<number | null>> {
         return this.invoke<Array<number | null>>("addNotes", { notes });
     }
