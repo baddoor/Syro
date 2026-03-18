@@ -37,6 +37,6 @@
 
 ---
 **相关章节导航：**
-- [复习队列侧边栏](./review-queue-sidebar.md)
-- [数据文件参考](../appendix/data-files-reference.md)
+- [掌控笔记复习队列](./queue-management.md)
+- [数据、同步与备份机制](../advanced-and-faq/data-and-sync.md)
 - [笔记复习总览](./index.md)

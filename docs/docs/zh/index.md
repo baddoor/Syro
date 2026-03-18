@@ -1,6 +1,6 @@
 # Syro 中文文档总览
 
-![Syro 界面总览](../../assets/media/en/user-interface-overview.jpg)
+![Syro 界面总览](../assets/media/en/user-interface-overview.jpg)
 
 > *注：文档中的截图主要用于辅助视觉定位，具体界面请以您当前安装的插件版本为准。*
 

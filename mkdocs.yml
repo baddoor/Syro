@@ -33,51 +33,19 @@ theme:
 nav:
     - Home: index.md
     - Getting Started:
-          - Overview: getting-started/index.md
-          - All Entry Points: getting-started/entry-points.md
-          - First Setup & Core Concepts: getting-started/first-setup-and-core-concepts.md
-    - Note Review:
-          - Overview: note-review/index.md
-          - Tracked Notes & Entry: note-review/tracked-notes-and-entry.md
-          - Review Queue Sidebar: note-review/review-queue-sidebar.md
-          - Tags, Priority & Filtering: note-review/tags-priority-and-filtering.md
-          - Timeline: note-review/timeline.md
+          - Core Concepts: getting-started/introduction.md
+          - 5-Minute Quick Start: getting-started/quick-start.md
     - Flashcards:
           - Overview: flashcards/index.md
-          - Deck Tree & Entry: flashcards/deck-tree-and-entry.md
-          - Review Session: flashcards/review-session.md
-          - Deck Options & Sync: flashcards/deck-options-and-sync.md
-    - Card Authoring:
-          - Overview: card-authoring/index.md
-          - QA Cards: card-authoring/qa-cards.md
-          - Cloze Workflow: card-authoring/cloze-workflow.md
-          - Advanced Cloze: card-authoring/advanced-cloze.md
-    - Settings:
-          - Overview: settings/index.md
-          - Stable vs Legacy: settings/stable-vs-legacy.md
-          - Flashcards & Notes: settings/flashcards-and-notes.md
-          - Algorithms & WMS: settings/algorithms-and-wms.md
-          - UI & Sync: settings/ui-and-sync.md
-    - Data & Sync:
-          - Overview: data-and-sync/index.md
-          - Storage Model: data-and-sync/storage-model.md
-          - Sync, Cache & Overlay: data-and-sync/sync-cache-and-overlay.md
-          - Legacy Storage Migration: data-and-sync/legacy-storage-migration.md
-    - Experimental:
-          - Overview: experimental/index.md
-          - AI Theme Review: experimental/ai-theme-review.md
-          - License & Supporter: experimental/license-and-supporter.md
-          - Advanced, Debug & Compat: experimental/advanced-debug-compat.md
-    - Troubleshooting:
-          - Overview: troubleshooting/index.md
-          - Settings & Parse Issues: troubleshooting/settings-and-parse-issues.md
-          - Data Sync & Migration Issues: troubleshooting/data-sync-and-migration-issues.md
-    - Appendix:
-          - Overview: appendix/index.md
-          - Command Index: appendix/command-index.md
-          - Shortcut Index: appendix/shortcut-index.md
-          - Settings Index: appendix/settings-index.md
-          - Data Files Reference: appendix/data-files-reference.md
+          - Card Authoring: flashcards/card-authoring.md
+          - Review Workflow: flashcards/review-workflow.md
+    - Note Review:
+          - Overview: note-review/index.md
+          - Queue Management: note-review/queue-management.md
+          - Timeline: note-review/timeline.md
+    - Advanced & FAQ:
+          - Data, Sync & Backup: advanced-and-faq/data-and-sync.md
+          - FAQ & Troubleshooting: advanced-and-faq/faq-troubleshooting.md
     - Changelog: changelog.md
     - License: license.md
 
@@ -93,46 +61,21 @@ plugins:
                 name: 简体中文
                 nav_translations:
                     Home: 首页
-                    Getting Started: 开始使用
-                    Overview: 总览
-                    All Entry Points: 所有入口
-                    First Setup & Core Concepts: 首次配置与核心概念
-                    Note Review: 笔记复习
-                    Tracked Notes & Entry: 追踪笔记与进入方式
-                    Review Queue Sidebar: 复习队列侧边栏
-                    Tags, Priority & Filtering: 标签、优先级与筛选
-                    Timeline: 时间线
+                    Getting Started: 新手起步
+                    Core Concepts: 核心理念
+                    5-Minute Quick Start: 5 分钟快速上手
                     Flashcards: 闪卡复习
-                    Deck Tree & Entry: 牌组树与复习入口
-                    Review Session: 复习会话
-                    Deck Options & Sync: 牌组选项与同步
-                    Card Authoring: 卡片编写
-                    QA Cards: 问答卡
-                    Cloze Workflow: Cloze 工作流
-                    Advanced Cloze: 高级 Cloze
-                    Settings: 设置
-                    Stable vs Legacy: 稳定设置与兼容字段
-                    Flashcards & Notes: 卡片与笔记设置
-                    Algorithms & WMS: 算法与 WMS
-                    UI & Sync: 界面与同步
-                    Data & Sync: 数据与同步
-                    Storage Model: 存储模型
-                    Sync, Cache & Overlay: 同步、缓存与 Overlay
-                    Legacy Storage Migration: 旧存储迁移
-                    Experimental: 实验与高级
-                    AI Theme Review: AI 主题复习
-                    License & Supporter: License 与支持者能力
-                    Advanced, Debug & Compat: 隐藏、调试与兼容
-                    Troubleshooting: 故障排查
-                    Settings & Parse Issues: 设置与解析问题
-                    Data Sync & Migration Issues: 数据同步与迁移问题
-                    Appendix: 附录
-                    Command Index: 命令索引
-                    Shortcut Index: 快捷键索引
-                    Settings Index: 设置索引
-                    Data Files Reference: 数据文件参考
+                    Overview: 总览
+                    Card Authoring: 优雅地编写闪卡
+                    Review Workflow: 管理复习与心流
+                    Note Review: 笔记复习
+                    Queue Management: 掌控笔记复习队列
+                    Timeline: Timeline
+                    Advanced & FAQ: 进阶与数据管理
+                    Data, Sync & Backup: 数据、同步与备份机制
+                    FAQ & Troubleshooting: 常见问题与排障指南
                     Changelog: 更新记录
-                    License: 许可证
+                    License: 开源许可证
 
 markdown_extensions:
     - toc:
