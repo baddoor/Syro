@@ -44,13 +44,14 @@ Syro's core mechanics—Spaced Repetition and Incremental Reading—are especial
 
 ## 📖 Explore the Documentation
 
-To dive deeper into Syro's potential, please consult our documentation (currently available in Chinese, with English translation in progress).
+To dive deeper into Syro's potential, start with the English documentation hub below. When a full English rewrite is not ready yet, each page hands off to the currently maintained Chinese guide.
 
--   🏠 **[Syro Documentation Hub (Chinese)](./docs/docs/zh/index.md)**
--   🚀 **[5-Minute Quick Start (Chinese)](./docs/docs/zh/getting-started/quick-start.md)**
--   🧠 **[Flashcard Workflow: From Creation to Memorization (Chinese)](./docs/docs/zh/flashcards/index.md)**
--   📚 **[Note Review Workflow: Mastering Your Reading Queue (Chinese)](./docs/docs/zh/note-review/index.md)**
--   🛠️ **[Data, Sync, and Troubleshooting (Chinese)](./docs/docs/zh/advanced-and-faq/faq-troubleshooting.md)**
+-   🏠 **[Syro Documentation Hub](./docs/docs/en/index.md)**
+-   🚀 **[Getting Started](./docs/docs/en/getting-started/index.md)**
+-   🧠 **[Flashcards Overview](./docs/docs/en/flashcards/index.md)**
+-   📚 **[Note Review Overview](./docs/docs/en/note-review/index.md)**
+-   🛠️ **[Data & Sync Overview](./docs/docs/en/data-and-sync/index.md)**
+-   🇨🇳 **[Chinese Documentation Hub (Most Complete)](./docs/docs/zh/index.md)**
 
 ## ⬇️ Installation Guide
 

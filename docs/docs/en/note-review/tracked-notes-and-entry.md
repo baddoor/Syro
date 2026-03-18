@@ -3,7 +3,7 @@
 This English page is intentionally lightweight for now.
 
 - The complete implementation-facing guide is currently maintained in Chinese.
-- Use the matching Chinese page for the full walkthrough: [Open the Chinese page](../../zh/note-review/tracked-notes-and-entry/)
+- Use the closest maintained Chinese guide for the full walkthrough: [Open the Chinese guide](../../zh/note-review/queue-management.md)
 - Return to the [English documentation hub](../index.md) when you need the broader map.
 
 ## What to expect here
@@ -14,4 +14,4 @@ This English page is intentionally lightweight for now.
 
 ## Recommended next step
 
-Open the Chinese page above if you need step-by-step instructions, screenshots, setting explanations, troubleshooting, or migration notes.
+Open the Chinese guide above if you need step-by-step instructions, screenshots, setting explanations, troubleshooting, or migration notes.
