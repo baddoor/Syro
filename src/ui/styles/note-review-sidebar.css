@@ -129,8 +129,10 @@
 .sr-tag-pill {
     font-size: 11px;
     font-weight: 500;
-    padding: 4px 10px;
-    border-radius: 6px;
+    padding:
+        var(--syro-sidebar-tag-pill-padding-y, 4px)
+        var(--syro-sidebar-tag-pill-padding-x, 10px);
+    border-radius: var(--syro-sidebar-tag-pill-radius, 6px);
     background: var(--background-secondary);
     color: var(--text-muted);
     border: 1px solid var(--background-modifier-border);
@@ -301,7 +303,7 @@
 .sr-sections-container {
     display: flex;
     flex-direction: column;
-    gap: 24px;
+    gap: var(--syro-sidebar-section-gap, 24px);
 }
 
 /* ==========================================
@@ -335,8 +337,8 @@
     display: flex;
     align-items: flex-start;
     gap: 12px;
-    padding: 10px;
-    border-radius: 8px;
+    padding: var(--syro-sidebar-item-padding, 10px);
+    border-radius: var(--syro-sidebar-item-radius, 8px);
     cursor: pointer;
     border: 1px solid transparent;
     transition: all 0.2s;
@@ -377,7 +379,7 @@
     margin-top: 2px;
     background: var(--background-secondary);
     border: 1px solid var(--background-modifier-border);
-    border-radius: 6px;
+    border-radius: max(0px, calc(var(--syro-sidebar-item-radius, 8px) - 2px));
     color: var(--text-muted);
     cursor: pointer;
     transition: all 0.2s;
@@ -391,7 +393,7 @@
 .sr-new-item-priority-box.editing {
     background: var(--background-secondary);
     border: 1px solid var(--interactive-accent);
-    border-radius: 6px;
+    border-radius: max(0px, calc(var(--syro-sidebar-item-radius, 8px) - 2px));
     width: 24px !important;
     min-width: 24px !important;
     max-width: 24px !important;
@@ -547,7 +549,9 @@
 }
 
 .is-mobile .sr-tag-pill {
-    padding: 8px 14px;
+    padding:
+        calc(var(--syro-sidebar-tag-pill-padding-y, 4px) + 4px)
+        calc(var(--syro-sidebar-tag-pill-padding-x, 10px) + 4px);
     font-size: 13px;
 }
 
@@ -561,7 +565,7 @@
 }
 
 .is-mobile .sr-new-item {
-    padding: 12px;
+    padding: calc(var(--syro-sidebar-item-padding, 10px) + 2px);
 }
 
 .is-mobile .sr-new-item-priority-box {
@@ -624,6 +628,8 @@
     flex-shrink: 0;
     border-top: 1px solid var(--background-modifier-border);
     background: var(--background-secondary);
+    border-radius: var(--syro-sidebar-timeline-radius, 0px);
+    overflow: hidden;
     /* 动态适配状态栏高度，由 JS 设置 --sr-statusbar-offset */
     padding-bottom: var(--sr-statusbar-offset, 0px);
 }

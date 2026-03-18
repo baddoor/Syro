@@ -1,0 +1,403 @@
+/* ==========================================
+   Syro Style Settings Bridge
+   ========================================== */
+
+body.css-settings-manager .style-settings-heading[data-id="syro-deck-tree-style"][data-level="0"] {
+    margin-bottom: 18px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--background-modifier-border);
+}
+
+body.css-settings-manager
+    .style-settings-heading[data-id="syro-deck-tree-style"][data-level="0"]
+    + .style-settings-container {
+    padding-left: 0;
+    padding-bottom: 20px;
+}
+
+body.css-settings-manager .style-settings-heading[data-id^="syro-"][data-level="2"] {
+    margin-bottom: 8px;
+    padding: 0 4px;
+    border-bottom: none;
+}
+
+body.css-settings-manager .style-settings-heading[data-id^="syro-"][data-level="2"] .setting-item-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+body.css-settings-manager
+    .style-settings-heading[data-id^="syro-"][data-level="2"]
+    .style-settings-collapse-indicator {
+    color: var(--text-faint);
+    margin-right: 6px;
+}
+
+body.css-settings-manager
+    .style-settings-heading[data-id^="syro-"][data-level="2"]
+    + .style-settings-container {
+    padding-left: 0;
+    padding-bottom: 0;
+    margin-bottom: 20px;
+    background: var(--background-primary-alt);
+    border-radius: var(--radius-m);
+    overflow: hidden;
+}
+
+body.css-settings-manager
+    .style-settings-heading[data-id^="syro-"][data-level="2"]
+    + .style-settings-container
+    > .setting-item:not(.setting-item-heading) {
+    border: none;
+    margin: 0;
+    padding: 12px 20px;
+    min-height: auto;
+    align-items: center;
+}
+
+body.css-settings-manager
+    .style-settings-heading[data-id^="syro-"][data-level="2"]
+    + .style-settings-container
+    > .setting-item:not(.setting-item-heading)
+    + .setting-item:not(.setting-item-heading) {
+    border-top: 1px solid var(--background-modifier-border);
+}
+
+body.css-settings-manager
+    .style-settings-heading[data-id^="syro-"][data-level="2"]
+    + .style-settings-container
+    > .setting-item:not(.setting-item-heading)
+    .setting-item-info {
+    flex: 1;
+    margin-right: 12px;
+}
+
+body.css-settings-manager
+    .style-settings-heading[data-id^="syro-"][data-level="2"]
+    + .style-settings-container
+    > .setting-item:not(.setting-item-heading)
+    .setting-item-name {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-normal);
+}
+
+body.css-settings-manager
+    .style-settings-heading[data-id^="syro-"][data-level="2"]
+    + .style-settings-container
+    > .setting-item:not(.setting-item-heading)
+    .setting-item-description {
+    color: var(--text-muted);
+    font-size: 12px;
+    line-height: 1.4;
+    margin-top: 2px;
+    padding-top: 0;
+}
+
+body.css-settings-manager
+    .style-settings-heading[data-id^="syro-"][data-level="2"]
+    + .style-settings-container
+    > .setting-item:not(.setting-item-heading)
+    .setting-item-control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+body.css-settings-manager
+    .style-settings-heading[data-id^="syro-"][data-level="2"]
+    + .style-settings-container
+    > .setting-item:not(.setting-item-heading)
+    select,
+body.css-settings-manager
+    .style-settings-heading[data-id^="syro-"][data-level="2"]
+    + .style-settings-container
+    > .setting-item:not(.setting-item-heading)
+    input[type="text"],
+body.css-settings-manager
+    .style-settings-heading[data-id^="syro-"][data-level="2"]
+    + .style-settings-container
+    > .setting-item:not(.setting-item-heading)
+    input[type="number"],
+body.css-settings-manager
+    .style-settings-heading[data-id^="syro-"][data-level="2"]
+    + .style-settings-container
+    > .setting-item:not(.setting-item-heading)
+    textarea {
+    background-color: var(--background-primary);
+    border-color: var(--background-modifier-border);
+    transition: all 0.2s ease;
+}
+
+body.css-settings-manager
+    .style-settings-heading[data-id^="syro-"][data-level="2"]
+    + .style-settings-container
+    > .setting-item:not(.setting-item-heading)
+    select:hover,
+body.css-settings-manager
+    .style-settings-heading[data-id^="syro-"][data-level="2"]
+    + .style-settings-container
+    > .setting-item:not(.setting-item-heading)
+    input:hover,
+body.css-settings-manager
+    .style-settings-heading[data-id^="syro-"][data-level="2"]
+    + .style-settings-container
+    > .setting-item:not(.setting-item-heading)
+    textarea:hover {
+    border-color: var(--background-modifier-border-hover);
+}
+
+body.css-settings-manager
+    .style-settings-heading[data-id^="syro-"][data-level="2"]
+    + .style-settings-container
+    > .setting-item:not(.setting-item-heading)
+    .mod-toggle
+    .checkbox-container {
+    background-color: var(--background-primary);
+}
+
+body.css-settings-manager
+    .style-settings-heading[data-id^="syro-"][data-level="2"]
+    + .style-settings-container
+    > .setting-item:not(.setting-item-heading)
+    .mod-toggle
+    .checkbox-container.is-enabled {
+    background-color: var(--interactive-accent);
+}
+
+body.css-settings-manager
+    .style-settings-heading[data-id^="syro-"][data-level="2"]
+    + .style-settings-container
+    > .style-settings-info-text {
+    align-items: flex-start;
+}
+
+body.css-settings-manager
+    .style-settings-heading[data-id^="syro-"][data-level="2"]
+    + .style-settings-container
+    > .style-settings-info-text
+    .setting-item-description {
+    margin-top: 0;
+}
+
+/* @settings
+
+name: Syro UI
+id: syro-deck-tree-style
+settings:
+  -
+    id: syro-deck-tree-style-heading
+    title: Deck Tree
+    type: heading
+    level: 2
+    collapsed: false
+  -
+    id: syro-deck-tree-shape-info
+    title: Shape controls
+    description: Use the toggle for fully square corners, or sliders for custom curvature.
+    type: info-text
+  -
+    id: syro-deck-tree-square-corners
+    title: Square corners
+    description: Force the deck tree container, rows, and controls to use 0 radius.
+    type: class-toggle
+  -
+    id: syro-deck-tree-radius
+    title: Container corner radius
+    description: Set to 0 for square corners.
+    type: variable-number-slider
+    default: 12
+    format: px
+    min: 0
+    max: 24
+    step: 1
+  -
+    id: syro-deck-row-radius
+    title: Row corner radius
+    description: Controls the row and small button corners in the deck tree.
+    type: variable-number-slider
+    default: 4
+    format: px
+    min: 0
+    max: 16
+    step: 1
+  -
+    id: syro-deck-row-inline-padding
+    title: Row horizontal padding
+    description: Controls the left and right breathing room inside each deck row.
+    type: variable-number-slider
+    default: 8
+    format: px
+    min: 2
+    max: 20
+    step: 1
+  -
+    id: syro-deck-row-min-height
+    title: Row minimum height
+    description: Adjusts how compact or roomy each deck row feels.
+    type: variable-number-slider
+    default: 28
+    format: px
+    min: 20
+    max: 44
+    step: 1
+  -
+    id: syro-review-style-heading
+    title: Review
+    type: heading
+    level: 2
+    collapsed: false
+  -
+    id: syro-review-style-info
+    title: Structure controls
+    description: These controls only change card shape, spacing, and action density.
+    type: info-text
+  -
+    id: syro-review-card-radius
+    title: Card corner radius
+    description: Controls the main review card rounding.
+    type: variable-number-slider
+    default: 12
+    format: px
+    min: 0
+    max: 24
+    step: 1
+  -
+    id: syro-review-header-height
+    title: Header height
+    description: Adjusts the visual height of the review card header.
+    type: variable-number-slider
+    default: 48
+    format: px
+    min: 40
+    max: 64
+    step: 1
+  -
+    id: syro-review-content-padding-x
+    title: Content horizontal padding
+    description: Controls the left and right spacing around review content.
+    type: variable-number-slider
+    default: 40
+    format: px
+    min: 16
+    max: 64
+    step: 1
+  -
+    id: syro-review-content-padding-y
+    title: Content vertical padding
+    description: Controls the top and bottom spacing around review content.
+    type: variable-number-slider
+    default: 32
+    format: px
+    min: 16
+    max: 56
+    step: 1
+  -
+    id: syro-review-show-answer-radius
+    title: Show answer button radius
+    description: Adjusts the rounding for the primary reveal button.
+    type: variable-number-slider
+    default: 8
+    format: px
+    min: 0
+    max: 20
+    step: 1
+  -
+    id: syro-review-action-radius
+    title: Review action button radius
+    description: Controls the rounding used by the rating buttons.
+    type: variable-number-slider
+    default: 6
+    format: px
+    min: 0
+    max: 20
+    step: 1
+  -
+    id: syro-review-compact-actions
+    title: Compact action buttons
+    description: Makes the reveal and rating buttons denser without changing defaults.
+    type: class-toggle
+  -
+    id: syro-sidebar-style-heading
+    title: Sidebar
+    type: heading
+    level: 2
+    collapsed: false
+  -
+    id: syro-sidebar-style-info
+    title: Structure controls
+    description: Use these controls to tune pill shape, note density, and timeline framing.
+    type: info-text
+  -
+    id: syro-sidebar-tag-pill-radius
+    title: Tag pill radius
+    description: Controls the rounding of sidebar tag pills.
+    type: variable-number-slider
+    default: 6
+    format: px
+    min: 0
+    max: 20
+    step: 1
+  -
+    id: syro-sidebar-tag-pill-padding-y
+    title: Tag pill vertical padding
+    description: Adjusts the top and bottom padding inside tag pills.
+    type: variable-number-slider
+    default: 4
+    format: px
+    min: 2
+    max: 12
+    step: 1
+  -
+    id: syro-sidebar-tag-pill-padding-x
+    title: Tag pill horizontal padding
+    description: Adjusts the left and right padding inside tag pills.
+    type: variable-number-slider
+    default: 10
+    format: px
+    min: 6
+    max: 20
+    step: 1
+  -
+    id: syro-sidebar-item-radius
+    title: Note item radius
+    description: Controls the rounding for note cards and priority badges.
+    type: variable-number-slider
+    default: 8
+    format: px
+    min: 0
+    max: 24
+    step: 1
+  -
+    id: syro-sidebar-item-padding
+    title: Note item padding
+    description: Adjusts the internal spacing of note cards.
+    type: variable-number-slider
+    default: 10
+    format: px
+    min: 6
+    max: 18
+    step: 1
+  -
+    id: syro-sidebar-section-gap
+    title: Section gap
+    description: Controls the spacing between note groups in the sidebar.
+    type: variable-number-slider
+    default: 24
+    format: px
+    min: 12
+    max: 36
+    step: 1
+  -
+    id: syro-sidebar-timeline-radius
+    title: Timeline corner radius
+    description: Rounds the timeline drawer container without changing its height.
+    type: variable-number-slider
+    default: 0
+    format: px
+    min: 0
+    max: 20
+    step: 1
+*/
