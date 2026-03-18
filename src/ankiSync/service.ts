@@ -235,17 +235,18 @@ export class AnkiSyncService {
         }
     }
 
-    private buildBreadcrumbHtml(label: string, openLink: string): string {
+    private buildBreadcrumbHtml(label: string, openLink: string, exactLink: string): string {
         const safeLabel = escapeHtml(label);
         if (!safeLabel) {
             return "";
         }
 
-        if (!openLink) {
-            return `<span class="syro-anki-badge">${safeLabel}</span>`;
+        const primaryLink = exactLink || openLink;
+        if (!primaryLink) {
+            return safeLabel;
         }
 
-        return `<span class="syro-anki-badge"><a href="${escapeHtml(openLink)}">${safeLabel}</a></span>`;
+        return `<a href="${escapeHtml(primaryLink)}">${safeLabel}</a>`;
     }
 
     private buildSourceHtml(label: string, openLink: string, exactLink: string): string {
@@ -341,7 +342,7 @@ export class AnkiSyncService {
             payload.front = await this.renderMarkdownFragment(payload.front, sourcePath, "front");
             payload.back = await this.renderMarkdownFragment(payload.back, sourcePath, "back");
             payload.context = await this.renderMarkdownFragment(payload.context, sourcePath, "context");
-            payload.breadcrumb = this.buildBreadcrumbHtml(payload.breadcrumb, payload.openLink);
+            payload.breadcrumb = this.buildBreadcrumbHtml(payload.breadcrumb, payload.openLink, payload.exactLink);
             payload.source = this.buildSourceHtml(payload.source, payload.openLink, payload.exactLink);
 
             payload.fields.Front = payload.front;

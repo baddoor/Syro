@@ -436,6 +436,57 @@ describe("ankiSync service", () => {
         expect(batchInput.every((note: any) => note.options.allowDuplicate === true)).toBe(true);
     });
 
+    it("renders breadcrumb as a plain link and prefers the exact locate URI", async () => {
+        files.set(".obsidian/plugins/obsidian-advanced-uri/manifest.json", "{}");
+        const item = createItem();
+        const { deck } = createDeckWithCard(item);
+        const plugin = createPlugin(item);
+        plugin.app = {
+            vault: {
+                getName: () => "plugin_test",
+                configDir: ".obsidian",
+            },
+        };
+        const client = {
+            getVersion: jest.fn(async () => 6),
+            ensureModel: jest.fn(async () => undefined),
+            notesInfoByQuery: jest.fn(async () => []),
+            canAddNotesWithErrorDetail: jest.fn(async () => [{ canAdd: true }]),
+            ensureDecks: jest.fn(async () => []),
+            updateNoteFields: jest.fn(async () => undefined),
+            setSpecificCardValues: jest.fn(async () => undefined),
+            notesInfo: jest.fn(async (noteIds: number[]) =>
+                noteIds.map((noteId) => ({
+                    noteId,
+                    cards: [noteId + 100],
+                    modelName: "Syro::Card",
+                    tags: [],
+                    fields: {},
+                })),
+            ),
+            cardsInfo: jest.fn(async () => []),
+            addNotes: jest.fn(async () => [10]),
+            changeDeck: jest.fn(async () => undefined),
+            deleteNotes: jest.fn(async () => undefined),
+        };
+        const service = new AnkiSyncService(plugin, {
+            clientFactory: () => client as any,
+            now: () => 3900,
+        });
+        await service.initialize();
+
+        await service.sync(deck, "sig-breadcrumb");
+
+        const createdBatch = (client.addNotes.mock.calls as any[][])[0][0] as Array<Record<string, any>>;
+        const breadcrumb = createdBatch[0].fields.Breadcrumb as string;
+
+        expect(breadcrumb).toContain('<a href="obsidian://advanced-uri');
+        expect(breadcrumb).toContain("note.md");
+        expect(breadcrumb).toContain("L11");
+        expect(breadcrumb).not.toContain("syro-anki-badge");
+        expect(breadcrumb).not.toContain("obsidian://open");
+    });
+
     it("records detailed create failure reasons when Anki returns null", async () => {
         const item = createItem();
         const { deck } = createDeckWithCard(item);
