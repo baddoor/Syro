@@ -89,19 +89,21 @@ export class AnkiConnectClient {
     constructor(private readonly endpoint = DEFAULT_ANKI_SYNC_ENDPOINT) {}
 
     private async invoke<T>(action: string, params: Record<string, unknown> = {}): Promise<T> {
+        const body = JSON.stringify({
+            action,
+            version: 6,
+            params,
+        });
         const response = await requestUrl({
             url: this.endpoint,
             method: "POST",
-            contentType: "application/json",
+            contentType: "application/json; charset=utf-8",
             headers: {
                 Accept: "application/json",
+                "Content-Type": "application/json; charset=utf-8",
             },
             throw: false,
-            body: JSON.stringify({
-                action,
-                version: 6,
-                params,
-            }),
+            body,
         });
 
         if (response.status < 200 || response.status >= 300) {

@@ -8,6 +8,7 @@ export const DEFAULT_ANKI_DELETE_POLICY: AnkiDeletePolicy = "delete";
 export type AnkiDeletePolicy = "delete" | "detach";
 export type ReviewSnapshotSource = "syro" | "anki-card" | "anki-hidden";
 export type AnkiOperationType = "create" | "update" | "delete" | "detach" | "noop";
+export type SyroAnkiRenderSource = "locator" | "fallback";
 export type AnkiSyncPhase =
     | "prepare"
     | "writeback"
@@ -102,6 +103,9 @@ export interface SyroAnkiCardPayload {
     back: string;
     context: string;
     source: string;
+    lineNo: number | null;
+    warnings: string[];
+    renderSource: SyroAnkiRenderSource;
     cardHash: string;
     snapshot: ReviewSnapshot;
     fields: Record<string, string>;

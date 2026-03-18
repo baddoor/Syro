@@ -1,7 +1,8 @@
 import { Card } from "src/Card";
-import { Deck } from "src/Deck";
+import { CardListType, Deck } from "src/Deck";
 import { NoteCardScheduleParser } from "src/CardSchedule";
 import { DataStore } from "src/dataStore/data";
+import { Iadapter } from "src/dataStore/adapter";
 import { CardQueue, RPITEMTYPE, RepetitionItem } from "src/dataStore/repetitionItem";
 import { SRSettings } from "src/settings";
 import { AnkiConnectClient } from "src/ankiSync/AnkiConnectClient";
@@ -42,6 +43,11 @@ interface AnkiSyncServiceDeps {
     clientFactory?: (endpoint: string) => AnkiConnectClient;
     stateStore?: AnkiSyncStateStore;
     now?: () => number;
+}
+
+interface PreparedCreateNote {
+    op: AnkiSyncPlanOperation;
+    noteInput: Record<string, unknown>;
 }
 
 function safeJsonParse<T>(value: string | null | undefined): T | null {
@@ -160,6 +166,37 @@ export class AnkiSyncService {
         };
     }
 
+    private async buildFileTextMap(deckTree: Deck): Promise<Map<string, string>> {
+        const fileTextByPath = new Map<string, string>();
+        const adapter = Iadapter.instance?.adapter;
+        if (!adapter) {
+            return fileTextByPath;
+        }
+
+        const cards = deckTree.getFlattenedCardArray(CardListType.All, true);
+        const uniquePaths = new Set(
+            cards
+                .map((card) => card.question?.note?.filePath ?? "")
+                .filter((filePath) => filePath.length > 0),
+        );
+
+        for (const filePath of uniquePaths) {
+            try {
+                if (!(await adapter.exists(filePath))) {
+                    continue;
+                }
+                const fileText = await adapter.read(filePath);
+                if (typeof fileText === "string") {
+                    fileTextByPath.set(filePath, fileText);
+                }
+            } catch (error) {
+                console.warn(`[Syro-Anki] Failed to read ${filePath} for locator export:`, error);
+            }
+        }
+
+        return fileTextByPath;
+    }
+
     private getPendingWritebackTargets(
         state: AnkiSyncStateFile,
     ): Array<[string, AnkiSyncItemState]> {
@@ -212,7 +249,9 @@ export class AnkiSyncService {
     }
 
     private formatCreateContext(op: AnkiSyncPlanOperation): string {
-        return `uuid=${op.itemUuid} deck=${op.payload?.deckName ?? "unknown"} model=${op.payload?.modelName ?? "unknown"}`;
+        const filePath = op.payload?.filePath ?? "unknown";
+        const linePart = op.payload?.lineNo != null ? ` line=${op.payload.lineNo}` : "";
+        return `uuid=${op.itemUuid} path=${filePath}${linePart} deck=${op.payload?.deckName ?? "unknown"} model=${op.payload?.modelName ?? "unknown"}`;
     }
 
     private async diagnoseAddNoteFailure(
@@ -226,6 +265,43 @@ export class AnkiSyncService {
             return detail?.canAdd === false ? detail.error ?? "cannot add note" : null;
         } catch (error) {
             return `failed to diagnose addNote: ${String(error)}`;
+        }
+    }
+
+    private async preflightCreateNotes(
+        client: AnkiConnectClient,
+        ops: AnkiSyncPlanOperation[],
+        result: AnkiSyncRunResult,
+    ): Promise<PreparedCreateNote[]> {
+        const prepared = ops
+            .filter((op) => op.type === "create" && op.payload)
+            .map((op) => ({ op, noteInput: this.buildAddNoteInput(op) }));
+        if (prepared.length === 0) {
+            return [];
+        }
+
+        try {
+            const checks = await client.canAddNotesWithErrorDetail(
+                prepared.map((entry) => entry.noteInput),
+            );
+            const accepted: PreparedCreateNote[] = [];
+
+            for (let index = 0; index < prepared.length; index += 1) {
+                const entry = prepared[index];
+                const check = checks[index];
+                if (check?.canAdd === false) {
+                    result.errors.push(
+                        `[preflight:${entry.op.itemUuid}] ${this.formatCreateContext(entry.op)} ${check.error ?? "cannot add note"}`,
+                    );
+                    continue;
+                }
+                accepted.push(entry);
+            }
+
+            return accepted;
+        } catch (error) {
+            result.errors.push(`[preflight] ${String(error)}`);
+            return prepared;
         }
     }
 
@@ -726,11 +802,11 @@ export class AnkiSyncService {
 
     private async createSingleNote(
         client: AnkiConnectClient,
-        op: AnkiSyncPlanOperation,
+        preparedNote: PreparedCreateNote,
         state: AnkiSyncStateFile,
         result: AnkiSyncRunResult,
     ): Promise<void> {
-        const noteInput = this.buildAddNoteInput(op);
+        const { op, noteInput } = preparedNote;
         try {
             const addResults = await client.addNotes([noteInput]);
             const noteId = addResults[0];
@@ -764,11 +840,24 @@ export class AnkiSyncService {
             return;
         }
 
-        let processed = 0;
-        for (const chunk of chunkArray(createOps)) {
+        const preparedNotes = await this.preflightCreateNotes(client, createOps, result);
+        let processed = createOps.length - preparedNotes.length;
+        if (processed > 0) {
+            onProgress?.(
+                processed,
+                createOps.length,
+                `Anki 预检跳过 ${processed} 张卡片 (${processed}/${createOps.length})...`,
+            );
+        }
+        if (preparedNotes.length === 0) {
+            onProgress?.(createOps.length, createOps.length, "Anki 建卡预检后无可创建卡片");
+            return;
+        }
+
+        for (const chunk of chunkArray(preparedNotes)) {
             try {
                 const addResults = await client.addNotes(
-                    chunk.map((op) => this.buildAddNoteInput(op)),
+                    chunk.map((entry) => entry.noteInput),
                 );
                 const noteInfos = await this.loadNoteInfoMap(
                     client,
@@ -776,12 +865,13 @@ export class AnkiSyncService {
                 );
 
                 for (let index = 0; index < chunk.length; index += 1) {
-                    const op = chunk[index];
+                    const preparedNote = chunk[index];
+                    const op = preparedNote.op;
                     const noteId = addResults[index];
                     if (typeof noteId === "number") {
                         this.registerCreatedNote(op, noteId, noteInfos.get(noteId), state, result);
                     } else {
-                        await this.createSingleNote(client, op, state, result);
+                        await this.createSingleNote(client, preparedNote, state, result);
                     }
                     processed += 1;
                     onProgress?.(
@@ -791,8 +881,8 @@ export class AnkiSyncService {
                     );
                 }
             } catch (error) {
-                for (const op of chunk) {
-                    await this.createSingleNote(client, op, state, result);
+                for (const preparedNote of chunk) {
+                    await this.createSingleNote(client, preparedNote, state, result);
                     processed += 1;
                     onProgress?.(
                         processed,
@@ -935,7 +1025,17 @@ export class AnkiSyncService {
             state.global.connection.modelReady = true;
             reportProgress("prepare", 1, 1, "Anki 已连接");
 
-            const builtSnapshots = buildSyroAnkiCardSnapshotMap(deckTree, state.items, modelName);
+            const fileTextByPath = await this.buildFileTextMap(deckTree);
+            const builtSnapshots = buildSyroAnkiCardSnapshotMap(deckTree, state.items, modelName, {
+                settings,
+                store: this.plugin.store,
+                fileTextByPath,
+            });
+            for (const [itemUuid, builtSnapshot] of builtSnapshots.entries()) {
+                for (const warning of builtSnapshot.payload.warnings) {
+                    result.errors.push(`[render:${itemUuid}] ${warning}`);
+                }
+            }
             try {
                 await this.discoverRemoteMappings(
                     client,

@@ -25,7 +25,8 @@ function createItem(): RepetitionItem {
     return item;
 }
 
-function createPlugin(item: RepetitionItem) {
+function createPlugin(item: RepetitionItem | RepetitionItem[]) {
+    const items = Array.isArray(item) ? item : [item];
     return {
         data: {
             settings: {
@@ -38,7 +39,7 @@ function createPlugin(item: RepetitionItem) {
         },
         manifest: { dir: ".obsidian/plugins/syro" },
         store: {
-            data: { items: [item] },
+            data: { items },
             dataPath: ".obsidian/plugins/syro/tracked_files.json",
             saveReviewItemDelta: jest.fn(async () => undefined),
         },
@@ -466,6 +467,73 @@ describe("ankiSync service", () => {
         expect(result.errors.some((message) => message.includes("cannot create note because it is a duplicate"))).toBe(
             true,
         );
+    });
+
+    it("skips preflight-rejected notes and still creates the remaining cards", async () => {
+        const first = createItem();
+        const second = createItem();
+        second.ID = 2;
+        second.uuid = "uuid-2";
+
+        const firstCard = new Card({ front: "Q1", back: "A1", cardIdx: 0 });
+        firstCard.repetitionItem = first;
+        firstCard.question = {
+            topicPathList: { list: [new TopicPath(["Deck"])] },
+            note: { filePath: "note-a.md" },
+            questionContext: ["context"],
+            lineNo: 10,
+        } as any;
+
+        const secondCard = new Card({ front: "Q2", back: "A2", cardIdx: 0 });
+        secondCard.repetitionItem = second;
+        secondCard.question = {
+            topicPathList: { list: [new TopicPath(["Deck"])] },
+            note: { filePath: "note-b.md" },
+            questionContext: ["context"],
+            lineNo: 12,
+        } as any;
+
+        const deck = new Deck("root", null);
+        deck.dueFlashcards.push(firstCard, secondCard);
+
+        const client = {
+            getVersion: jest.fn(async () => 6),
+            ensureModel: jest.fn(async () => undefined),
+            notesInfoByQuery: jest.fn(async () => []),
+            canAddNotesWithErrorDetail: jest.fn(async () => [
+                { canAdd: false, error: "cannot create note because it is empty" },
+                { canAdd: true },
+            ]),
+            ensureDecks: jest.fn(async () => []),
+            updateNoteFields: jest.fn(async () => undefined),
+            setSpecificCardValues: jest.fn(async () => undefined),
+            notesInfo: jest.fn(async (noteIds: number[]) =>
+                noteIds.map((noteId) => ({
+                    noteId,
+                    cards: [noteId + 100],
+                    modelName: "Syro::Card",
+                    tags: [],
+                    fields: {},
+                })),
+            ),
+            cardsInfo: jest.fn(async () => []),
+            addNotes: jest.fn(async () => [11]),
+            changeDeck: jest.fn(async () => undefined),
+            deleteNotes: jest.fn(async () => undefined),
+        };
+        const service = new AnkiSyncService(createPlugin([first, second]), {
+            clientFactory: () => client as any,
+            now: () => 3800,
+        });
+        await service.initialize();
+
+        const result = await service.sync(deck, "sig-preflight");
+        const createdBatch = (client.addNotes.mock.calls as any[][])[0][0] as Array<Record<string, unknown>>;
+
+        expect(result.created).toBe(1);
+        expect(result.errors.some((message) => message.includes("[preflight:uuid-1]"))).toBe(true);
+        expect(createdBatch).toHaveLength(1);
+        expect((createdBatch[0].fields as Record<string, string>).syro_item_uuid).toBe("uuid-2");
     });
 
     it("ensures decks, falls back to single-note creation, and reports progress", async () => {

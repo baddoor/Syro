@@ -25,9 +25,10 @@ describe("AnkiConnectClient", () => {
         expect(mockedRequestUrl).toHaveBeenCalledWith({
             url: "http://127.0.0.1:8765",
             method: "POST",
-            contentType: "application/json",
+            contentType: "application/json; charset=utf-8",
             headers: {
                 Accept: "application/json",
+                "Content-Type": "application/json; charset=utf-8",
             },
             throw: false,
             body: JSON.stringify({
@@ -174,9 +175,10 @@ describe("AnkiConnectClient", () => {
         expect(mockedRequestUrl).toHaveBeenCalledWith({
             url: "http://127.0.0.1:8765",
             method: "POST",
-            contentType: "application/json",
+            contentType: "application/json; charset=utf-8",
             headers: {
                 Accept: "application/json",
+                "Content-Type": "application/json; charset=utf-8",
             },
             throw: false,
             body: JSON.stringify({
