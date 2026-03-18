@@ -82,6 +82,11 @@ export const SYRO_ANKI_MEDIA_FILES: Record<string, string> = {
     letter-spacing: 0.02em;
 }
 
+.syro-front-content,
+.syro-answer-panel {
+    min-height: 0;
+}
+
 .syro-body p {
     margin-top: 0;
     margin-bottom: 1.2em;
@@ -141,6 +146,17 @@ export const SYRO_ANKI_MEDIA_FILES: Record<string, string> = {
     height: auto;
 }
 
+.syro-answer-panel {
+    margin-top: 28px;
+    padding-top: 24px;
+    border-top: 1px solid var(--line);
+}
+
+.syro-answer-panel[hidden],
+.syro-back-payload {
+    display: none !important;
+}
+
 .cloze,
 .syro-cloze,
 .syro-anki-mask,
@@ -177,6 +193,7 @@ mark,
         if (!root) {
             return;
         }
+
         var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
         var targets = [];
         var node;
@@ -193,6 +210,7 @@ mark,
             var text = textNode.textContent || "";
             var frag = document.createDocumentFragment();
             var lastIndex = 0;
+
             text.replace(pattern, function(match) {
                 var index = arguments[arguments.length - 2];
                 if (index > lastIndex) {
@@ -206,11 +224,44 @@ mark,
                 lastIndex = index + match.length;
                 return match;
             });
+
             if (lastIndex < text.length) {
                 frag.appendChild(document.createTextNode(text.slice(lastIndex)));
             }
-            textNode.parentNode.replaceChild(frag, textNode);
+
+            if (textNode.parentNode) {
+                textNode.parentNode.replaceChild(frag, textNode);
+            }
         });
+    }
+
+    function isMaskNode(node) {
+        var text = ((node && node.textContent) || "").replace(/\\s+/g, "");
+        return text === "[...]" || text === "...";
+    }
+
+    function isRevealNode(node) {
+        var text = ((node && node.textContent) || "").replace(/\\s+/g, "");
+        return !!text && text !== "[...]" && text !== "...";
+    }
+
+    function replaceClozeInPlace(frontRoot, backRoot) {
+        var masks = Array.prototype.slice
+            .call(frontRoot.querySelectorAll(".syro-anki-mask, .syro-cloze"))
+            .filter(isMaskNode);
+        var answers = Array.prototype.slice
+            .call(backRoot.querySelectorAll(".syro-anki-answer, .syro-cloze"))
+            .filter(isRevealNode);
+
+        if (!masks.length || !answers.length) {
+            return false;
+        }
+
+        for (var index = 0; index < Math.min(masks.length, answers.length); index += 1) {
+            masks[index].outerHTML = answers[index].outerHTML;
+        }
+
+        return true;
     }
 
     window.syroApplyTemplateFallback = function(elementId, side) {
@@ -220,12 +271,12 @@ mark,
                 return;
             }
 
-            wrapTextNodes(contentDiv, /\[\.\.\.\]/g, function() {
+            wrapTextNodes(contentDiv, /\\[\\.\\.\\.\\]/g, function() {
                 return '<span class="syro-cloze">[...]</span>';
             });
 
             if (side === "back") {
-                wrapTextNodes(contentDiv, /\[([^\]<]+?)\]/g, function(match, inner) {
+                wrapTextNodes(contentDiv, /\\[([^\\]<]+?)\\]/g, function(match, inner) {
                     if (inner === "...") {
                         return match;
                     }
@@ -234,9 +285,33 @@ mark,
             }
 
             wrapTextNodes(contentDiv, /==([^=]+)==/g, function(match, inner) {
-                return '<mark>' + inner + '</mark>';
+                return "<mark>" + inner + "</mark>";
             });
         }, 10);
+    };
+
+    window.syroRevealBack = function(frontId, answerId, payloadId) {
+        if (window.syroApplyTemplateFallback) {
+            window.syroApplyTemplateFallback(payloadId, "back");
+        }
+
+        window.setTimeout(function() {
+            var front = document.getElementById(frontId);
+            var answer = document.getElementById(answerId);
+            var payload = document.getElementById(payloadId);
+            if (!front || !answer || !payload) {
+                return;
+            }
+
+            if (replaceClozeInPlace(front, payload)) {
+                payload.innerHTML = "";
+                return;
+            }
+
+            answer.innerHTML = payload.innerHTML;
+            answer.hidden = false;
+            payload.innerHTML = "";
+        }, 24);
     };
 })();
 `,
@@ -273,17 +348,20 @@ export function buildSyroAnkiTemplateFront(): string {
 <div class="syro-container">
     <div class="syro-header">
         <div class="syro-path">{{Breadcrumb}}</div>
-        <div class="syro-brand">OB¡¤SYRO</div>
+        <div class="syro-brand">OB&#183;SYRO</div>
     </div>
 
-    <div class="syro-body" id="syro-content">
-        {{Front}}
+    <div class="syro-body">
+        <div class="syro-front-content" id="syro-front-content">
+            {{Front}}
+        </div>
+        <div class="syro-answer-panel" id="syro-answer-region" hidden></div>
     </div>
 </div>
 
 <script>
     if (window.syroApplyTemplateFallback) {
-        window.syroApplyTemplateFallback("syro-content", "front");
+        window.syroApplyTemplateFallback("syro-front-content", "front");
     }
 </script>
 `;
@@ -293,20 +371,14 @@ export function buildSyroAnkiTemplateBack(): string {
     return `
 <script src="_syro_anki_sync.js"></script>
 <link rel="stylesheet" href="_syro_anki_sync.css">
-<div class="syro-container">
-    <div class="syro-header">
-        <div class="syro-path">{{Breadcrumb}}</div>
-        <div class="syro-brand">OB¡¤SYRO</div>
-    </div>
-
-    <div class="syro-body" id="syro-content-back">
-        {{Back}}
-    </div>
+{{FrontSide}}
+<div class="syro-back-payload" id="syro-back-payload">
+    {{Back}}
 </div>
 
 <script>
-    if (window.syroApplyTemplateFallback) {
-        window.syroApplyTemplateFallback("syro-content-back", "back");
+    if (window.syroRevealBack) {
+        window.syroRevealBack("syro-front-content", "syro-answer-region", "syro-back-payload");
     }
 </script>
 `;
