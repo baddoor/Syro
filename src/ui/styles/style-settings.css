@@ -1,53 +1,93 @@
 /* ==========================================
    Syro Style Settings Bridge
-   A Syro-scoped copy of Willemstad-X's structural Style Settings rules.
+   Non-Willemstad themes fall back to plugin/theme defaults.
+   Willemstad gets a source-matched Syro-scoped layer.
    ========================================== */
 
-body.css-settings-manager .style-settings-heading[data-id="syro-deck-tree-style"][data-level="0"],
-body.css-settings-manager
+body.theme-willemstad.css-settings-manager {
+    --input-border-width: 0;
+    --toggle-s-border-width: 0px;
+}
+
+body.theme-willemstad.css-settings-manager .style-settings-heading[data-id="syro-deck-tree-style"],
+body.theme-willemstad.css-settings-manager
+    .style-settings-heading[data-id="syro-deck-tree-style"]
+    + .style-settings-container {
+    --syro-wms-padding-ss: 0.75em;
+    --syro-wms-divider-color: var(--divider-color, var(--background-modifier-border));
+    --syro-wms-collapse-gap: 0.25rem;
+}
+
+body.theme-willemstad.css-settings-manager
+    .style-settings-heading[data-id="syro-deck-tree-style"][data-level="0"]:not(.is-collapsed) {
+    margin-bottom: var(--size-4-3);
+}
+
+body.theme-willemstad.css-settings-manager
+    .setting-item
+    + .style-settings-heading[data-id^="syro-"] {
+    border-top: 1px solid var(--syro-wms-divider-color);
+}
+
+body.theme-willemstad.css-settings-manager
     .style-settings-heading[data-id="syro-deck-tree-style"][data-level="0"]
     + .style-settings-container {
-    --syro-ss-padding: 0.75em;
-    --syro-ss-padding-left: 1.5rem;
-    --syro-ss-collapse-gap: 0.25rem;
-}
-
-body.css-settings-manager .style-settings-heading[data-id="syro-deck-tree-style"][data-level="0"] {
-    margin-bottom: 0;
-}
-
-body.css-settings-manager
-    .vertical-tab-content
-    > .setting-item.setting-item-heading.style-settings-heading[data-id="syro-deck-tree-style"] {
-    border-bottom: 1px solid var(--background-modifier-border);
-}
-
-body.css-settings-manager
-    .style-settings-heading[data-id="syro-deck-tree-style"][data-level="0"]
-    + .style-settings-container {
-    border-left: 1px solid var(--background-modifier-border);
-    padding-left: var(--syro-ss-padding-left);
+    padding-left: var(--size-4-4);
     padding-bottom: 0;
 }
 
-body.is-phone.css-settings-manager
+body.theme-willemstad.is-phone.css-settings-manager
     .style-settings-heading[data-id="syro-deck-tree-style"][data-level="0"]
     + .style-settings-container {
-    border-left: none;
     padding-left: 0;
 }
 
-body.css-settings-manager
+body.theme-willemstad.css-settings-manager
+    .style-settings-heading[data-id="syro-deck-tree-style"][data-level="0"]
+    + .style-settings-container
+    .style-settings-collapse-indicator {
+    margin-left: -16px;
+}
+
+body.theme-willemstad.css-settings-manager
+    .style-settings-heading[data-id="syro-deck-tree-style"]
+    + .style-settings-container
+    .setting-item {
+    column-gap: 2%;
+}
+
+body.theme-willemstad.css-settings-manager
+    .style-settings-heading[data-id="syro-deck-tree-style"]
+    + .style-settings-container
+    .setting-item
+    > .setting-item-info {
+    margin-inline-end: 0;
+    min-width: 0;
+    flex: 1 1 84%;
+}
+
+body.theme-willemstad.css-settings-manager
+    .style-settings-heading[data-id="syro-deck-tree-style"]
+    + .style-settings-container
+    .setting-item
+    > .setting-item-description,
+body.theme-willemstad.css-settings-manager
+    .style-settings-heading[data-id="syro-deck-tree-style"]
+    + .style-settings-container
+    .setting-item
+    > .setting-item-control {
+    flex: 1 1 14%;
+}
+
+body.theme-willemstad.css-settings-manager
     .style-settings-heading[data-id="syro-deck-tree-style"]
     + .style-settings-container
     .setting-item:not(.setting-item-heading) {
     display: grid;
     grid-template-columns: 1fr max-content;
-    column-gap: 2%;
-    padding: 0.5em;
 }
 
-body.is-phone.css-settings-manager
+body.theme-willemstad.is-phone.css-settings-manager
     .style-settings-heading[data-id="syro-deck-tree-style"]
     + .style-settings-container
     .setting-item:not(.setting-item-heading) {
@@ -55,21 +95,12 @@ body.is-phone.css-settings-manager
     grid-template-rows: auto 1fr;
 }
 
-body.css-settings-manager
-    .style-settings-heading[data-id="syro-deck-tree-style"]
-    + .style-settings-container
-    .setting-item
-    > .setting-item-info {
-    margin-inline-end: 0;
-    min-width: 0;
-}
-
-body.css-settings-manager
+body.theme-willemstad.css-settings-manager
     .style-settings-heading[data-id="syro-deck-tree-style"]
     + .style-settings-container
     .setting-item-control
     input,
-body.css-settings-manager
+body.theme-willemstad.css-settings-manager
     .style-settings-heading[data-id="syro-deck-tree-style"]
     + .style-settings-container
     .setting-item-control
@@ -81,57 +112,295 @@ body.css-settings-manager
     box-sizing: border-box;
 }
 
-body.css-settings-manager
+body.theme-willemstad.css-settings-manager
     .style-settings-heading[data-id="syro-deck-tree-style"]
+    + .style-settings-container
+    .setting-item-control
+    input:not(.slider) {
+    font-family: "DM Mono";
+    font-size: var(--font-smallest);
+    letter-spacing: -0.05em;
+}
+
+body.theme-willemstad.css-settings-manager
+    .style-settings-heading[data-id="syro-deck-tree-style"]
+    + .style-settings-container
+    > .setting-item:first-child,
+body.theme-willemstad.css-settings-manager
+    .style-settings-heading[data-id^="syro-"]
     + .style-settings-container
     > .setting-item:first-child {
     padding-top: 0.35rem;
 }
 
-body.css-settings-manager .style-settings-heading[data-id^="syro-"][data-level="2"] {
+body.theme-willemstad.css-settings-manager .style-settings-heading[data-id^="syro-"][data-level="2"] {
     margin-bottom: 0;
 }
 
-body.css-settings-manager
+body.theme-willemstad.css-settings-manager
     .style-settings-heading[data-id^="syro-"][data-level="2"]
     + .style-settings-container {
-    padding-top: var(--syro-ss-padding);
+    padding-left: var(--syro-wms-padding-ss);
+    padding-top: var(--syro-wms-padding-ss);
     padding-bottom: 0;
     margin-left: 0;
-    margin-bottom: var(--syro-ss-padding);
+    margin-bottom: var(--syro-wms-padding-ss);
     border-left: 1px solid var(--background-modifier-border);
     border-bottom: 1px solid var(--background-modifier-border);
-    padding-left: var(--syro-ss-padding);
 }
 
-body.is-phone.css-settings-manager
+body.theme-willemstad.is-phone.css-settings-manager
     .style-settings-heading[data-id^="syro-"][data-level="2"]
     + .style-settings-container {
     padding-top: 0;
 }
 
-body.css-settings-manager
+body.theme-willemstad.is-phone.css-settings-manager
+    .style-settings-heading[data-id^="syro-"][data-level="2"]
+    + .style-settings-container
+    > .setting-item:where(:not(.style-settings-info-text)):first-of-type {
+    padding-top: 0;
+}
+
+body.theme-willemstad.css-settings-manager
     .style-settings-heading[data-id^="syro-"][data-level="2"]
     + .style-settings-container
     .setting-item:last-of-type {
     padding-bottom: 0;
-    margin-bottom: var(--syro-ss-padding);
+    margin-bottom: var(--syro-wms-padding-ss);
 }
 
-body.css-settings-manager .style-settings-heading[data-id^="syro-"] .style-settings-collapse-indicator {
-    margin-left: var(--syro-ss-collapse-gap);
-    margin-right: var(--syro-ss-collapse-gap);
+body.theme-willemstad.css-settings-manager
+    .setting-item
+    + div
+    > .style-settings-heading.setting-item-heading[data-id^="syro-"] {
+    margin-top: 0;
 }
 
-body.css-settings-manager .style-settings-heading[data-id^="syro-"][data-level="2"].is-collapsed {
-    margin-bottom: var(--syro-ss-padding);
+body.theme-willemstad.css-settings-manager .style-settings-heading[data-id^="syro-"] .style-settings-collapse-indicator,
+body.theme-willemstad.css-settings-manager
+    .style-settings-heading[data-id="syro-deck-tree-style"]
+    .style-settings-collapse-indicator {
+    margin-left: var(--syro-wms-collapse-gap);
+    margin-right: var(--syro-wms-collapse-gap);
 }
 
-body.css-settings-manager
+body.theme-willemstad.css-settings-manager .style-settings-heading[data-id^="syro-"][data-level="2"].is-collapsed {
+    margin-bottom: var(--syro-wms-padding-ss);
+}
+
+body.theme-willemstad.css-settings-manager
     .style-settings-heading[data-id^="syro-"][data-level="2"]
     + .style-settings-container
     + .style-settings-heading[data-id^="syro-"] {
     padding-top: 0;
+}
+
+body.theme-willemstad.css-settings-manager
+    .style-settings-heading[data-id="syro-deck-tree-style"]
+    + .style-settings-container
+    .checkbox-container {
+    width: var(--header-icon-size);
+    height: var(--header-icon-size);
+    background-color: var(--color-base-30);
+    transition: var(--quicker-transition);
+}
+
+body.theme-willemstad.css-settings-manager
+    .style-settings-heading[data-id="syro-deck-tree-style"]
+    + .style-settings-container
+    .checkbox-container::after {
+    display: none;
+}
+
+body.theme-willemstad.css-settings-manager
+    .style-settings-heading[data-id="syro-deck-tree-style"]
+    + .style-settings-container
+    .checkbox-container,
+body.theme-willemstad.css-settings-manager
+    .style-settings-heading[data-id="syro-deck-tree-style"]
+    + .style-settings-container
+    .checkbox-container:hover,
+body.theme-willemstad.css-settings-manager
+    .style-settings-heading[data-id="syro-deck-tree-style"]
+    + .style-settings-container
+    .checkbox-container:focus {
+    box-shadow: 0 0 0 0 var(--background-modifier-border-focus);
+}
+
+body.theme-willemstad.css-settings-manager
+    .style-settings-heading[data-id="syro-deck-tree-style"]
+    + .style-settings-container
+    .checkbox-container:hover {
+    background-color: var(--color-base-50);
+}
+
+body.theme-willemstad.css-settings-manager
+    .style-settings-heading[data-id="syro-deck-tree-style"]
+    + .style-settings-container
+    .checkbox-container.is-enabled:hover {
+    background-color: var(--color-accent-2);
+}
+
+body.theme-willemstad.css-settings-manager
+    .style-settings-heading[data-id="syro-deck-tree-style"]
+    + .style-settings-container
+    .checkbox-container:focus {
+    background-color: var(--interactive-focus);
+}
+
+body.theme-willemstad.css-settings-manager
+    .style-settings-heading[data-id="syro-deck-tree-style"]
+    + .style-settings-container
+    .checkbox-container.mod-small {
+    width: calc(var(--toggle-s-thumb-height) + var(--toggle-s-border-width) * 2);
+}
+
+body.theme-willemstad.css-settings-manager
+    .style-settings-heading[data-id="syro-deck-tree-style"]
+    + .style-settings-container
+    .checkbox-container:focus-within,
+body.theme-willemstad.css-settings-manager
+    .style-settings-heading[data-id="syro-deck-tree-style"]
+    + .style-settings-container
+    .checkbox-container.mod-small:focus-within {
+    outline: none;
+}
+
+body.theme-willemstad.css-settings-manager
+    .style-settings-heading[data-id="syro-deck-tree-style"]
+    + .style-settings-container
+    :is(select, .dropdown) {
+    box-shadow: 0 0 0 0 var(--background-modifier-border-focus);
+}
+
+body.theme-willemstad.css-settings-manager
+    .style-settings-heading[data-id="syro-deck-tree-style"]
+    + .style-settings-container
+    :is(select, .dropdown):hover {
+    box-shadow: 0 0 0 1px var(--background-modifier-border-focus);
+}
+
+body.theme-willemstad.css-settings-manager
+    .style-settings-heading[data-id="syro-deck-tree-style"]
+    + .style-settings-container
+    :is(select, .dropdown):focus {
+    background-color: var(--interactive-focus);
+    box-shadow: 0 0 0 1px var(--background-modifier-border-focus);
+}
+
+body.theme-willemstad.css-settings-manager
+    .style-settings-heading[data-id="syro-deck-tree-style"]
+    + .style-settings-container
+    textarea:focus,
+body.theme-willemstad.css-settings-manager
+    .style-settings-heading[data-id="syro-deck-tree-style"]
+    + .style-settings-container
+    input[type="text"]:focus,
+body.theme-willemstad.css-settings-manager
+    .style-settings-heading[data-id="syro-deck-tree-style"]
+    + .style-settings-container
+    input[type="number"]:focus,
+body.theme-willemstad.css-settings-manager
+    .style-settings-heading[data-id="syro-deck-tree-style"]
+    + .style-settings-container
+    textarea:focus-visible,
+body.theme-willemstad.css-settings-manager
+    .style-settings-heading[data-id="syro-deck-tree-style"]
+    + .style-settings-container
+    input[type="text"]:focus-visible,
+body.theme-willemstad.css-settings-manager
+    .style-settings-heading[data-id="syro-deck-tree-style"]
+    + .style-settings-container
+    input[type="number"]:focus-visible {
+    box-shadow: none;
+}
+
+body.theme-willemstad.css-settings-manager
+    .style-settings-heading[data-id="syro-deck-tree-style"]
+    + .style-settings-container
+    input[type="range"] {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    flex: 1 1 auto;
+    gap: 10px;
+    background-color: transparent;
+}
+
+body.theme-willemstad.css-settings-manager
+    .style-settings-heading[data-id="syro-deck-tree-style"]
+    + .style-settings-container
+    input[type="range"]::before,
+body.theme-willemstad.css-settings-manager
+    .style-settings-heading[data-id="syro-deck-tree-style"]
+    + .style-settings-container
+    input[type="range"]::after {
+    display: block;
+    width: 20px;
+    color: var(--text-muted);
+    text-align: center;
+    flex: 0 0 auto;
+}
+
+body.theme-willemstad.css-settings-manager
+    .style-settings-heading[data-id="syro-deck-tree-style"]
+    + .style-settings-container
+    input[type="range"]::before {
+    content: attr(min);
+}
+
+body.theme-willemstad.css-settings-manager
+    .style-settings-heading[data-id="syro-deck-tree-style"]
+    + .style-settings-container
+    input[type="range"]::after {
+    content: attr(max);
+}
+
+body.theme-willemstad.css-settings-manager
+    .style-settings-heading[data-id="syro-deck-tree-style"]
+    + .style-settings-container
+    input[type="range"]::-webkit-slider-thumb {
+    box-shadow: none;
+    transform: translateY(-1.5px);
+}
+
+body.theme-willemstad.css-settings-manager
+    .style-settings-heading[data-id="syro-deck-tree-style"]
+    + .style-settings-container
+    input[type="range"]::-webkit-slider-thumb:hover,
+body.theme-willemstad.css-settings-manager
+    .style-settings-heading[data-id="syro-deck-tree-style"]
+    + .style-settings-container
+    input[type="range"]::-webkit-slider-thumb:active {
+    border: calc(var(--slider-thumb-border-width) * (1 + 2 * var(--hover-frac))) solid var(--color-accent-1);
+    box-shadow: none;
+}
+
+body.theme-willemstad.css-settings-manager
+    .style-settings-heading[data-id="syro-deck-tree-style"]
+    + .style-settings-container
+    input[type="range"]::-webkit-slider-runnable-track {
+    height: 3px;
+    background-color: var(--slider-track-background);
+}
+
+body.theme-willemstad.css-settings-manager
+    .style-settings-heading[data-id="syro-deck-tree-style"]
+    + .style-settings-container
+    input[type="range"]:hover::-webkit-slider-runnable-track {
+    background-color: var(--background-modifier-border-hover);
+}
+
+body.theme-willemstad:not(.is-mobile).css-settings-manager
+    .style-settings-heading[data-id="syro-deck-tree-style"]
+    + .style-settings-container
+    input[type="range"]:focus::-webkit-slider-thumb,
+body.theme-willemstad:not(.is-mobile).css-settings-manager
+    .style-settings-heading[data-id="syro-deck-tree-style"]
+    + .style-settings-container
+    input[type="range"]:focus-visible::-webkit-slider-thumb {
+    box-shadow: none;
 }
 
 /* @settings
