@@ -10,7 +10,7 @@ Syro was created to introduce a "time dimension" into Obsidian's otherwise stati
 
 **Spaced repetition** is not a new technology. It grows out of the *Testing Effect* and the *Spacing Effect* in cognitive psychology. By prompting active retrieval near the edge of the forgetting curve, it strengthens long-term memory with remarkable efficiency.
 
-In this field, **Anki** is undoubtedly one of the most widely used and successful milestone tools. Through extremely atomic card design, it has helped countless learners - especially medical students and language learners - tackle huge bodies of hard knowledge.
+In this field, **Anki** is undoubtedly one of the most widely used and successful landmark tools. Through extremely atomic card design, it has helped countless learners - especially medical students and language learners - tackle huge bodies of hard knowledge.
 
 ### Why introduce spaced repetition into Obsidian?
 
@@ -18,7 +18,7 @@ Even though standalone spaced-repetition software such as Anki is extraordinaril
 - To optimize test efficiency, traditional flashcards usually strip knowledge points down to their smallest form and remove them from context. During review, that can sometimes break the internal logic between ideas. If you have forgotten the original background, an isolated card can feel confusing.
 
 Syro takes a complementary path: **it preserves structure and context in place**.
-In Syro's workflow, your flashcards - whether Q/A or cloze - are embedded directly inside long-form Markdown notes. When you struggle with a card, you do not need to switch tools. You can reopen the surrounding text at any time, read the full paragraph above or below the card, and even jump through backlinks to related topics. This source-context review experience helps you avoid rote memorization while rebuilding the deeper connections behind the knowledge.
+In Syro's workflow, your flashcards - whether Q/A or cloze - are embedded directly inside long-form Markdown notes. When you struggle with a card, you do not need to switch tools. You can reopen the surrounding text at any time, read the full paragraph above or below the card, and even jump through backlinks to related topics. This review experience, grounded in the source text itself, helps you avoid rote memorization while rebuilding the deeper connections behind the knowledge.
 
 ---
 

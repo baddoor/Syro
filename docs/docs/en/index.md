@@ -5,7 +5,7 @@
 > *Note: The screenshots in this documentation are mainly provided as visual anchors. Please rely on the actual interface of the plugin version you currently have installed.*
 
 ## Welcome to Syro
-Syro is an Obsidian plugin deeply tailored for knowledge orchestration. It seamlessly integrates the scientific principles of **Spaced Repetition** and **Incremental Reading** into a plain-text local knowledge base.
+Syro is an Obsidian plugin deeply tailored for knowledge scheduling. It seamlessly integrates the scientific principles of **Spaced Repetition** and **Incremental Reading** into a plain-text local knowledge base.
 
 This official documentation is designed to help you start from zero and gradually learn how to turn static Markdown notes into dynamic review queues, so you can actively fight forgetting while building deeper contextual connections across your knowledge.
 
@@ -24,7 +24,7 @@ Focused on active recall and atomic knowledge testing.
 - [Managing Review and Flow](./flashcards/review-workflow.md) - Learn how to read the deck tree, score review sessions, and control your daily cognitive load.
 
 ### Part 3: Note Review
-Focused on the incremental digestion of long-form literature and study material.
+Focused on the gradual digestion of long-form literature and study material.
 - [Note Review Overview](./note-review/index.md) - Understand how incremental reading is implemented inside Obsidian.
 - [Managing the Note Review Queue](./note-review/queue-management.md) - Learn how to track notes, use the sidebar, and reshape reading order through tags and priority.
 - [Timeline: Save Reading History and Progress](./note-review/timeline.md) - Understand how the system preserves reading context across time.

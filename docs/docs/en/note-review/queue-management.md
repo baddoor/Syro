@@ -3,7 +3,7 @@
 ![Review Queue Sidebar](../../assets/media/en/note-review-queue.jpg)
 
 ## Module Overview
-The charm of incremental reading lies in the system's ability to pull out the few pieces that are most worth reading today from a sea of material. This page explains how to track notes, how to read the queue sidebar on the right, and how to reshape your reading order through tags and priority.
+The power of incremental reading lies in the system's ability to pull out the few pieces that are most worth reading today from a sea of material. This page explains how to track notes, how to read the queue sidebar on the right, and how to reshape your reading order through tags and priority.
 
 If you need to distribute attention across multiple long texts, or want to pin material from a particular domain near the top, this guide is the place to start.
 

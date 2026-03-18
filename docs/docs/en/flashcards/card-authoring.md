@@ -3,9 +3,9 @@
 ![Flashcard Example](../../assets/media/en/flashcard-cloze-example.jpg)
 
 ## Module Overview
-Turning notes into testable flashcards is the key step in building a personal spaced-repetition system (SRS). Syro's design philosophy is **"zero-friction crystallization"**: you do not need to leave your current writing flow. With the most natural Markdown markers, you can generate cards directly inline.
+Turning notes into testable flashcards is the key step in building a personal spaced-repetition system (SRS). Syro's design philosophy is **"frictionless crystallization"**: you do not need to leave your current writing flow. With the most natural Markdown markers, you can generate cards directly inline.
 
-This page introduces the main card formats supported by Syro. If you want to learn how to turn plain explanatory text into efficient test units, this is the guide to read.
+This page introduces the main card formats supported by Syro. If you want to learn how to turn plain explanatory text into efficient test units, this is the guide to start with.
 
 ## 1. Q/A Cards
 Q/A cards are the most classic and most stable flashcard format. They are especially suitable for term definitions, conceptual distinctions, or formula recall.
