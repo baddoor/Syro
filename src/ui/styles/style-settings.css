@@ -1,6 +1,6 @@
 /* ==========================================
    Syro Style Settings Bridge
-   Keeps Syro scoped, but follows Willemstad's Style Settings layout rhythm.
+   A Syro-scoped copy of Willemstad-X's structural Style Settings rules.
    ========================================== */
 
 body.css-settings-manager .style-settings-heading[data-id="syro-deck-tree-style"][data-level="0"],
@@ -8,64 +8,100 @@ body.css-settings-manager
     .style-settings-heading[data-id="syro-deck-tree-style"][data-level="0"]
     + .style-settings-container {
     --syro-ss-padding: 0.75em;
-    --syro-ss-heading-pad-y: var(--size-2-3, 0.625rem);
-    --syro-ss-heading-pad-x: var(--size-4-4, 1.25rem);
-    --syro-ss-row-gap: var(--size-4-2, 0.75rem);
-    --syro-ss-border: 1px solid var(--background-modifier-border);
+    --syro-ss-padding-left: 1.5rem;
+    --syro-ss-collapse-gap: 0.25rem;
 }
 
 body.css-settings-manager .style-settings-heading[data-id="syro-deck-tree-style"][data-level="0"] {
     margin-bottom: 0;
-    padding: var(--syro-ss-heading-pad-y) var(--syro-ss-heading-pad-x);
 }
 
 body.css-settings-manager
-    .style-settings-heading[data-id="syro-deck-tree-style"][data-level="0"]
-    .setting-item-name {
-    font-weight: var(--font-semibold, 600);
+    .vertical-tab-content
+    > .setting-item.setting-item-heading.style-settings-heading[data-id="syro-deck-tree-style"] {
+    border-bottom: 1px solid var(--background-modifier-border);
 }
 
 body.css-settings-manager
     .style-settings-heading[data-id="syro-deck-tree-style"][data-level="0"]
     + .style-settings-container {
-    padding-left: var(--syro-ss-heading-pad-x);
+    border-left: 1px solid var(--background-modifier-border);
+    padding-left: var(--syro-ss-padding-left);
     padding-bottom: 0;
 }
 
 body.is-phone.css-settings-manager
     .style-settings-heading[data-id="syro-deck-tree-style"][data-level="0"]
     + .style-settings-container {
+    border-left: none;
     padding-left: 0;
+}
+
+body.css-settings-manager
+    .style-settings-heading[data-id="syro-deck-tree-style"]
+    + .style-settings-container
+    .setting-item:not(.setting-item-heading) {
+    display: grid;
+    grid-template-columns: 1fr max-content;
+    column-gap: 2%;
+    padding: 0.5em;
+}
+
+body.is-phone.css-settings-manager
+    .style-settings-heading[data-id="syro-deck-tree-style"]
+    + .style-settings-container
+    .setting-item:not(.setting-item-heading) {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+}
+
+body.css-settings-manager
+    .style-settings-heading[data-id="syro-deck-tree-style"]
+    + .style-settings-container
+    .setting-item
+    > .setting-item-info {
+    margin-inline-end: 0;
+    min-width: 0;
+}
+
+body.css-settings-manager
+    .style-settings-heading[data-id="syro-deck-tree-style"]
+    + .style-settings-container
+    .setting-item-control
+    input,
+body.css-settings-manager
+    .style-settings-heading[data-id="syro-deck-tree-style"]
+    + .style-settings-container
+    .setting-item-control
+    select {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
+    box-sizing: border-box;
+}
+
+body.css-settings-manager
+    .style-settings-heading[data-id="syro-deck-tree-style"]
+    + .style-settings-container
+    > .setting-item:first-child {
+    padding-top: 0.35rem;
 }
 
 body.css-settings-manager .style-settings-heading[data-id^="syro-"][data-level="2"] {
     margin-bottom: 0;
-    padding: var(--syro-ss-padding) 0 0;
-    border-bottom: none;
-}
-
-body.css-settings-manager .style-settings-heading[data-id^="syro-"][data-level="2"] .setting-item-name {
-    font-size: 13px;
-    font-weight: var(--font-semibold, 600);
-    color: var(--text-muted);
-}
-
-body.css-settings-manager
-    .style-settings-heading[data-id^="syro-"][data-level="2"]
-    .style-settings-collapse-indicator {
-    color: var(--text-faint);
-    margin-right: var(--size-4-1, 6px);
 }
 
 body.css-settings-manager
     .style-settings-heading[data-id^="syro-"][data-level="2"]
     + .style-settings-container {
-    padding-left: var(--syro-ss-padding);
     padding-top: var(--syro-ss-padding);
     padding-bottom: 0;
-    margin: 0 0 var(--syro-ss-padding);
-    border-left: var(--syro-ss-border);
-    border-bottom: var(--syro-ss-border);
+    margin-left: 0;
+    margin-bottom: var(--syro-ss-padding);
+    border-left: 1px solid var(--background-modifier-border);
+    border-bottom: 1px solid var(--background-modifier-border);
+    padding-left: var(--syro-ss-padding);
 }
 
 body.is-phone.css-settings-manager
@@ -77,204 +113,25 @@ body.is-phone.css-settings-manager
 body.css-settings-manager
     .style-settings-heading[data-id^="syro-"][data-level="2"]
     + .style-settings-container
-    > .setting-item:not(.setting-item-heading) {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) max-content;
-    column-gap: var(--syro-ss-row-gap);
-    row-gap: 0.35em;
-    align-items: start;
-    border: none;
-    margin: 0;
-    padding: 0.5em 0 0.5em var(--syro-ss-padding);
-    min-height: auto;
-    background: transparent;
-}
-
-body.is-phone.css-settings-manager
-    .style-settings-heading[data-id^="syro-"][data-level="2"]
-    + .style-settings-container
-    > .setting-item:not(.setting-item-heading) {
-    grid-template-columns: 1fr;
-}
-
-body.css-settings-manager
-    .style-settings-heading[data-id^="syro-"][data-level="2"]
-    + .style-settings-container
-    > .setting-item:not(.setting-item-heading):last-of-type {
+    .setting-item:last-of-type {
     padding-bottom: 0;
+    margin-bottom: var(--syro-ss-padding);
+}
+
+body.css-settings-manager .style-settings-heading[data-id^="syro-"] .style-settings-collapse-indicator {
+    margin-left: var(--syro-ss-collapse-gap);
+    margin-right: var(--syro-ss-collapse-gap);
+}
+
+body.css-settings-manager .style-settings-heading[data-id^="syro-"][data-level="2"].is-collapsed {
     margin-bottom: var(--syro-ss-padding);
 }
 
 body.css-settings-manager
     .style-settings-heading[data-id^="syro-"][data-level="2"]
     + .style-settings-container
-    > .setting-item:not(.setting-item-heading)
-    .setting-item-info {
-    flex: unset;
-    margin-right: 0;
-    min-width: 0;
-}
-
-body.css-settings-manager
-    .style-settings-heading[data-id^="syro-"][data-level="2"]
-    + .style-settings-container
-    > .setting-item:not(.setting-item-heading)
-    .setting-item-name {
-    font-size: 14px;
-    font-weight: var(--font-medium, 500);
-    color: var(--text-normal);
-}
-
-body.css-settings-manager
-    .style-settings-heading[data-id^="syro-"][data-level="2"]
-    + .style-settings-container
-    > .setting-item:not(.setting-item-heading)
-    .setting-item-description {
-    color: var(--text-muted);
-    font-size: var(--font-ui-smaller, 12px);
-    line-height: 1.5;
-    margin-top: 0.25em;
+    + .style-settings-heading[data-id^="syro-"] {
     padding-top: 0;
-}
-
-body.css-settings-manager
-    .style-settings-heading[data-id^="syro-"][data-level="2"]
-    + .style-settings-container
-    > .setting-item:not(.setting-item-heading)
-    .setting-item-control {
-    display: flex;
-    align-items: center;
-    justify-self: end;
-    gap: var(--size-4-1, 6px);
-    min-width: min(100%, 14rem);
-}
-
-body.is-phone.css-settings-manager
-    .style-settings-heading[data-id^="syro-"][data-level="2"]
-    + .style-settings-container
-    > .setting-item:not(.setting-item-heading)
-    .setting-item-control {
-    justify-self: stretch;
-    min-width: 0;
-}
-
-body.css-settings-manager
-    .style-settings-heading[data-id^="syro-"][data-level="2"]
-    + .style-settings-container
-    > .setting-item:not(.setting-item-heading)
-    .setting-item-control
-    input,
-body.css-settings-manager
-    .style-settings-heading[data-id^="syro-"][data-level="2"]
-    + .style-settings-container
-    > .setting-item:not(.setting-item-heading)
-    .setting-item-control
-    select,
-body.css-settings-manager
-    .style-settings-heading[data-id^="syro-"][data-level="2"]
-    + .style-settings-container
-    > .setting-item:not(.setting-item-heading)
-    .setting-item-control
-    textarea {
-    width: 100%;
-    max-width: 100%;
-    box-sizing: border-box;
-}
-
-body.css-settings-manager
-    .style-settings-heading[data-id^="syro-"][data-level="2"]
-    + .style-settings-container
-    > .setting-item:not(.setting-item-heading)
-    .setting-item-control
-    input:not(.slider),
-body.css-settings-manager
-    .style-settings-heading[data-id^="syro-"][data-level="2"]
-    + .style-settings-container
-    > .setting-item:not(.setting-item-heading)
-    .setting-item-control
-    select,
-body.css-settings-manager
-    .style-settings-heading[data-id^="syro-"][data-level="2"]
-    + .style-settings-container
-    > .setting-item:not(.setting-item-heading)
-    .setting-item-control
-    textarea {
-    background-color: var(--interactive-normal);
-    border-width: 0;
-    border-radius: var(--input-radius, var(--radius-s, 6px));
-    box-shadow: 0 0 0 0 var(--background-modifier-border-focus);
-    transition:
-        background-color 0.14s ease,
-        box-shadow 0.14s ease;
-}
-
-body.css-settings-manager
-    .style-settings-heading[data-id^="syro-"][data-level="2"]
-    + .style-settings-container
-    > .setting-item:not(.setting-item-heading)
-    .setting-item-control
-    input:not(.slider):hover,
-body.css-settings-manager
-    .style-settings-heading[data-id^="syro-"][data-level="2"]
-    + .style-settings-container
-    > .setting-item:not(.setting-item-heading)
-    .setting-item-control
-    select:hover,
-body.css-settings-manager
-    .style-settings-heading[data-id^="syro-"][data-level="2"]
-    + .style-settings-container
-    > .setting-item:not(.setting-item-heading)
-    .setting-item-control
-    textarea:hover {
-    box-shadow: 0 0 0 1px var(--background-modifier-border-focus);
-}
-
-body.css-settings-manager
-    .style-settings-heading[data-id^="syro-"][data-level="2"]
-    + .style-settings-container
-    > .setting-item:not(.setting-item-heading)
-    .setting-item-control
-    input:not(.slider):focus,
-body.css-settings-manager
-    .style-settings-heading[data-id^="syro-"][data-level="2"]
-    + .style-settings-container
-    > .setting-item:not(.setting-item-heading)
-    .setting-item-control
-    input:not(.slider):focus-visible,
-body.css-settings-manager
-    .style-settings-heading[data-id^="syro-"][data-level="2"]
-    + .style-settings-container
-    > .setting-item:not(.setting-item-heading)
-    .setting-item-control
-    select:focus,
-body.css-settings-manager
-    .style-settings-heading[data-id^="syro-"][data-level="2"]
-    + .style-settings-container
-    > .setting-item:not(.setting-item-heading)
-    .setting-item-control
-    select:focus-visible,
-body.css-settings-manager
-    .style-settings-heading[data-id^="syro-"][data-level="2"]
-    + .style-settings-container
-    > .setting-item:not(.setting-item-heading)
-    .setting-item-control
-    textarea:focus,
-body.css-settings-manager
-    .style-settings-heading[data-id^="syro-"][data-level="2"]
-    + .style-settings-container
-    > .setting-item:not(.setting-item-heading)
-    .setting-item-control
-    textarea:focus-visible {
-    background-color: var(--interactive-focus);
-    box-shadow: 0 0 0 1px var(--background-modifier-border-focus);
-}
-
-body.css-settings-manager
-    .style-settings-heading[data-id^="syro-"][data-level="2"]
-    + .style-settings-container
-    > .style-settings-info-text
-    .setting-item-description {
-    margin-top: 0;
 }
 
 /* @settings
