@@ -1397,8 +1397,12 @@ export default class SRPlugin extends Plugin {
                         },
                     },
                 );
-                if (ankiSyncResult.errors.length > 0 && settings.showRuntimeDebugMessages) {
+                if (ankiSyncResult.errors.length > 0) {
                     console.warn("[Syro-Anki] Sync finished with warnings:", ankiSyncResult.errors);
+                    new Notice(
+                        `[Syro-Anki] 同步完成，但有 ${ankiSyncResult.errors.length} 个问题；详见开发者控制台`,
+                        8000,
+                    );
                 }
             }
             progressTip?.update(totalNotes, totalNotes, "正在构建牌组树...");

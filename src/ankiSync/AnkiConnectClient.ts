@@ -1,5 +1,6 @@
 import { requestUrl } from "obsidian";
 import {
+    AnkiCanAddNoteResult,
     AnkiCardInfo,
     AnkiNoteInfo,
     DEFAULT_ANKI_MODEL_NAME,
@@ -17,6 +18,7 @@ interface RawNoteInfo {
     cards: number[];
     tags: string[];
     fields: Record<string, { value: string }>;
+    mod?: number;
 }
 
 interface RawCardInfo {
@@ -54,6 +56,7 @@ function normalizeNoteInfo(raw: RawNoteInfo): AnkiNoteInfo {
         modelName: raw.modelName,
         fields,
         tags: raw.tags ?? [],
+        mod: raw.mod ?? 0,
     };
 }
 
@@ -211,6 +214,16 @@ export class AnkiConnectClient {
         return this.invoke<Array<number | null>>("addNotes", { notes });
     }
 
+    async canAddNotesWithErrorDetail(
+        notes: Array<Record<string, unknown>>,
+    ): Promise<AnkiCanAddNoteResult[]> {
+        if (notes.length === 0) {
+            return [];
+        }
+
+        return this.invoke<AnkiCanAddNoteResult[]>("canAddNotesWithErrorDetail", { notes });
+    }
+
     async updateNoteFields(noteId: number, fields: Record<string, string>): Promise<void> {
         await this.invoke("updateNoteFields", {
             note: {
@@ -220,6 +233,11 @@ export class AnkiConnectClient {
         });
     }
 
+    private async notesInfoByParams(params: Record<string, unknown>): Promise<AnkiNoteInfo[]> {
+        const raw = await this.invoke<RawNoteInfo[]>("notesInfo", params);
+        return raw.map(normalizeNoteInfo);
+    }
+
     async notesInfo(noteIds: number[]): Promise<AnkiNoteInfo[]> {
         if (noteIds.length === 0) {
             return [];
@@ -227,10 +245,17 @@ export class AnkiConnectClient {
 
         const result: AnkiNoteInfo[] = [];
         for (const chunk of chunkArray(noteIds)) {
-            const raw = await this.invoke<RawNoteInfo[]>("notesInfo", { notes: chunk });
-            result.push(...raw.map(normalizeNoteInfo));
+            result.push(...(await this.notesInfoByParams({ notes: chunk })));
         }
         return result;
+    }
+
+    async notesInfoByQuery(query: string): Promise<AnkiNoteInfo[]> {
+        if (!query?.trim()) {
+            return [];
+        }
+
+        return this.notesInfoByParams({ query });
     }
 
     async cardsInfo(cardIds: number[]): Promise<AnkiCardInfo[]> {

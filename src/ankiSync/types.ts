@@ -173,6 +173,12 @@ export interface AnkiNoteInfo {
     modelName: string;
     fields: Record<string, string>;
     tags: string[];
+    mod: number;
+}
+
+export interface AnkiCanAddNoteResult {
+    canAdd: boolean;
+    error?: string;
 }
 
 export interface BuiltSyroCardSnapshot {

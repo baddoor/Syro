@@ -152,6 +152,8 @@ describe("ankiSync service", () => {
         const client = {
             getVersion: jest.fn(async () => 6),
             ensureModel: jest.fn(async () => undefined),
+            notesInfoByQuery: jest.fn(async () => []),
+            canAddNotesWithErrorDetail: jest.fn(async () => []),
             updateNoteFields: jest.fn(async () => {
                 throw new Error("offline");
             }),
@@ -229,6 +231,8 @@ describe("ankiSync service", () => {
         const client = {
             getVersion: jest.fn(async () => 6),
             ensureModel: jest.fn(async () => undefined),
+            notesInfoByQuery: jest.fn(async () => []),
+            canAddNotesWithErrorDetail: jest.fn(async () => []),
             updateNoteFields: jest.fn(async () => undefined),
             setSpecificCardValues: jest.fn(async () => undefined),
             notesInfo: jest.fn(async () => [
@@ -280,6 +284,190 @@ describe("ankiSync service", () => {
         expect(result.writebacks).toBe(1);
     });
 
+    it("recovers mappings from remote Syro notes when the sidecar is empty", async () => {
+        const item = createItem();
+        const { deck, cardHash, filePath } = createDeckWithCard(item);
+        const snapshot = { ...createReviewSnapshotFromItem(item), updatedAt: 1000 };
+        const store = new AnkiSyncStateStore(() => ".obsidian/plugins/syro/tracked_files.json");
+        const client = {
+            getVersion: jest.fn(async () => 6),
+            ensureModel: jest.fn(async () => undefined),
+            notesInfoByQuery: jest.fn(async () => [
+                {
+                    noteId: 30,
+                    cards: [40],
+                    modelName: "Syro::Card",
+                    tags: ["syro-sync"],
+                    mod: 10,
+                    fields: {
+                        syro_item_uuid: item.uuid,
+                        syro_file_path: filePath,
+                        syro_card_hash: cardHash,
+                        syro_snapshot: JSON.stringify(snapshot),
+                        syro_updated_at: "1000",
+                    },
+                },
+            ]),
+            canAddNotesWithErrorDetail: jest.fn(async () => []),
+            updateNoteFields: jest.fn(async () => undefined),
+            setSpecificCardValues: jest.fn(async () => undefined),
+            notesInfo: jest.fn(async () => [
+                {
+                    noteId: 30,
+                    cards: [40],
+                    modelName: "Syro::Card",
+                    tags: ["syro-sync"],
+                    mod: 10,
+                    fields: {
+                        syro_item_uuid: item.uuid,
+                        syro_file_path: filePath,
+                        syro_card_hash: cardHash,
+                        syro_snapshot: JSON.stringify(snapshot),
+                        syro_updated_at: "1000",
+                    },
+                },
+            ]),
+            cardsInfo: jest.fn(async () => [
+                {
+                    cardId: 40,
+                    noteId: 30,
+                    deckName: "Syro::Deck",
+                    factor: 2500,
+                    interval: 3,
+                    type: 0,
+                    queue: 0,
+                    due: 100,
+                    reps: 3,
+                    lapses: 1,
+                    left: 0,
+                    mod: 10,
+                },
+            ]),
+            addNotes: jest.fn(async () => {
+                throw new Error("should not create");
+            }),
+            ensureDecks: jest.fn(async () => []),
+            changeDeck: jest.fn(async () => undefined),
+            deleteNotes: jest.fn(async () => undefined),
+        };
+        const service = new AnkiSyncService(createPlugin(item), {
+            stateStore: store,
+            clientFactory: () => client as any,
+            now: () => 3500,
+        });
+        await service.initialize();
+
+        const result = await service.sync(deck, "sig-remote");
+        const reloaded = await store.load();
+
+        expect(client.notesInfoByQuery).toHaveBeenCalledWith("tag:syro-sync");
+        expect(client.addNotes).not.toHaveBeenCalled();
+        expect(reloaded.items[item.uuid].mapping).toMatchObject({
+            noteId: 30,
+            cardId: 40,
+            deckName: "Syro::Deck",
+        });
+        expect(result.noop).toBe(1);
+    });
+
+    it("passes allowDuplicate=true so same-front cards can both be created", async () => {
+        const first = createItem();
+        const second = createItem();
+        second.uuid = "uuid-2";
+
+        const firstCard = new Card({ front: "front", back: "back", cardIdx: 0 });
+        firstCard.repetitionItem = first;
+        firstCard.question = {
+            topicPathList: { list: [new TopicPath(["Deck"])] },
+            note: { filePath: "note-a.md" },
+            questionContext: ["context"],
+            lineNo: 10,
+        } as any;
+
+        const secondCard = new Card({ front: "front", back: "back", cardIdx: 1 });
+        secondCard.repetitionItem = second;
+        secondCard.question = {
+            topicPathList: { list: [new TopicPath(["Deck"])] },
+            note: { filePath: "note-b.md" },
+            questionContext: ["context"],
+            lineNo: 12,
+        } as any;
+
+        const deck = new Deck("root", null);
+        deck.dueFlashcards.push(firstCard, secondCard);
+
+        const client = {
+            getVersion: jest.fn(async () => 6),
+            ensureModel: jest.fn(async () => undefined),
+            notesInfoByQuery: jest.fn(async () => []),
+            canAddNotesWithErrorDetail: jest.fn(async () => []),
+            ensureDecks: jest.fn(async () => []),
+            updateNoteFields: jest.fn(async () => undefined),
+            setSpecificCardValues: jest.fn(async () => undefined),
+            notesInfo: jest.fn(async (noteIds: number[]) =>
+                noteIds.map((noteId) => ({
+                    noteId,
+                    cards: [noteId + 100],
+                    modelName: "Syro::Card",
+                    tags: ["syro-sync"],
+                    mod: 1,
+                    fields: {},
+                })),
+            ),
+            cardsInfo: jest.fn(async () => []),
+            addNotes: jest.fn(async () => [10, 11]),
+            changeDeck: jest.fn(async () => undefined),
+            deleteNotes: jest.fn(async () => undefined),
+        };
+        const service = new AnkiSyncService(createPlugin(first), {
+            clientFactory: () => client as any,
+            now: () => 3600,
+        });
+        await service.initialize();
+
+        const result = await service.sync(deck, "sig-duplicates");
+        const batchInput = (client.addNotes.mock.calls as any[][])[0][0] as Array<{
+            options: { allowDuplicate: boolean };
+        }>;
+
+        expect(result.created).toBe(2);
+        expect(batchInput).toHaveLength(2);
+        expect(batchInput.every((note: any) => note.options.allowDuplicate === true)).toBe(true);
+    });
+
+    it("records detailed create failure reasons when Anki returns null", async () => {
+        const item = createItem();
+        const { deck } = createDeckWithCard(item);
+        const client = {
+            getVersion: jest.fn(async () => 6),
+            ensureModel: jest.fn(async () => undefined),
+            notesInfoByQuery: jest.fn(async () => []),
+            canAddNotesWithErrorDetail: jest.fn(async () => [
+                { canAdd: false, error: "cannot create note because it is a duplicate" },
+            ]),
+            ensureDecks: jest.fn(async () => []),
+            updateNoteFields: jest.fn(async () => undefined),
+            setSpecificCardValues: jest.fn(async () => undefined),
+            notesInfo: jest.fn(async () => []),
+            cardsInfo: jest.fn(async () => []),
+            addNotes: jest.fn(async () => [null]),
+            changeDeck: jest.fn(async () => undefined),
+            deleteNotes: jest.fn(async () => undefined),
+        };
+        const service = new AnkiSyncService(createPlugin(item), {
+            clientFactory: () => client as any,
+            now: () => 3700,
+        });
+        await service.initialize();
+
+        const result = await service.sync(deck, "sig-null");
+
+        expect(result.created).toBe(0);
+        expect(result.errors.some((message) => message.includes("cannot create note because it is a duplicate"))).toBe(
+            true,
+        );
+    });
+
     it("ensures decks, falls back to single-note creation, and reports progress", async () => {
         const item = createItem();
         const { deck } = createDeckWithCard(item);
@@ -287,6 +475,8 @@ describe("ankiSync service", () => {
         const client = {
             getVersion: jest.fn(async () => 6),
             ensureModel: jest.fn(async () => undefined),
+            notesInfoByQuery: jest.fn(async () => []),
+            canAddNotesWithErrorDetail: jest.fn(async () => []),
             ensureDecks: jest.fn(async (deckNames: string[], onProgress?: Function) => {
                 deckNames.forEach((deckName, index) => onProgress?.(index + 1, deckNames.length, deckName));
                 return [];
@@ -347,6 +537,8 @@ describe("ankiSync service", () => {
         const client = {
             getVersion: jest.fn(async () => 6),
             ensureModel: jest.fn(async () => undefined),
+            notesInfoByQuery: jest.fn(async () => []),
+            canAddNotesWithErrorDetail: jest.fn(async () => []),
             ensureDecks: jest.fn(async () => []),
             updateNoteFields: jest.fn(async () => undefined),
             setSpecificCardValues: jest.fn(async () => undefined),

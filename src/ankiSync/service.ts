@@ -9,6 +9,7 @@ import { buildSyroAnkiCardSnapshotMap, createReviewSnapshotFromItem } from "src/
 import { chooseLatestSnapshot, areSnapshotsEquivalent, planAnkiSyncOperations } from "src/ankiSync/planner";
 import { AnkiSyncStateStore, ensureAnkiSyncItemState, pruneAnkiSyncState } from "src/ankiSync/stateStore";
 import {
+    AnkiCanAddNoteResult,
     AnkiCardInfo,
     AnkiNoteInfo,
     AnkiSyncPhase,
@@ -29,6 +30,7 @@ import {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DETACHED_DECK_NAME = "Syro::Detached";
+const REMOTE_DISCOVERY_QUERY = "tag:syro-sync";
 
 export interface AnkiSyncPluginAdapter {
     data: { settings: SRSettings };
@@ -192,7 +194,7 @@ export class AnkiSyncService {
             fields: op.payload?.fields,
             tags: ["syro-sync"],
             options: {
-                allowDuplicate: false,
+                allowDuplicate: true,
             },
         };
     }
@@ -207,6 +209,96 @@ export class AnkiSyncService {
             noteInfos.set(noteInfo.noteId, noteInfo);
         }
         return noteInfos;
+    }
+
+    private formatCreateContext(op: AnkiSyncPlanOperation): string {
+        return `uuid=${op.itemUuid} deck=${op.payload?.deckName ?? "unknown"} model=${op.payload?.modelName ?? "unknown"}`;
+    }
+
+    private async diagnoseAddNoteFailure(
+        client: AnkiConnectClient,
+        noteInput: Record<string, unknown>,
+    ): Promise<string | null> {
+        try {
+            const detail = (await client.canAddNotesWithErrorDetail([noteInput]))[0] as
+                | AnkiCanAddNoteResult
+                | undefined;
+            return detail?.canAdd === false ? detail.error ?? "cannot add note" : null;
+        } catch (error) {
+            return `failed to diagnose addNote: ${String(error)}`;
+        }
+    }
+
+    private async discoverRemoteMappings(
+        client: AnkiConnectClient,
+        state: AnkiSyncStateFile,
+        candidateUuids: Set<string>,
+        result: AnkiSyncRunResult,
+    ): Promise<void> {
+        if (candidateUuids.size === 0) {
+            return;
+        }
+
+        const noteInfos = await client.notesInfoByQuery(REMOTE_DISCOVERY_QUERY);
+        const relevantNotes = noteInfos.filter((noteInfo) => {
+            const itemUuid = noteInfo.fields.syro_item_uuid?.trim();
+            return !!itemUuid && candidateUuids.has(itemUuid);
+        });
+        if (relevantNotes.length === 0) {
+            return;
+        }
+
+        const primaryCardIds = Array.from(
+            new Set(
+                relevantNotes
+                    .map((noteInfo) => noteInfo.cards?.[0] ?? 0)
+                    .filter((cardId) => cardId > 0),
+            ),
+        );
+        const cardInfoById = new Map<number, AnkiCardInfo>();
+        for (const cardInfo of await client.cardsInfo(primaryCardIds)) {
+            cardInfoById.set(cardInfo.cardId, cardInfo);
+        }
+
+        const resolved = new Map<string, { noteInfo: AnkiNoteInfo; cardInfo: AnkiCardInfo; sortKey: number }>();
+        for (const noteInfo of relevantNotes) {
+            const itemUuid = noteInfo.fields.syro_item_uuid.trim();
+            const cardId = noteInfo.cards?.[0] ?? 0;
+            const cardInfo = cardInfoById.get(cardId);
+            if (!cardInfo) {
+                continue;
+            }
+
+            const sortKey = Math.max((noteInfo.mod ?? 0) * 1000, (cardInfo.mod ?? 0) * 1000);
+            const existing = resolved.get(itemUuid);
+            if (!existing || sortKey > existing.sortKey) {
+                if (existing) {
+                    result.errors.push(
+                        `[discover:${itemUuid}] multiple remote notes found; using note ${noteInfo.noteId} over ${existing.noteInfo.noteId}`,
+                    );
+                }
+                resolved.set(itemUuid, { noteInfo, cardInfo, sortKey });
+                continue;
+            }
+
+            result.errors.push(
+                `[discover:${itemUuid}] multiple remote notes found; keeping note ${existing.noteInfo.noteId} over ${noteInfo.noteId}`,
+            );
+        }
+
+        for (const [itemUuid, entry] of resolved.entries()) {
+            const itemState = ensureAnkiSyncItemState(state, itemUuid);
+            itemState.mapping = {
+                noteId: entry.noteInfo.noteId,
+                cardId: entry.cardInfo.cardId,
+                modelName: entry.noteInfo.modelName || DEFAULT_ANKI_MODEL_NAME,
+                deckName: entry.cardInfo.deckName,
+                filePath: entry.noteInfo.fields.syro_file_path ?? itemState.lastKnownFilePath,
+                cardHash: entry.noteInfo.fields.syro_card_hash ?? itemState.lastKnownCardHash,
+            };
+            itemState.lastKnownFilePath = itemState.mapping.filePath;
+            itemState.lastKnownCardHash = itemState.mapping.cardHash;
+        }
     }
 
     private registerCreatedNote(
@@ -638,18 +730,24 @@ export class AnkiSyncService {
         state: AnkiSyncStateFile,
         result: AnkiSyncRunResult,
     ): Promise<void> {
+        const noteInput = this.buildAddNoteInput(op);
         try {
-            const addResults = await client.addNotes([this.buildAddNoteInput(op)]);
+            const addResults = await client.addNotes([noteInput]);
             const noteId = addResults[0];
             if (typeof noteId !== "number") {
-                result.errors.push(`[create:${op.itemUuid}] addNotes returned null`);
+                const detail = await this.diagnoseAddNoteFailure(client, noteInput);
+                result.errors.push(
+                    `[create:${op.itemUuid}] ${this.formatCreateContext(op)} ${detail ?? "addNotes returned null"}`,
+                );
                 return;
             }
 
             const noteInfo = (await client.notesInfo([noteId]))[0];
             this.registerCreatedNote(op, noteId, noteInfo, state, result);
         } catch (error) {
-            result.errors.push(`[create:${op.itemUuid}] ${String(error)}`);
+            const detail = await this.diagnoseAddNoteFailure(client, noteInput);
+            const suffix = detail ? `; ${detail}` : "";
+            result.errors.push(`[create:${op.itemUuid}] ${this.formatCreateContext(op)} ${String(error)}${suffix}`);
         }
     }
 
@@ -693,7 +791,6 @@ export class AnkiSyncService {
                     );
                 }
             } catch (error) {
-                result.errors.push(`[create:batch] ${String(error)}`);
                 for (const op of chunk) {
                     await this.createSingleNote(client, op, state, result);
                     processed += 1;
@@ -839,6 +936,16 @@ export class AnkiSyncService {
             reportProgress("prepare", 1, 1, "Anki 已连接");
 
             const builtSnapshots = buildSyroAnkiCardSnapshotMap(deckTree, state.items, modelName);
+            try {
+                await this.discoverRemoteMappings(
+                    client,
+                    state,
+                    new Set([...builtSnapshots.keys(), ...Object.keys(state.items)]),
+                    result,
+                );
+            } catch (error) {
+                result.errors.push(`[discover] ${String(error)}`);
+            }
             await this.flushPendingWritebacks(client, state, result, (current, total, message) =>
                 reportProgress("writeback", current, total, message),
             );
@@ -901,7 +1008,14 @@ export class AnkiSyncService {
             state.global.lastFullSignature = syncSignature;
             pruneAnkiSyncState(state, new Set(builtSnapshots.keys()));
             await this.persistState();
-            reportProgress("finalize", 1, 1, "Anki 同步完成");
+            reportProgress(
+                "finalize",
+                1,
+                1,
+                result.errors.length > 0
+                    ? "Anki \u540c\u6b65\u5b8c\u6210\uff08\u6709\u8b66\u544a\uff09"
+                    : "Anki \u540c\u6b65\u5b8c\u6210",
+            );
         } catch (error) {
             state.global.retry.consecutiveFailures += 1;
             state.global.retry.lastFailureAt = this.now();

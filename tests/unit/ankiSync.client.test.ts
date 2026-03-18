@@ -91,4 +91,107 @@ describe("AnkiConnectClient", () => {
             },
         ]);
     });
+
+    it("queries notesInfo by search query for remote mapping discovery", async () => {
+        mockedRequestUrl.mockResolvedValue({
+            status: 200,
+            headers: {},
+            arrayBuffer: new ArrayBuffer(0),
+            json: {
+                error: null,
+                result: [
+                    {
+                        noteId: 10,
+                        modelName: "Syro::Card",
+                        cards: [20],
+                        tags: ["syro-sync"],
+                        mod: 123,
+                        fields: {
+                            syro_item_uuid: { value: "uuid-1" },
+                        },
+                    },
+                ],
+            },
+            text: JSON.stringify({
+                error: null,
+                result: [
+                    {
+                        noteId: 10,
+                        modelName: "Syro::Card",
+                        cards: [20],
+                        tags: ["syro-sync"],
+                        mod: 123,
+                        fields: {
+                            syro_item_uuid: { value: "uuid-1" },
+                        },
+                    },
+                ],
+            }),
+        } as any);
+
+        const client = new AnkiConnectClient("http://127.0.0.1:8765");
+        const result = await client.notesInfoByQuery("tag:syro-sync");
+
+        expect(result).toEqual([
+            {
+                noteId: 10,
+                modelName: "Syro::Card",
+                cards: [20],
+                tags: ["syro-sync"],
+                mod: 123,
+                fields: {
+                    syro_item_uuid: "uuid-1",
+                },
+            },
+        ]);
+    });
+
+    it("calls canAddNotesWithErrorDetail for detailed add-note diagnostics", async () => {
+        mockedRequestUrl.mockResolvedValue({
+            status: 200,
+            headers: {},
+            arrayBuffer: new ArrayBuffer(0),
+            json: {
+                error: null,
+                result: [{ canAdd: false, error: "cannot create note because it is a duplicate" }],
+            },
+            text: JSON.stringify({
+                error: null,
+                result: [{ canAdd: false, error: "cannot create note because it is a duplicate" }],
+            }),
+        } as any);
+
+        const client = new AnkiConnectClient("http://127.0.0.1:8765");
+        const result = await client.canAddNotesWithErrorDetail([
+            {
+                deckName: "Syro::Deck",
+                modelName: "Syro::Card",
+                fields: { Front: "front" },
+            },
+        ]);
+
+        expect(result).toEqual([{ canAdd: false, error: "cannot create note because it is a duplicate" }]);
+        expect(mockedRequestUrl).toHaveBeenCalledWith({
+            url: "http://127.0.0.1:8765",
+            method: "POST",
+            contentType: "application/json",
+            headers: {
+                Accept: "application/json",
+            },
+            throw: false,
+            body: JSON.stringify({
+                action: "canAddNotesWithErrorDetail",
+                version: 6,
+                params: {
+                    notes: [
+                        {
+                            deckName: "Syro::Deck",
+                            modelName: "Syro::Card",
+                            fields: { Front: "front" },
+                        },
+                    ],
+                },
+            }),
+        });
+    });
 });
