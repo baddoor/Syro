@@ -1,27 +1,9 @@
 /** @jsxImportSource react */
 /**
- * [閻庡湱鎳撳▍鎶?濠㈣泛绉崇弧鍕濮樺磭妯堥柣銊ュ鐎靛瞼鈧湱鎳撳▍鎺楁晬瀹€鈧鎼佹偠?Card 闁?Deck 閻熸瑥妫楀ù姗€鎯冮崟顐㈢€奸柟骞垮灩婵晠鎮藉Ч鍥ｅ亾?
- * 鐟滅増鎸昏ぐ鍐╃鐠虹儤鍊甸柛娆愭緲閹挸顫㈤妷銉ф殮闁瑰瓨鍔栧鍌炴晬鐏炵晫鏆婂ù鍏间亢閸ゆ粓宕濋妸锕€澶嶉柡鈧捄铏圭暛闁圭虎鍘界粔鐑藉箒椤栨稒闄嶉悘鐐╁亾闂侇喓鍔岄崺娑㈠棘閹殿喖顤傜紓浣稿閻栧弶绋夋繝鍕暠闁轰焦婢橀悺褔鏁?
- * 闁兼澘濂旂粭澶嬪濮樿泛娅㈤柡鍌涙緲婵偞娼懞銉︽濞戞搩浜妴澶愭椤喚绀夐柟纰樺亾濞寸姰鍎抽弫銈夊箣閾氬倻鐟濆ù鍏兼皑濠€鍛村礆閺夎法娼屾鐐存礋濡垶鎮滄担纰樺亾?
- *
- * 閻庣懓鍟﹢顏呫亜閸︻厽绐楀☉鎿冨幖閻ɑ绂嶆惔顖滅獥闁伙絽鐭傚鎵沪?
- *
- * 閻庣懓鍟╃槐浼存偨閵娿儱鐓傞柛婵愪簷缁ㄦ椽寮崶锔筋偨闁?
- * 1. src/ui/context/ReviewContext.tsx 闁?濠㈣泛绉崇弧鍕▔婵犱胶鐟撻柡?
- * 2. src/ui/components/DeckTree.tsx 闁?闁绘鐬肩划宥夊冀閹寸姴笑闁告帗顨夐妴?
- * 3. src/ui/components/LinearCard.tsx 闁?闁告绱曟晶鏍ㄥ緞瀹ュ嫮鐦庣紓浣稿濞?
- * 4. src/ui/adapters/deckAdapter.ts 闁?闁轰胶澧楀畵浣规姜椤掍礁搴婄€规悶鍎遍崣?
- * 5. src/Events/SyncEvents.ts 闁?闁活潿鍔嶅鐢稿箳閵夛附鏆柛姘湰椤掔偟鈧懓鏈崹姘舵儍閸曨偆鐣柟缁㈠幗缁夌兘骞?
- *
- * 闁告繍浜欑花娲棘閸ワ附顐藉ù鍏兼皑閺併倝宕氶弶璺ㄦ殜闁?
- * 1. src/ui/ReactReviewApp.tsx 闁?濞达絾绮堢拹?React 閹煎瓨姊婚弫銈夋儍閸曨亜鐦滄繛鎾冲级閻撳绱掗崟顏咁偨
+ * ReviewSession coordinates the deck list and the active card review pane.
+ * It rebuilds isolated deck branches for focused study and refreshes on sync updates.
  */
-/**
- * ReviewSession - 濠㈣泛绉崇弧鍕濮樺磭妯堝☉鎾诡嚙椤旀劙宕?
- *
- * 缂備胶鍠嶇粩瀵哥不閿涘嫭鍊?DeckTree 闁?CardReview 閻熸瑥妫楀ù?
- * 閻庡湱鍋熼獮?iOS 濡炲瀛╅悧鎼佹儍閸曨垬鈧妫冮姀锛勬嫧闁告柣鍔忕换鍐ㄣ€掗垾鍐残楅柣?
- */
+
 
 import React, { useState, useCallback, useMemo, useEffect, useLayoutEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -42,13 +24,11 @@ import { TopicPath } from "src/TopicPath";
 import { CardFrontBackUtil } from "src/question-type";
 
 // ==========================================
-// 缂侇偉顕ч悗椋庘偓瑙勭煯缁?
+// Types
 // ==========================================
 
-/** 閻熸瑥妫楀ù妯肩尵鐠囪尙鈧?*/
 type ViewType = "deck-list" | "review";
 
-/** 缂備礁瀚▎?Props */
 interface ReviewSessionProps {
     plugin: SRPlugin;
     sequencer: IFlashcardReviewSequencer;
@@ -57,18 +37,18 @@ interface ReviewSessionProps {
 }
 
 // ==========================================
-// 闁告柣鍔庨弫楣冨矗濡湱绉奸悗瑙勭煯缁?(iOS 濡炲瀛╅悧?Slide)
+// Motion variants
 // ==========================================
 
 const slideVariants: any = {
-    // 閺夆晜绋戦崣鍡涘籍閸撲焦鐣遍柛鎺撶箓椤劙鎮╅懜纰樺亾?
+    // Start hidden and let the active pane fade in.
     enter: () => ({
         x: 0,
         opacity: 0,
         zIndex: 1,
         boxShadow: "none",
     }),
-    // 閻忕偛鎳嶉懙鎴﹀及閸撗佷粵闁绘鍩栭埀?
+    // Active pane.
     center: {
         x: 0,
         opacity: 1,
@@ -76,7 +56,7 @@ const slideVariants: any = {
         boxShadow: "none",
         transition: { duration: 0.2, ease: "easeOut" },
     },
-    // 闂侇偀鍋撻柛鎴犲劋濡炲倿鎯冮崟顓炐﹂柟?
+    // Fade out when switching panes.
     exit: () => ({
         x: 0,
         opacity: 0,
@@ -86,7 +66,7 @@ const slideVariants: any = {
     }),
 };
 
-// 缂佸顕ф慨鈺冪博椤栨粎鏆嗛柛鏍ㄧ墪婵晠鎮界拠鎻掔秮濞?(闁诡儸鍡楀幋濞村吋锚鐎垫煡鏁嶅顒€娑ч柣顫妽鐠愪即宕楅妷锕佺獥闁告垹灏ㄧ槐婵嬪籍閻樺磭鎷ㄩ柛?
+// Mobile uses a simpler fade because directional motion feels noisy on small screens.
 // TODO: Fix Framer motion typescript types - casting as any for now to bypass strict checks
 const mobileSlideVariants: any = {
     enter: () => ({
@@ -106,13 +86,10 @@ const mobileSlideVariants: any = {
 };
 
 // ==========================================
-// 閺夊牆鎳庢慨顏堝礄閼恒儲娈?
+// Deck helpers
 // ==========================================
 
-/**
- * [V3 闁稿繑濞婇弫顓熺┍椤旂⒈妲籡 闁硅泛锕▓褏绮嬬拠鍙夊€甸柣銊ュ閻℃瑩寮介幋锕€娅㈤柡鍌涙緲鐎垫﹢宕堕悙鎵伇濞戞搩浜滈悾顒勫极鐎靛憡鐣遍悹渚灠缁剁偟绱掗幘瀵糕偓顖涚▔椤撴壕鍋?
- * 閺夆晜鐟﹂悧閬嶅磻濮橆厽笑濞戞捁妗ㄧ花鈩冪┍濠靛洤鐦?TopicPath 闁汇劌瀚悾顒勫极鐎涙ǚ鍋撹缁辨繃鎷呴崹顔剧箒 sequencer 濞戞搩鍘惧▓?getDeck(path) 闁告粌鑻崹褰掑础閿熺姭鍋撻弰蹇曞竼闁煎疇濮ら婊呮暜缁嬪じ绱ｅù锝嗗殠閳?
- */
+// Rebuild the ancestor chain for an isolated deck so the sequencer keeps the original path.
 function wrapDeckWithRoot(fullPath: string, isolatedDeck: Deck): Deck {
     const root = new Deck("Root", null);
     if (!fullPath || fullPath === "root") {
@@ -122,14 +99,14 @@ function wrapDeckWithRoot(fullPath: string, isolatedDeck: Deck): Deck {
     const parts = fullPath.split("/").filter(Boolean);
     let current = root;
 
-    // 闁告帗绋戠紓鎾舵崉椤栨氨绐炲☉鎾筹功濞堟垶绋夐銏★紵闁煎搫鍊婚崑?
+    // Rebuild ancestor nodes from the original deck path.
     for (let i = 0; i < parts.length - 1; i++) {
         const node = new Deck(parts[i], current);
         current.subdecks.push(node);
         current = node;
     }
 
-    // 闁圭鍊藉ù鍥⒕閺冨偆鐎查柛姘捣濞堟垹鈧湱鍋ゅ顖炴偋瀹€鈧划?
+    // Attach the filtered deck under the reconstructed parent chain.
     isolatedDeck.parent = current;
     current.subdecks.push(isolatedDeck);
 
@@ -137,7 +114,7 @@ function wrapDeckWithRoot(fullPath: string, isolatedDeck: Deck): Deck {
 }
 
 // ==========================================
-// 濞戞捁宕电划宥嗙?
+// Review session
 // ==========================================
 
 export const ReviewSession: React.FC<ReviewSessionProps> = ({
@@ -146,10 +123,10 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
     initialView = "deck-list",
     onClose,
 }) => {
-    // --- 闁绘鍩栭埀?---
+    // View state
     const [view, setView] = useState<ViewType>(initialView);
     const [direction, setDirection] = useState(0); // 1 = Push, -1 = Pop
-    const [tick, setTick] = useState(0); // 闁活潿鍔嬬花顒€顕ｉ崫鍕厬闁告帡鏀遍弻?
+    const [tick, setTick] = useState(0); // Force rerenders after sync or deck updates.
     const [recentDeckPath, setRecentDeckPath] = useState<string | null>(null);
     const deckListScrollTopRef = useRef(0);
 
@@ -164,7 +141,7 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
 
     const forceUpdate = useCallback(() => setTick((t) => t + 1), []);
 
-    // --- 閻犱降鍨藉Σ鍕触鐏炵虎鍔勫ù婊冾儎濞嗐垽鏁嶅顒佸€辨慨婵勫劚閻ｎ剟骞嬮幇顒佸€甸柤濂変簻婵晠宕氶柨瀣厐闁轰焦婢橀悺?---
+    // Refresh when sync or deck stats change underneath the current view.
     useEffect(() => {
         logRuntimeDebug("[SR-DynSync] ReviewSession: subscribed to sync-complete & deck-stats-updated");
 
@@ -200,31 +177,29 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
         [plugin, sequencer],
     );
 
-    // --- 濞戞挻鑹炬慨鐔兼焻閺勫繒甯?---
+    // Deck list handlers
 
-    /**
-     * 濠㈣泛瀚幃濠囨偋瀹€鈧划宥夋倷閻熸澘姣?-> 閺夆晜绋戦崣鍡樺緞瀹ュ嫮鐦?
-     */
+    // Isolate the clicked deck, rebuild its root path, and enter review when cards remain.
     const handleDeckClick = useCallback(
         (deckState: DeckState) => {
             const latestRemainingTree = plugin.remainingDeckTree;
             const latestFullTree = plugin.deckTree;
 
             const fullPath = deckState.fullPath || deckState.deckName;
-            // 1. 濞寸姴瀛╁褏鎮伴埀顒勫极閻楀牆绁︽繝褎鍔掗懙鎴﹀箥閹冪厒闁活潿鍔嶉崺娑㈡儑閻斿壊鍔€闁绘劗鎳撻崵顕€鎯冮崟顐㈡枾濠殿喖顑囨晶婵堢磼?
+            // Find the clicked deck in the latest remaining tree.
             const rawClickedDeck = findDeckByPath(latestRemainingTree, fullPath);
 
             if (rawClickedDeck) {
-                // 2. [V3 闁哄秶顭堢缓楣冩⒕閺冨偆鐎查梺顐ｆ缁剁帡 閻忓繐妫滈姘舵偋瀹€鈧划宥嗘媴濠娾偓鐠愮喖宕楅妸锔界厐闁?Root 閺夆晜绋栭、鎴︽⒔閹伴偊鏉洪柟鎼簼閺屽洭鏁?
+                // Reapply daily limits to the isolated branch.
                 const isolatedContextDeck = DeckTreeFilter.filterByDailyLimits(
                     rawClickedDeck,
                     plugin,
                 );
 
-                // 3. [V3 閻犱警鍨扮欢鐐寸┍椤旂⒈妲籡 閻忓繐妫濆▓褏绮嬬拠鍙夊€甸柣銊ュ婢ф繄绱掗崟顐㈢樁闁搞儳鍋樼粩瀛樼▔椤忓嫬寰旈柡鍫濐槸閻ｎ剟寮壕瀣唴鐎垫澘瀚▓?Root 閻庡湱鎳撳▍鎺撶▔?
+                // Rebuild the ancestor chain so the sequencer keeps the original path.
                 const wrappedDeckTree = wrapDeckWithRoot(fullPath, isolatedContextDeck);
 
-                // 4. 閻忓繐妫滅换鏍ㄧ▔椤忓嫬鐦堕悷浣烘嚀閹鎯冮崟顖涱吘缂佸倻绮悥鍙夊閻樼數鑸?Sequencer
+                // Swap the sequencer to the wrapped deck tree.
                 sequencer.setDeckTree(latestFullTree, wrappedDeckTree, latestRemainingTree);
                 sequencer.setCurrentDeck(TopicPath.emptyPath);
 
@@ -243,20 +218,16 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
         [sequencer, plugin, logRuntimeDebug],
     );
 
-    /**
-     * 闂侇偀鍋撻柛鎴濇惈椤﹀弶绋?-> 閺夆晜鏌ㄥú鏍礆濡ゅ嫨鈧?
-     */
+    // Return from card review to the deck list.
     const handleExitReview = useCallback(() => {
         plugin.setSRViewInFocus(false);
         setDirection(-1);
         setView("deck-list");
         plugin.savePluginData();
-        forceUpdate(); // 闁告帡鏀遍弻濠囧礆濡ゅ嫨鈧啰绱掗悢娲诲悁
+        forceUpdate(); // Refresh deck counts after leaving review.
     }, [plugin, forceUpdate]);
 
-    /**
-     * 濠㈣泛瀚幃濠囧炊閻愮數鎽?
-     */
+    // Submit a review response for the current card.
     const handleAnswer = useCallback(
         async (rating: number) => {
             logRuntimeDebug(`[SR-DynSync] ReviewSession: handleAnswer rating=${rating}`);
@@ -296,9 +267,7 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
         forceUpdate();
     }, [sequencer, forceUpdate]);
 
-    /**
-     * 濠㈣泛瀚幃濠囧礆閻樼粯鐝?闁告瑦鐗楃粔椋庢崉閻斿鍤?
-     */
+    // Remove the current card from tracking and leave review if nothing remains.
     const handleDelete = useCallback(async () => {
         await sequencer.untrackCurrentCard();
         if (sequencer.hasCurrentCard) {
@@ -308,9 +277,7 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
         }
     }, [sequencer, forceUpdate, handleExitReview]);
 
-    /**
-     * 濠㈣泛瀚幃濠囧箮濡搫缍岄柣妯垮煐閳ь兛绀佽ぐ澶愬礌?
-     */
+    // Persist tree collapse changes.
     const handleCollapseChange = useCallback(
         async (fullPath: string, isCollapsed: boolean) => {
             await saveCollapseState(plugin, fullPath, isCollapsed);
@@ -318,10 +285,10 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
         [plugin],
     );
 
-    // 婵☆偀鍋撴繛鏉戭儐濡叉悂宕ラ敂鑳缂佸顕ф慨鈺冪博?(isMobile 闁?Obsidian 閺夆晜鍔橀、鎴﹀籍鐠鸿櫣鎽犻柛锔荤厜缁辨繃鎷?TypeScript 缂侇偉顕ч悗椋庘偓瑙勭煯缁犵喐绋夐鐔烘⒕闁?
+    // Obsidian exposes isMobile at runtime, but the type is not declared.
     const isMobile = (plugin.app as any).isMobile === true;
 
-    // 闁哄秷顫夊畵浣烘媼閹屾У闂侇偄顦扮€氥劑宕濋妸褎鏆伴柛娆惷肩紞?
+    // Use the simpler mobile animation set on phones and tablets.
     const activeVariants = isMobile ? mobileSlideVariants : slideVariants;
 
     return (
@@ -400,7 +367,7 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
 };
 
 // ==========================================
-// 閻庢稒鍔橀～瀣炊閹惧懐绐桪eck List
+// Deck list view
 // ==========================================
 
 interface DeckListViewProps {
@@ -444,10 +411,8 @@ const DeckListView: React.FC<DeckListViewProps> = ({
         host.scrollTop = initialScrollTop;
     }, [initialScrollTop]);
 
-    // [V3 閻犲鍟€规娊宕抽埡?婵炴挸寮堕悡瀣冀閹存繂鐏欓悶娑辩厜缁变即鎯勭€涙ê澶嶅ù锝堟硶閺併倝宕犻崨顓熷創闁圭鍋撻柡鍫濐槸瀹曢亶鎮ч崶鈺傜暠 remainingDeckTree闁?
-    // deckToUIState 闁告垼濮ら弳鐔煎礃閸涙潙鍔ュù鍏间亢閸ゆ粓宕濋妸銉у畨闁?V3 缂佺姵顨嗙涵鍫曟嚊椤忓嫮淇洪柛姘灣缁楀倻鎷嬮敍鍕毈闁哄嫬澧介妵姘跺极閺夎法鎽熼柨?
+    // Build the list from remainingDeckTree so the UI always reflects current limits.
     const decks = useMemo(() => {
-        // 闁告绮敮鈧ù婊冩缁狅綁宕滃鍥ㄧ暠 DeckTreeFilter.filterByDailyLimits闁挎稑鐬煎ú鍧楀箳閵夈倖鍞夌紓浣圭懇閳ь剙鍊块崢銈夊闯閵娧冨毐闁轰焦婢橀鐔烘媼閿涘嫮鏆?
         const remainingDeckTree = plugin.remainingDeckTree;
         if (!remainingDeckTree?.subdecks) {
             if (plugin.data.settings.showRuntimeDebugMessages) {
@@ -634,15 +599,14 @@ const CardReviewView: React.FC<CardReviewViewProps> = ({
     const question = sequencer.currentQuestion;
     const deck = sequencer.currentDeck;
 
-    // 濠碘€冲€归悘澶娾柦閳╁啯绠掗柛妤嬬磿婢ф牠鏁嶅畝鍐闁搞儳鍋熼埞?
+    // Guard against transient empty state while the sequencer updates.
     if (!card || !question || !deck) {
         return null;
     }
 
-    // 闁告垵妫楅ˇ顒勫础閿涘嫬顣婚柣妯垮煐閳?
     const settings = plugin.data.settings;
 
-    // 闁告柣鍔嶉埀顑挎祰椤撳摜绮诲Δ浣烘Ж濞戞搩浜濈€垫粓鏌﹂鐐暠濠㈣泛绉崇弧鍕籍閸洘锛熼梻鍌涙尦濞?
+    // Compute intervals for each response button using the current scheduling state.
     const intervals = [
         sequencer.determineCardSchedule(ReviewResponse.Reset, card).interval,
         sequencer.determineCardSchedule(ReviewResponse.Hard, card).interval,
@@ -650,10 +614,10 @@ const CardReviewView: React.FC<CardReviewViewProps> = ({
         sequencer.determineCardSchedule(ReviewResponse.Easy, card).interval,
     ];
 
-    // 闁哄秶鍘х槐锟犲礌閺嶏箒绀嬮柟绋款樀閹告娊寮介崶鈺婂姰 (濞撴艾顑呴々? "1m", "10m", "3d", "7d")
+    // Convert intervals to button labels such as "1m" or "3d".
     const btnLabels = intervals.map((interval) => textInterval(interval, false));
 
-    // 闁哄秷顫夊畵渚€宕￠敍鍕暬缂佷究鍨圭槐鈺呭礉閵婏腹鍋撴担鐑樻櫢闁瑰瓨鍔曢崬瀵糕偓?(闁衡偓椤栨稑鐦柟纰樺亾闁哄牆顦畷閬嶆偋閸モ晞顫﹂柛?
+    // Expand the current card text before rendering.
     const sourceText =
         question.questionText?.actualQuestion || question.parsedQuestionInfo?.text || "";
     const expanded = CardFrontBackUtil.expand(
@@ -677,7 +641,7 @@ const CardReviewView: React.FC<CardReviewViewProps> = ({
         responseButtonLabels: btnLabels,
     };
 
-    // 闁兼儳鍢茶ぐ鍥╃磼閻旀椿鍚€闁轰胶澧楀畵?
+    // Pull deck stats for the current topic path.
     const topicPath = deck.getTopicPath();
     const stats = sequencer.getDeckStats(topicPath);
     if (settings.showRuntimeDebugMessages) {
@@ -697,17 +661,17 @@ const CardReviewView: React.FC<CardReviewViewProps> = ({
         }
     }
 
-    // 闂傚牄鍨圭€垫浠?
+    // Breadcrumbs and deck-specific timing settings.
     const breadcrumbs: string[] = question.questionContext || [];
     const filename = question.note?.file?.basename || "Unknown";
 
-    // 闁煎浜滄慨鈺傛交濞戙垺鈻夐柡鍐ㄧ埣濡?
+    // Read the active deck preset to decide auto-advance timing.
     const deckPath = deck.getTopicPath().path.join("/") || deck.deckName;
     const presetIndex = settings.deckPresetAssignment[deckPath] ?? 0;
     const preset = settings.deckOptionsPresets[presetIndex] || settings.deckOptionsPresets[0];
     const autoAdvanceSeconds = preset?.autoAdvance ? preset.autoAdvanceSeconds || 10 : 0;
 
-    // 閻犲鍟抽惁顖涚┍閳╁啩绱?
+    // Collect extra debug data for the review UI when needed.
     const getDebugInfo = () => {
         const item = plugin.store?.getItembyID(card.Id);
         if (!item) return null;
@@ -727,7 +691,7 @@ const CardReviewView: React.FC<CardReviewViewProps> = ({
         };
     };
 
-    // 濠㈣泛瀚幃濠囧箥閹惧磭纾荤紒妤佹椤斿洭鏁嶉崼婵堟毎濞达絽绉撮崺宀勫础閿涘嫬顣婚悶娑樿嫰瑜板潡鏁嶇仦鍊熷珯闁活収鍘藉▓蹇旑殗濡懓鐦ㄩ柨?
+    // Open the source note and focus the reviewed line in the editor.
     const handleOpenNote = async () => {
         const noteFile = question.note?.file;
         if (!noteFile) return;
@@ -735,51 +699,50 @@ const CardReviewView: React.FC<CardReviewViewProps> = ({
         const activeLeaf = plugin.app.workspace.getLeaf("tab");
         await activeLeaf.openFile((noteFile as any).file || noteFile);
 
-        // 缂佹稑顦欢鐔虹磽閺嶎剛甯嗛柛锝冨妽鐟曞棝寮婚幘宕囨殮闁?
+        // Give Obsidian time to finish opening the file before touching the editor.
         await new Promise((resolve) => setTimeout(resolve, 100));
 
-        // 閻庤鐭紞鍛村礆閺夊灝骞㈤柣妤€娲╅、鎴﹀矗瀹勬媽瀚欓柣顓у幗濞堝繑顨囧Ο鐟扮槰
         if ((activeLeaf.view as any)?.editor) {
             const editor = (activeLeaf.view as any).editor;
             const lineNo = question.lineNo;
 
-            // 闁兼儳鍢茶ぐ鍥╂嫚閵夘煈鏀介柣銊ュ閸炲鈧懓缍婇弳杈ㄦ償?
+            // Highlight the reviewed line.
             const lineContent = editor.getLine(lineNo) || "";
             const from = { line: lineNo, ch: 0 };
             const to = { line: lineNo, ch: lineContent.length };
 
-            // 閻犱礁澧介悿鍡涘礂婢跺鍨?
+            // Move the cursor first so the editor focuses the reviewed line.
             editor.setCursor(from);
 
-            // 濞达綀娉曢弫?CodeMirror 6 闁?scrollIntoView 妤犵偞鍎奸鏇犵磾?margin 濞达綀鍎婚、鎴犱沪閸涱剝鍘?
+            // Use a proportional margin when CodeMirror 6 exposes scrollDOM.
             const cm = editor.cm;
             if (cm && cm.scrollDOM) {
-                // 闁兼儳鍢茶ぐ鍥╃磽閺嶎剛甯嗛柛锝冨妼瑜拌尙鎲撮崱娑氬蒋閹艰揪濡囧▓?40% 濞达絾绮堢拹?margin闁挎稑濂旀繛鍥儎椤旂晫鍨奸悶娑樻湰鐢瓨娼婚幋婊嗗幀闊?
+                // Keep the target line slightly above center so surrounding context stays visible.
                 const viewHeight = cm.scrollDOM.clientHeight;
                 const margin = Math.floor(viewHeight * 0.4);
                 editor.scrollIntoView({ from, to }, margin);
             } else {
-                // 闁搞儳鍋ら埀顑藉亾闁哄倽顫夐、?
+                // Fall back to the legacy boolean overload when margin-based scrolling is unavailable.
                 editor.scrollIntoView({ from, to }, true);
             }
 
-            // 闁活収鍘藉▓蹇涙焻婢跺鍘悹鍥ュ劥椤㈡垶鎷呭鈧拹鐔割殗濡懓鐦ㄩ柡浣哥墛閻?
+            // Highlight the line after scrolling to it.
             editor.setSelection(from, to);
 
-            // 1.5缂佸甯掗幃妤呭矗閺嶃劎啸闂侇偄顦懙?
+            // Restore a clean cursor after the highlight has been visible for a moment.
             setTimeout(() => {
                 editor.setCursor(from);
             }, 1500);
         }
     };
 
-    // 濠㈣泛瀚幃濠囧箳閵娿劎绠?
+    // Postpone the current card without opening the note.
     const handlePostpone = () => {
         new Notice(t("REVIEW_POSTPONED"));
         onAnswer(0);
     };
 
-    // 濠㈣泛瀚幃濠勪焊閸濆嫷鍤熼悹瀣暞閺?
+    // Persist resized card dimensions.
     const handleResize = (width: number, height: number) => {
         settings.reactFlashcardWidth = width;
         settings.reactFlashcardHeight = height;
@@ -794,7 +757,7 @@ const CardReviewView: React.FC<CardReviewViewProps> = ({
                 display: "flex",
                 justifyContent: "center",
                 pointerEvents: "auto",
-                alignItems: "center" /* 缂佸顕ф慨鈺冪博椤栨艾寮块悘鐐茬箲濡炲倻浠﹂崨顒冨幀閻庨潧缍婄紞?*/,
+                alignItems: "center",
             }}
         >
             <LinearCard

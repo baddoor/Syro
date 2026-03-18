@@ -477,7 +477,7 @@ export function upgradeSettings(settings: SRSettings) {
         }
     }
 
-    // 娣诲姞鍙岀畻娉曞瓧娈碉紙濡傛灉涓嶅瓨鍦級
+    // Upgrade legacy single-algorithm settings to separate card and note algorithms.
     if (!settings.cardAlgorithm) {
         settings.cardAlgorithm = settings.algorithm || "Fsrs";
         console.log("Upgrading to dual algorithm: cards=" + settings.cardAlgorithm);
@@ -487,17 +487,17 @@ export function upgradeSettings(settings: SRSettings) {
         console.log("Upgrading to dual algorithm: notes=" + settings.noteAlgorithm);
     }
 
-    // 纭繚algorithmSettings涓湁瀵瑰簲绠楁硶鐨勯厤缃?
+    // Create algorithm settings storage when upgrading old settings.
     if (!settings.algorithmSettings) {
         settings.algorithmSettings = {};
     }
 
-    // 纭繚responseOptionBtnsText涓湁鎵€鏈夌畻娉曠殑鎸夐挳鏂囨湰
+    // Create response button label storage when upgrading old settings.
     if (!settings.responseOptionBtnsText) {
         settings.responseOptionBtnsText = {};
     }
 
-    // 涓烘瘡涓畻娉曟坊鍔犻粯璁ゆ寜閽枃鏈紙濡傛灉涓嶅瓨鍦級
+    // Ensure every algorithm has a default set of response button labels.
     const defaultTexts = [t("RESET"), t("HARD"), t("GOOD"), t("EASY")];
     const algorithmList = ["Default", "Anki", "Fsrs", "SM2", "WeightedMultiplier"];
     algorithmList.forEach((algoName) => {
@@ -506,7 +506,7 @@ export function upgradeSettings(settings: SRSettings) {
         }
     });
 
-    // 寮哄埗 dataLocation 涓?PluginFolder 浠ュ惎鐢?Track File 鍔熻兘
+    // Keep data in the plugin folder; the old track-file mode is no longer supported.
     if (settings.dataLocation !== DataLocation.PluginFolder) {
         console.log(`Upgrading dataLocation from ${settings.dataLocation} to PluginFolder`);
         settings.dataLocation = DataLocation.PluginFolder;
@@ -517,7 +517,7 @@ export function upgradeSettings(settings: SRSettings) {
         settings.cardBlockID = false;
     }
 
-    // 杩佺Щ鎶樺彔鐘舵€?
+    // Migrate legacy collapsed deck paths into the keyed collapse-state map.
     if (
         settings.collapsedDeckPaths &&
         settings.collapsedDeckPaths.length > 0 &&

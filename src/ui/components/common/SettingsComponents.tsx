@@ -36,7 +36,7 @@ interface SectionProps {
     children: React.ReactNode;
 }
 
-// 淇敼鐐癸細绉婚櫎浜?style 灞炴€э紝瀹屽叏渚濊禆 CSS 绫诲悕
+// Keep layout styling in CSS so sections stay aligned with the Obsidian theme.
 export const Section: React.FC<SectionProps> = ({ title, children }) => (
     <div className="sr-setting-section">
         {title && <div className="setting-item-heading">{title}</div>}
