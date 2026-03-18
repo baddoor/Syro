@@ -72,7 +72,7 @@ describe("AnkiConnectClient", () => {
         expect(actions).toContain("updateModelTemplates");
         expect(actions).toContain("updateModelStyling");
         expect(actions.filter((action) => action === "modelFieldAdd").length).toBeGreaterThanOrEqual(12);
-        expect(actions.filter((action) => action === "storeMediaFile").length).toBe(2);
+        expect(actions.filter((action) => action === "storeMediaFile").length).toBe(1);
 
         const createModelRequest = mockedRequestUrl.mock.calls.find(
             (call) => JSON.parse((call[0] as any).body).action === "createModel",
@@ -82,6 +82,10 @@ describe("AnkiConnectClient", () => {
             createModelRequest &&
                 JSON.parse((createModelRequest[0] as any).body).params.inOrderFields,
         ).toEqual(expect.arrayContaining(["Breadcrumb", "OpenLink", "ExactLink"]));
+        expect(
+            createModelRequest &&
+                JSON.parse((createModelRequest[0] as any).body).params.cardTemplates[0].Front,
+        ).not.toContain("_syro_anki_sync.js");
     });
 
     it("ensures decks and ignores already-existing deck errors", async () => {
