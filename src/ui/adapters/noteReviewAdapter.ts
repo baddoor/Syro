@@ -129,11 +129,8 @@ function getDaysGroupInfo(nDays: number): { title: string; color: string; sortOr
  */
 export function reviewDeckToSections(deck: ReviewDeck, plugin: SRPlugin): NoteReviewSection[] {
     const sections: NoteReviewSection[] = [];
-    const settings = plugin.data.settings;
     // 计算"今天"的时间戳
     const now = globalDateProvider.endofToday.valueOf();
-
-    const maxDaysToRender = settings.maxNDaysNotesReviewQueue;
 
     // 1. 处理新笔记
     if (deck.newNotes.length > 0) {
@@ -155,8 +152,7 @@ export function reviewDeckToSections(deck: ReviewDeck, plugin: SRPlugin): NoteRe
             const sNote = deck.scheduledNotes[i];
             const nDays = Math.ceil((sNote.dueUnix - now) / (24 * 3600 * 1000));
 
-            // 超过最大显示天数，跳过
-            if (nDays > maxDaysToRender) continue;
+            // Keep all tracked notes visible in the sidebar, including far-future ones.
 
             if (!dayGroups.has(nDays)) {
                 dayGroups.set(nDays, []);
