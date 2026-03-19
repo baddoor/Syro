@@ -208,6 +208,12 @@ export class AnkiSyncService {
         this.state = await this.stateStore.load();
     }
 
+    private logRuntimeDebug(...args: unknown[]): void {
+        if (this.plugin.data.settings.showRuntimeDebugMessages) {
+            console.log(...args);
+        }
+    }
+
     isEnabled(settings = this.plugin.data.settings): boolean {
         return settings.ankiSyncEnabled === true;
     }
@@ -263,7 +269,7 @@ export class AnkiSyncService {
                 total,
                 overallCurrent,
                 overallTotal,
-                message,
+                message: message.replace(/\s*\(\d+\/\d+\)/g, "").replace(/\s{2,}/g, " ").trim(),
             } satisfies AnkiSyncProgress);
         };
     }
@@ -896,6 +902,35 @@ export class AnkiSyncService {
         };
     }
 
+    private computeReviewDueOffsetCandidate(
+        cardInfo: AnkiCardInfo,
+        itemState: AnkiSyncItemState,
+        hiddenSnapshot: ReviewSnapshot | null,
+    ): number | null {
+        if (cardInfo.queue !== CardQueue.Review || cardInfo.due === null) {
+            return null;
+        }
+
+        const calibrationSource =
+            hiddenSnapshot?.nextReview ??
+            itemState.lastRemoteSnapshot?.nextReview ??
+            itemState.lastLocalSnapshot?.nextReview ??
+            0;
+        if (calibrationSource <= 0) {
+            return null;
+        }
+
+        const baselineDue = toNumber(
+            hiddenSnapshot?.raw?.due ??
+                itemState.lastRemoteSnapshot?.raw?.due ??
+                itemState.lastLocalSnapshot?.raw?.due,
+            Number.NaN,
+        );
+        const dueSource = Number.isNaN(baselineDue) ? cardInfo.due : baselineDue;
+
+        return dueSource - Math.floor(calibrationSource / DAY_MS);
+    }
+
     private inferQueueFromType(type: number | null | undefined): CardQueue {
         if (type === 2) {
             return CardQueue.Review;
@@ -1156,6 +1191,34 @@ export class AnkiSyncService {
         }
 
         let maxCursor = state.global.lastPullCursor;
+        let calibratedReviewDueOffset = state.global.reviewDueOffset;
+        for (const [, itemState] of mappedEntries) {
+            const mapping = itemState.mapping;
+            const noteInfo = mapping ? noteInfoById.get(mapping.noteId) : null;
+            const cardInfo = mapping ? cardInfoById.get(mapping.cardId) : null;
+            if (!mapping || !noteInfo || !cardInfo) {
+                continue;
+            }
+
+            const hiddenSnapshot = this.buildHiddenSnapshot(noteInfo.fields);
+            const candidate = this.computeReviewDueOffsetCandidate(cardInfo, itemState, hiddenSnapshot);
+            if (candidate === null) {
+                continue;
+            }
+
+            if (calibratedReviewDueOffset === null) {
+                calibratedReviewDueOffset = candidate;
+                continue;
+            }
+
+            if (calibratedReviewDueOffset !== candidate) {
+                this.logRuntimeDebug(
+                    `[Syro-Anki] reviewDueOffset conflict ignored: current=${calibratedReviewDueOffset}, candidate=${candidate}, cardId=${cardInfo.cardId}`,
+                );
+            }
+        }
+        state.global.reviewDueOffset = calibratedReviewDueOffset;
+
         let processed = 0;
         for (const [itemUuid, itemState] of mappedEntries) {
             try {
@@ -1174,20 +1237,6 @@ export class AnkiSyncService {
                     itemState,
                     state.global.reviewDueOffset,
                 );
-                const calibrationSource =
-                    remoteRecord.hiddenSnapshot?.nextReview ??
-                    itemState.lastRemoteSnapshot?.nextReview ??
-                    itemState.lastLocalSnapshot?.nextReview ??
-                    0;
-                if (
-                    cardInfo.queue === CardQueue.Review &&
-                    cardInfo.due !== null &&
-                    calibrationSource > 0
-                ) {
-                    state.global.reviewDueOffset =
-                        cardInfo.due - Math.floor(calibrationSource / DAY_MS);
-                }
-
                 itemState.mapping = {
                     ...mapping,
                     deckName: remoteRecord.deckName,

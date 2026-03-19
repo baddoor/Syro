@@ -585,6 +585,101 @@ describe("ankiSync service", () => {
         expect(result.pulled).toBe(1);
     });
 
+    it("pulls reviewed remote cards correctly when reviewDueOffset is calibrated from the first mapped card", async () => {
+        const nowSpy = jest.spyOn(Date, "now").mockReturnValue(20 * DAY_MS);
+        try {
+            const item = createItem();
+            item.nextReview = 10 * DAY_MS;
+            const { deck, cardHash, filePath } = createDeckWithCard(item);
+            const store = new AnkiSyncStateStore(() => ".obsidian/plugins/syro/tracked_files.json");
+            const state = await store.load();
+            const itemState = ensureAnkiSyncItemState(state, item.uuid);
+            const baseline = {
+                ...createReviewSnapshotFromItem(item),
+                updatedAt: 1000,
+                raw: { queue: 2, type: 2, due: 100 },
+            };
+            itemState.mapping = {
+                noteId: 10,
+                cardId: 20,
+                modelName: "Syro::Card",
+                deckName: "Syro::Deck",
+                filePath,
+                cardHash,
+            };
+            itemState.lastRemoteSnapshot = baseline;
+            itemState.lastRemoteUpdatedAt = baseline.updatedAt;
+            await store.save(state);
+
+            const client = {
+                getVersion: jest.fn(async () => 6),
+                ensureModel: jest.fn(async () => undefined),
+                notesInfoByQuery: jest.fn(async () => []),
+                canAddNotesWithErrorDetail: jest.fn(async () => []),
+                ensureDecks: jest.fn(async () => []),
+                ensureBinaryMediaFiles: jest.fn(async () => undefined),
+                updateNoteFields: jest.fn(async () => undefined),
+                setSpecificCardValues: jest.fn(async () => undefined),
+                notesInfo: jest.fn(async () => [
+                    {
+                        noteId: 10,
+                        cards: [20],
+                        modelName: "Syro::Card",
+                        tags: ["syro-sync"],
+                        mod: 20,
+                        fields: {
+                            syro_item_uuid: item.uuid,
+                            syro_file_path: filePath,
+                            syro_card_hash: cardHash,
+                            syro_snapshot: JSON.stringify(baseline),
+                            syro_updated_at: "1000",
+                        },
+                    },
+                ]),
+                cardsInfo: jest.fn(async () => [
+                    {
+                        cardId: 20,
+                        noteId: 10,
+                        deckName: "Syro::Deck",
+                        factor: 2500,
+                        interval: 15,
+                        type: 2,
+                        queue: 2,
+                        due: 115,
+                        reps: 4,
+                        lapses: 1,
+                        left: 0,
+                        mod: 20,
+                    },
+                ]),
+                addNotes: jest.fn(async () => []),
+                changeDeck: jest.fn(async () => undefined),
+                deleteNotes: jest.fn(async () => undefined),
+            };
+            const service = new AnkiSyncService(createPlugin(item), {
+                stateStore: store,
+                clientFactory: () => client as any,
+                now: () => 4000,
+            });
+            await service.initialize();
+            jest.spyOn(service as any, "refreshCardRuntime").mockImplementation((card: Card, nextItem: RepetitionItem) => {
+                card.repetitionItem = nextItem;
+                card.scheduleInfo = null as any;
+            });
+
+            const result = await service.sync(deck, "sig-review-offset");
+            const reloaded = await store.load();
+
+            expect(result.pulled).toBe(1);
+            expect(item.nextReview).toBe(25 * DAY_MS);
+            expect(item.isDue).toBe(false);
+            expect(deck.dueFlashcards[0].isDue).toBe(false);
+            expect(reloaded.global.reviewDueOffset).toBe(90);
+        } finally {
+            nowSpy.mockRestore();
+        }
+    });
+
     it("uploads local image media and rewrites the rendered Anki html to the media filename", async () => {
         const originalRender = (MarkdownRenderer as any).render;
         (MarkdownRenderer as any).render = jest.fn(
@@ -817,6 +912,11 @@ describe("ankiSync service", () => {
         expect(result.created).toBe(1);
         expect(progress.mock.calls.some(([update]) => update.phase === "ensure-decks")).toBe(true);
         expect(progress.mock.calls.some(([update]) => update.phase === "create")).toBe(true);
+        expect(
+            progress.mock.calls
+                .map(([update]) => update.message)
+                .every((message: string) => !/\(\d+\/\d+\)/.test(message)),
+        ).toBe(true);
         expect(progress.mock.calls.at(-1)?.[0]).toMatchObject({
             phase: "finalize",
             message: "Anki 同步完成",
