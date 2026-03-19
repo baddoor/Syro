@@ -220,6 +220,89 @@ describe("AnkiConnectClient", () => {
         });
     });
 
+    it("queries getReviewsOfCards so sync can reconstruct review timing without a baseline", async () => {
+        mockedRequestUrl.mockResolvedValue({
+            status: 200,
+            headers: {},
+            arrayBuffer: new ArrayBuffer(0),
+            json: {
+                error: null,
+                result: {
+                    "20": [
+                        {
+                            id: 1987200000,
+                            usn: 1,
+                            ease: 3,
+                            ivl: 2,
+                            lastIvl: 0,
+                            factor: 2500,
+                            time: 1234,
+                            type: 1,
+                        },
+                    ],
+                    "21": [],
+                },
+            },
+            text: JSON.stringify({
+                error: null,
+                result: {
+                    "20": [
+                        {
+                            id: 1987200000,
+                            usn: 1,
+                            ease: 3,
+                            ivl: 2,
+                            lastIvl: 0,
+                            factor: 2500,
+                            time: 1234,
+                            type: 1,
+                        },
+                    ],
+                    "21": [],
+                },
+            }),
+        } as any);
+
+        const client = new AnkiConnectClient("http://127.0.0.1:8765");
+        const result = await client.getReviewsOfCards([20, 21]);
+
+        expect(Array.from(result.entries())).toEqual([
+            [
+                20,
+                [
+                    {
+                        id: 1987200000,
+                        usn: 1,
+                        ease: 3,
+                        ivl: 2,
+                        lastIvl: 0,
+                        factor: 2500,
+                        time: 1234,
+                        type: 1,
+                    },
+                ],
+            ],
+            [21, []],
+        ]);
+        expect(mockedRequestUrl).toHaveBeenCalledWith({
+            url: "http://127.0.0.1:8765",
+            method: "POST",
+            contentType: "application/json; charset=utf-8",
+            headers: {
+                Accept: "application/json",
+                "Content-Type": "application/json; charset=utf-8",
+            },
+            throw: false,
+            body: JSON.stringify({
+                action: "getReviewsOfCards",
+                version: 6,
+                params: {
+                    cards: [20, 21],
+                },
+            }),
+        });
+    });
+
     it("calls canAddNotesWithErrorDetail for detailed add-note diagnostics", async () => {
         mockedRequestUrl.mockResolvedValue({
             status: 200,

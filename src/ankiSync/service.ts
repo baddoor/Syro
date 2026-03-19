@@ -19,6 +19,7 @@ import {
     AnkiBinaryMediaAsset,
     AnkiCanAddNoteResult,
     AnkiCardInfo,
+    AnkiCardReview,
     AnkiMediaFieldName,
     AnkiMediaReference,
     AnkiMediaReferenceCandidate,
@@ -100,14 +101,24 @@ interface FreshnessBreakdown {
     lastRemoteUpdatedAt: number;
 }
 
+type ReviewLogState = "review-log-available" | "missing-review-log" | "review-log-nonpositive-interval" | null;
+
 interface ReviewDueOffsetCandidateResult {
     candidate: number | null;
-    reason: "not-review-queue" | "missing-due" | "missing-baseline-next-review" | "baseline-available";
+    reason:
+        | "not-review-queue"
+        | "missing-due"
+        | "missing-baseline-next-review"
+        | "baseline-available"
+        | "review-log-available";
     calibrationSource: number;
     calibrationSourceLabel: string | null;
     baselineDue: number | null;
     dueSource: number | null;
     missingBaselineState: "new-card-without-baseline" | "baseline-state-missing" | "no-snapshot-history" | null;
+    reviewLogState: ReviewLogState;
+    latestReview: AnkiCardReview | null;
+    offsetSource: "baseline" | "review-log" | null;
 }
 
 interface DueComparisonCardRef {
@@ -136,7 +147,11 @@ interface DueComparisonRow {
     reviewDueOffset: number | null;
     candidateReason: ReviewDueOffsetCandidateResult["reason"] | null;
     missingBaselineState: ReviewDueOffsetCandidateResult["missingBaselineState"] | null;
+    reviewLogState: ReviewDueOffsetCandidateResult["reviewLogState"] | null;
     remoteSnapshotSource: ReviewSnapshot["source"] | null;
+    latestReviewId: number | null;
+    latestReviewInterval: number | null;
+    latestReviewType: number | null;
     localReviewFreshness: number;
     remoteReviewFreshness: number;
     syncBookkeepingFreshness: number;
@@ -331,6 +346,21 @@ export class AnkiSyncService {
         };
     }
 
+    private summarizeCardReview(review: AnkiCardReview | null | undefined): Record<string, unknown> | null {
+        if (!review) {
+            return null;
+        }
+
+        return {
+            id: review.id,
+            ivl: review.ivl,
+            lastIvl: review.lastIvl,
+            ease: review.ease,
+            type: review.type,
+            time: review.time,
+        };
+    }
+
     private buildDueComparisonCardRef(
         itemUuid: string,
         mapping: NonNullable<AnkiSyncItemState["mapping"]>,
@@ -360,6 +390,40 @@ export class AnkiSyncService {
 
     private getPendingWritebackSnapshot(itemState: AnkiSyncItemState): ReviewSnapshot | null {
         return itemState.pendingReviewWritebacks?.[0]?.snapshot ?? null;
+    }
+
+    private pickLatestCardReview(reviews: AnkiCardReview[] | null | undefined): AnkiCardReview | null {
+        if (!reviews || reviews.length === 0) {
+            return null;
+        }
+
+        let latest = reviews[0];
+        for (const review of reviews) {
+            if (review.id > latest.id) {
+                latest = review;
+            }
+        }
+
+        return latest;
+    }
+
+    private resolveReviewLogState(latestReview: AnkiCardReview | null): ReviewLogState {
+        if (!latestReview) {
+            return "missing-review-log";
+        }
+        if (latestReview.ivl <= 0) {
+            return "review-log-nonpositive-interval";
+        }
+
+        return "review-log-available";
+    }
+
+    private computeReviewNextReviewFromLog(latestReview: AnkiCardReview | null): number {
+        if (!latestReview || latestReview.ivl <= 0) {
+            return 0;
+        }
+
+        return (Math.floor(latestReview.id / DAY_MS) + latestReview.ivl) * DAY_MS;
     }
 
     private pickFreshestNumericChoice(candidates: Array<NumericChoice>): NumericChoice {
@@ -519,9 +583,16 @@ export class AnkiSyncService {
             analysis.push("reviewDueOffset 缺少可用 baseline");
             analysis.push("reviewDueOffset 缂哄皯鍙敤 baseline");
             analysis.push("reviewDueOffset is unresolved because no review baseline is available.");
+        } else if (row.candidateReason === "review-log-available") {
+            analysis.push("review log provided the fallback calibration for this review card.");
         }
         if (row.remoteSnapshotSource === "anki-hidden") {
             analysis.push("the hidden Anki snapshot was newer than the card snapshot.");
+        }
+        if (row.reviewLogState === "missing-review-log") {
+            analysis.push("no Anki review log was available for this card.");
+        } else if (row.reviewLogState === "review-log-nonpositive-interval") {
+            analysis.push("the latest Anki review log could not provide a positive day interval.");
         }
         if (row.decision.includes("cursor")) {
             analysis.push("global lastPullCursor would have skipped this card, but per-card freshness overrode it.");
@@ -584,7 +655,11 @@ export class AnkiSyncService {
             reviewDueOffset,
             candidateReason: candidateResult?.reason ?? null,
             missingBaselineState: candidateResult?.missingBaselineState ?? null,
+            reviewLogState: candidateResult?.reviewLogState ?? null,
             remoteSnapshotSource: remoteSnapshot?.source ?? itemState.lastRemoteSnapshot?.source ?? null,
+            latestReviewId: candidateResult?.latestReview?.id ?? null,
+            latestReviewInterval: candidateResult?.latestReview?.ivl ?? null,
+            latestReviewType: candidateResult?.latestReview?.type ?? null,
             localReviewFreshness: freshnessBreakdown.localReviewFreshness.value,
             remoteReviewFreshness: freshnessBreakdown.remoteReviewFreshness.value,
             syncBookkeepingFreshness: freshnessBreakdown.syncBookkeepingFreshness.value,
@@ -644,6 +719,9 @@ export class AnkiSyncService {
                     authority: row.authority,
                     localReviewFreshness: row.localReviewFreshness,
                     remoteReviewFreshness: row.remoteReviewFreshness,
+                    reviewLogState: row.reviewLogState,
+                    latestReviewId: row.latestReviewId,
+                    latestReviewInterval: row.latestReviewInterval,
                     syncBookkeepingFreshness: row.syncBookkeepingFreshness,
                     lastMergedUpdatedAt: row.lastMergedUpdatedAt,
                     lastRemoteUpdatedAt: row.lastRemoteUpdatedAt,
@@ -655,6 +733,9 @@ export class AnkiSyncService {
                     authority: row.authority,
                     localReviewFreshness: row.localReviewFreshness,
                     remoteReviewFreshness: row.remoteReviewFreshness,
+                    reviewLogState: row.reviewLogState,
+                    latestReviewId: row.latestReviewId,
+                    latestReviewInterval: row.latestReviewInterval,
                     syncBookkeepingFreshness: row.syncBookkeepingFreshness,
                     lastMergedUpdatedAt: row.lastMergedUpdatedAt,
                     lastRemoteUpdatedAt: row.lastRemoteUpdatedAt,
@@ -668,6 +749,9 @@ export class AnkiSyncService {
                     authority: row.authority,
                     localReviewFreshness: row.localReviewFreshness,
                     remoteReviewFreshness: row.remoteReviewFreshness,
+                    reviewLogState: row.reviewLogState,
+                    latestReviewId: row.latestReviewId,
+                    latestReviewInterval: row.latestReviewInterval,
                     syncBookkeepingFreshness: row.syncBookkeepingFreshness,
                     lastMergedUpdatedAt: row.lastMergedUpdatedAt,
                     lastRemoteUpdatedAt: row.lastRemoteUpdatedAt,
@@ -694,7 +778,13 @@ export class AnkiSyncService {
                     reviewDueOffset: row.reviewDueOffset,
                     candidateReason: row.candidateReason,
                     missingBaselineState: row.missingBaselineState,
+                    reviewLogState: row.reviewLogState,
                     remoteSnapshotSource: row.remoteSnapshotSource,
+                    latestReview: {
+                        id: row.latestReviewId,
+                        ivl: row.latestReviewInterval,
+                        type: row.latestReviewType,
+                    },
                     localReviewFreshness: row.localReviewFreshness,
                     remoteReviewFreshness: row.remoteReviewFreshness,
                     syncBookkeepingFreshness: row.syncBookkeepingFreshness,
@@ -738,13 +828,19 @@ export class AnkiSyncService {
                     },
                     candidateReason: row.candidateReason,
                     missingBaselineState: row.missingBaselineState,
+                    reviewLogState: row.reviewLogState,
                     reviewDueOffset: row.reviewDueOffset,
                     reviewAuthority: row.authority,
                     remoteSnapshotSource: row.remoteSnapshotSource,
+                    latestReview: {
+                        id: row.latestReviewId,
+                        ivl: row.latestReviewInterval,
+                        type: row.latestReviewType,
+                    },
                     decision: row.decision,
                 });
                 result.errors.push(
-                    `[compare-card:${deckName}] direction=${row.direction} authority=${row.authority} localReviewFreshness=${row.localReviewFreshness} remoteReviewFreshness=${row.remoteReviewFreshness} lastMergedUpdatedAt=${row.lastMergedUpdatedAt} lastRemoteUpdatedAt=${row.lastRemoteUpdatedAt} remoteChangedAt=${row.remoteChangedAt} file=${row.card.filePath} uuid=${row.card.itemUuid} cardId=${row.card.cardId} front=${row.card.frontPreview} ankiDue=${row.ankiDue} syroDue=${row.syroDue} candidateReason=${row.candidateReason ?? "none"} missingBaselineState=${row.missingBaselineState ?? "none"} remoteSnapshotSource=${row.remoteSnapshotSource ?? "none"} decision=${row.decision} reviewDueOffset=${row.reviewDueOffset ?? "null"}`,
+                    `[compare-card:${deckName}] direction=${row.direction} authority=${row.authority} localReviewFreshness=${row.localReviewFreshness} remoteReviewFreshness=${row.remoteReviewFreshness} lastMergedUpdatedAt=${row.lastMergedUpdatedAt} lastRemoteUpdatedAt=${row.lastRemoteUpdatedAt} remoteChangedAt=${row.remoteChangedAt} file=${row.card.filePath} uuid=${row.card.itemUuid} cardId=${row.card.cardId} front=${row.card.frontPreview} ankiDue=${row.ankiDue} syroDue=${row.syroDue} candidateReason=${row.candidateReason ?? "none"} missingBaselineState=${row.missingBaselineState ?? "none"} reviewLogState=${row.reviewLogState ?? "none"} latestReviewId=${row.latestReviewId ?? "null"} latestReviewInterval=${row.latestReviewInterval ?? "null"} remoteSnapshotSource=${row.remoteSnapshotSource ?? "none"} decision=${row.decision} reviewDueOffset=${row.reviewDueOffset ?? "null"}`,
                 );
             }
         }
@@ -1506,7 +1602,9 @@ export class AnkiSyncService {
         cardInfo: AnkiCardInfo,
         itemState: AnkiSyncItemState,
         hiddenSnapshot: ReviewSnapshot | null,
+        latestReview: AnkiCardReview | null,
     ): ReviewDueOffsetCandidateResult {
+        const reviewLogState = this.resolveReviewLogState(latestReview);
         if (cardInfo.queue !== CardQueue.Review || cardInfo.due === null) {
             return {
                 candidate: null,
@@ -1516,6 +1614,9 @@ export class AnkiSyncService {
                 baselineDue: null,
                 dueSource: null,
                 missingBaselineState: null,
+                reviewLogState,
+                latestReview,
+                offsetSource: null,
             };
         }
 
@@ -1525,22 +1626,6 @@ export class AnkiSyncService {
             ["lastLocalSnapshot", itemState.lastLocalSnapshot],
         );
         const calibrationSource = calibrationChoice.snapshot?.nextReview ?? 0;
-        if (calibrationSource <= 0) {
-            return {
-                candidate: null,
-                reason: "missing-baseline-next-review",
-                calibrationSource,
-                calibrationSourceLabel: calibrationChoice.source,
-                baselineDue: null,
-                dueSource: null,
-                missingBaselineState: this.resolveMissingBaselineState([
-                    hiddenSnapshot,
-                    itemState.lastRemoteSnapshot,
-                    itemState.lastLocalSnapshot,
-                ]),
-            };
-        }
-
         const baselineDue = toNumber(
             hiddenSnapshot?.raw?.due ??
                 itemState.lastRemoteSnapshot?.raw?.due ??
@@ -1548,6 +1633,44 @@ export class AnkiSyncService {
             Number.NaN,
         );
         const dueSource = Number.isNaN(baselineDue) ? cardInfo.due : baselineDue;
+
+        if (calibrationSource <= 0) {
+            if (reviewLogState === "review-log-available" && latestReview) {
+                return {
+                    candidate: cardInfo.due - latestReview.ivl - Math.floor(latestReview.id / DAY_MS),
+                    reason: "review-log-available",
+                    calibrationSource: latestReview.id,
+                    calibrationSourceLabel: "review-log",
+                    baselineDue: Number.isNaN(baselineDue) ? null : baselineDue,
+                    dueSource: cardInfo.due,
+                    missingBaselineState: this.resolveMissingBaselineState([
+                        hiddenSnapshot,
+                        itemState.lastRemoteSnapshot,
+                        itemState.lastLocalSnapshot,
+                    ]),
+                    reviewLogState,
+                    latestReview,
+                    offsetSource: "review-log",
+                };
+            }
+
+            return {
+                candidate: null,
+                reason: "missing-baseline-next-review",
+                calibrationSource: latestReview?.id ?? calibrationSource,
+                calibrationSourceLabel: latestReview ? "review-log" : calibrationChoice.source,
+                baselineDue: Number.isNaN(baselineDue) ? null : baselineDue,
+                dueSource: cardInfo.due,
+                missingBaselineState: this.resolveMissingBaselineState([
+                    hiddenSnapshot,
+                    itemState.lastRemoteSnapshot,
+                    itemState.lastLocalSnapshot,
+                ]),
+                reviewLogState,
+                latestReview,
+                offsetSource: null,
+            };
+        }
 
         return {
             candidate: dueSource - Math.floor(calibrationSource / DAY_MS),
@@ -1557,6 +1680,9 @@ export class AnkiSyncService {
             baselineDue: Number.isNaN(baselineDue) ? null : baselineDue,
             dueSource,
             missingBaselineState: null,
+            reviewLogState,
+            latestReview,
+            offsetSource: "baseline",
         };
     }
 
@@ -1598,6 +1724,7 @@ export class AnkiSyncService {
         itemState: AnkiSyncItemState,
         reviewDueOffset: number | null,
         hiddenSnapshot: ReviewSnapshot | null,
+        latestReview: AnkiCardReview | null,
     ): ReviewSnapshot {
         const buried = isBuriedQueue(cardInfo.queue);
         const baselineChoice = this.chooseNonBuriedBaselineSnapshot(itemState, hiddenSnapshot);
@@ -1607,10 +1734,19 @@ export class AnkiSyncService {
             : toCardQueue(cardInfo.queue);
 
         let computedNextReview = 0;
+        let computedNextReviewSource: "baseline" | "review-log-fallback" | "learn" | "unresolved" = "unresolved";
         if (projectedQueue === CardQueue.Review && reviewDueOffset !== null && cardInfo.due !== null) {
             computedNextReview = Math.max(0, (cardInfo.due - reviewDueOffset) * DAY_MS);
+            computedNextReviewSource = "baseline";
+        } else if (projectedQueue === CardQueue.Review) {
+            const reviewLogNextReview = this.computeReviewNextReviewFromLog(latestReview);
+            if (reviewLogNextReview > 0) {
+                computedNextReview = reviewLogNextReview;
+                computedNextReviewSource = "review-log-fallback";
+            }
         } else if (projectedQueue === CardQueue.Learn && cardInfo.due !== null) {
             computedNextReview = cardInfo.due * 1000;
+            computedNextReviewSource = "learn";
         }
 
         const baselineNextReviewChoice = this.resolveBaselineNextReview(
@@ -1633,24 +1769,34 @@ export class AnkiSyncService {
                 projectedQueue,
                 reviewDueOffset,
                 computedNextReview,
+                computedNextReviewSource,
                 baselineNextReview,
                 nextReview,
                 baselineSource: baselineNextReviewChoice.source,
                 hiddenSnapshot: this.summarizeSnapshot(hiddenSnapshot),
+                latestReview: this.summarizeCardReview(latestReview),
             });
         }
 
-        if (projectedQueue === CardQueue.Review && cardInfo.due !== null && reviewDueOffset === null) {
+        if (
+            projectedQueue === CardQueue.Review &&
+            cardInfo.due !== null &&
+            reviewDueOffset === null &&
+            computedNextReviewSource !== "review-log-fallback"
+        ) {
             this.logRuntimeDebug("[Syro-Anki][Pull][BuildSnapshot][review-offset-unresolved]", {
                 itemUuid,
                 reason: "review-offset-unresolved",
                 due: cardInfo.due,
                 baselineNextReview,
                 nextReview,
+                computedNextReviewSource,
                 baselineSource: baselineNextReviewChoice.source,
                 hiddenSnapshot: this.summarizeSnapshot(hiddenSnapshot),
                 lastRemoteSnapshot: this.summarizeSnapshot(itemState.lastRemoteSnapshot),
                 lastLocalSnapshot: this.summarizeSnapshot(itemState.lastLocalSnapshot),
+                reviewLogState: this.resolveReviewLogState(latestReview),
+                latestReview: this.summarizeCardReview(latestReview),
             });
         }
 
@@ -1696,6 +1842,7 @@ export class AnkiSyncService {
         cardInfo: AnkiCardInfo,
         itemState: AnkiSyncItemState,
         reviewDueOffset: number | null,
+        latestReview: AnkiCardReview | null,
     ): AnkiRemoteRecord {
         const hiddenSnapshot = this.buildHiddenSnapshot(noteInfo.fields);
         return {
@@ -1707,7 +1854,15 @@ export class AnkiSyncService {
             filePath: noteInfo.fields.syro_file_path ?? itemState.mapping?.filePath ?? "",
             mod: (cardInfo.mod ?? 0) * 1000,
             hiddenSnapshot,
-            cardSnapshot: this.buildCardSnapshot(itemUuid, cardInfo, itemState, reviewDueOffset, hiddenSnapshot),
+            cardSnapshot: this.buildCardSnapshot(
+                itemUuid,
+                cardInfo,
+                itemState,
+                reviewDueOffset,
+                hiddenSnapshot,
+                latestReview,
+            ),
+            latestReview,
             fields: noteInfo.fields,
         };
     }
@@ -1866,6 +2021,15 @@ export class AnkiSyncService {
         cardIds.forEach((cardId, index) => {
             ankiDueByCardId.set(cardId, areDue[index] ?? null);
         });
+        const reviewLogsByCardId =
+            typeof (client as { getReviewsOfCards?: (cards: number[]) => Promise<Map<number, AnkiCardReview[]>> })
+                .getReviewsOfCards === "function"
+                ? await client.getReviewsOfCards(cardIds)
+                : new Map<number, AnkiCardReview[]>();
+        const latestReviewByCardId = new Map<number, AnkiCardReview | null>();
+        cardIds.forEach((cardId) => {
+            latestReviewByCardId.set(cardId, this.pickLatestCardReview(reviewLogsByCardId.get(cardId) ?? []));
+        });
         const dueCandidateByItemUuid = new Map<string, ReviewDueOffsetCandidateResult>();
         const comparisonRows: DueComparisonRow[] = [];
         const unmappedByDeck = new Map<string, number>();
@@ -1884,6 +2048,7 @@ export class AnkiSyncService {
             const mapping = itemState.mapping;
             const noteInfo = mapping ? noteInfoById.get(mapping.noteId) : null;
             const cardInfo = mapping ? cardInfoById.get(mapping.cardId) : null;
+            const latestReview = mapping ? (latestReviewByCardId.get(mapping.cardId) ?? null) : null;
             if (!mapping || !noteInfo || !cardInfo) {
                 this.logRuntimeDebug("[Syro-Anki][Pull][Calibrate] skipped-missing-mapping", {
                     itemUuid,
@@ -1895,18 +2060,21 @@ export class AnkiSyncService {
             }
 
             const hiddenSnapshot = this.buildHiddenSnapshot(noteInfo.fields);
-            const candidateResult = this.computeReviewDueOffsetCandidate(cardInfo, itemState, hiddenSnapshot);
+            const candidateResult = this.computeReviewDueOffsetCandidate(cardInfo, itemState, hiddenSnapshot, latestReview);
             dueCandidateByItemUuid.set(itemUuid, candidateResult);
             this.logRuntimeDebug("[Syro-Anki][Pull][Calibrate]", {
                 itemUuid,
                 noteId: mapping.noteId,
                 cardId: mapping.cardId,
                 card: this.summarizeCardInfo(cardInfo),
+                latestReview: this.summarizeCardReview(latestReview),
                 hiddenSnapshot: this.summarizeSnapshot(hiddenSnapshot),
                 lastRemoteSnapshot: this.summarizeSnapshot(itemState.lastRemoteSnapshot),
                 lastLocalSnapshot: this.summarizeSnapshot(itemState.lastLocalSnapshot),
                 candidate: candidateResult.candidate,
                 reason: candidateResult.reason,
+                offsetSource: candidateResult.offsetSource,
+                reviewLogState: candidateResult.reviewLogState,
                 calibrationSource: candidateResult.calibrationSource,
                 calibrationSourceLabel: candidateResult.calibrationSourceLabel,
                 baselineDue: candidateResult.baselineDue,
@@ -1944,6 +2112,7 @@ export class AnkiSyncService {
                 const mapping = itemState.mapping;
                 const noteInfo = mapping ? noteInfoById.get(mapping.noteId) : null;
                 const cardInfo = mapping ? cardInfoById.get(mapping.cardId) : null;
+                const latestReview = mapping ? (latestReviewByCardId.get(mapping.cardId) ?? null) : null;
                 if (!mapping || !noteInfo || !cardInfo) {
                     itemState.mapping = null;
                     this.logRuntimeDebug("[Syro-Anki][Pull][Apply] dropped-missing-mapping", {
@@ -1961,6 +2130,7 @@ export class AnkiSyncService {
                     cardInfo,
                     itemState,
                     state.global.reviewDueOffset,
+                    latestReview,
                 );
                 itemState.mapping = {
                     ...mapping,
@@ -2000,6 +2170,7 @@ export class AnkiSyncService {
                     noteId: mapping.noteId,
                     cardId: mapping.cardId,
                     card: this.summarizeCardInfo(cardInfo),
+                    latestReview: this.summarizeCardReview(latestReview),
                     remoteSnapshot: this.summarizeSnapshot(remoteSnapshot),
                     hiddenSnapshot: this.summarizeSnapshot(remoteRecord.hiddenSnapshot),
                     cardSnapshot: this.summarizeSnapshot(remoteRecord.cardSnapshot),
@@ -2029,6 +2200,8 @@ export class AnkiSyncService {
                             "首次远端复习缺少可用 review baseline，无法可靠换算 review due day。",
                         currentIsDue: remoteRecord.cardSnapshot.nextReview <= 0,
                         card: this.summarizeCardInfo(cardInfo),
+                        latestReview: this.summarizeCardReview(latestReview),
+                        reviewLogState: candidateResult?.reviewLogState ?? null,
                         hiddenSnapshot: this.summarizeSnapshot(remoteRecord.hiddenSnapshot),
                         lastRemoteSnapshot: this.summarizeSnapshot(itemState.lastRemoteSnapshot),
                         lastLocalSnapshot: this.summarizeSnapshot(itemState.lastLocalSnapshot),

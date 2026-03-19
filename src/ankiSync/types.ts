@@ -147,6 +147,7 @@ export interface AnkiRemoteRecord {
     mod: number;
     hiddenSnapshot: ReviewSnapshot | null;
     cardSnapshot: ReviewSnapshot | null;
+    latestReview: AnkiCardReview | null;
     fields: Record<string, string>;
 }
 
@@ -195,6 +196,17 @@ export interface AnkiCardInfo {
     lapses: number;
     left: number | null;
     mod: number;
+}
+
+export interface AnkiCardReview {
+    id: number;
+    usn: number;
+    ease: number;
+    ivl: number;
+    lastIvl: number;
+    factor: number;
+    time: number;
+    type: number;
 }
 
 export interface AnkiNoteInfo {

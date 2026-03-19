@@ -3,6 +3,7 @@ import {
     AnkiBinaryMediaAsset,
     AnkiCanAddNoteResult,
     AnkiCardInfo,
+    AnkiCardReview,
     AnkiNoteInfo,
     DEFAULT_ANKI_MODEL_NAME,
     DEFAULT_ANKI_SYNC_ENDPOINT,
@@ -44,6 +45,17 @@ interface RawCardInfo {
     mod: number;
 }
 
+interface RawCardReview {
+    id: number;
+    usn: number;
+    ease: number;
+    ivl: number;
+    lastIvl: number;
+    factor: number;
+    time: number;
+    type: number;
+}
+
 function chunkArray<T>(values: T[], chunkSize = 100): T[][] {
     const result: T[][] = [];
     for (let index = 0; index < values.length; index += chunkSize) {
@@ -82,6 +94,19 @@ function normalizeCardInfo(raw: RawCardInfo): AnkiCardInfo {
         lapses: raw.lapses ?? 0,
         left: raw.left ?? null,
         mod: raw.mod ?? 0,
+    };
+}
+
+function normalizeCardReview(raw: RawCardReview): AnkiCardReview {
+    return {
+        id: raw.id ?? 0,
+        usn: raw.usn ?? 0,
+        ease: raw.ease ?? 0,
+        ivl: raw.ivl ?? 0,
+        lastIvl: raw.lastIvl ?? 0,
+        factor: raw.factor ?? 0,
+        time: raw.time ?? 0,
+        type: raw.type ?? 0,
     };
 }
 
@@ -337,6 +362,23 @@ export class AnkiConnectClient {
         for (const chunk of chunkArray(cardIds)) {
             result.push(...(await this.invoke<boolean[]>("areDue", { cards: chunk })));
         }
+        return result;
+    }
+
+    async getReviewsOfCards(cardIds: number[]): Promise<Map<number, AnkiCardReview[]>> {
+        if (cardIds.length === 0) {
+            return new Map();
+        }
+
+        const result = new Map<number, AnkiCardReview[]>();
+        for (const chunk of chunkArray(cardIds)) {
+            const raw = await this.invoke<Record<string, RawCardReview[]>>("getReviewsOfCards", { cards: chunk });
+            for (const cardId of chunk) {
+                const reviews = (raw[String(cardId)] ?? []).map(normalizeCardReview);
+                result.set(cardId, reviews);
+            }
+        }
+
         return result;
     }
 
