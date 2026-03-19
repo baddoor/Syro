@@ -118,6 +118,7 @@ import {
     PersistedNoteCacheItem,
     serializeNote,
     SerializedNote,
+    validateCachedNoteBindings,
 } from "src/cache/noteCacheStore";
 import { AnkiSyncService } from "src/ankiSync";
 import { ReviewCommitStore } from "src/dataStore/reviewCommitStore";
@@ -1003,20 +1004,29 @@ export default class SRPlugin extends Plugin {
     }
 
     private async hydrateCachedNoteRuntime(note: Note): Promise<boolean> {
+        const mismatch = validateCachedNoteBindings(note, this.store);
+        if (mismatch) {
+            this.logRuntimeDebug(
+                `[SR-Cache] Rejecting cached note: path=${mismatch.notePath} reason=${mismatch.reason} cardId=${
+                    mismatch.cardId ?? "n/a"
+                } actualFilePath=${mismatch.actualFilePath ?? "n/a"}`,
+            );
+            return false;
+        }
+
         for (const question of note.questionList) {
             for (const card of question.cards) {
-                if (typeof card.Id === "number" && card.Id >= 0) {
-                    const item = this.store.getItembyID(card.Id);
-                    if (!item) {
-                        return false;
-                    }
-                    card.repetitionItem = item;
-                    card.scheduleInfo = NoteCardScheduleParser.createInfo_algo(item.getSched());
-                } else {
-                    // Cached notes without valid card IDs cannot participate in deck stats.
-                    // Force a fresh parse so ItemTrans can rebind cards to tracked items.
+                if (typeof card.Id !== "number" || card.Id < 0) {
                     return false;
                 }
+
+                const item = this.store.getItembyID(card.Id);
+                if (!item) {
+                    return false;
+                }
+
+                card.repetitionItem = item;
+                card.scheduleInfo = NoteCardScheduleParser.createInfo_algo(item.getSched());
             }
         }
         await note.clearTransientFileText(this.data.settings);

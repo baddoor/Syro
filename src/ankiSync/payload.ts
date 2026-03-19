@@ -420,6 +420,35 @@ function resolveFilePath(card: Card, buildContext?: AnkiPayloadBuildContext): st
     return buildContext.store.getFileByID(fileId)?.path ?? "";
 }
 
+function resolveItemOwnerFilePath(
+    card: Card,
+    buildContext?: AnkiPayloadBuildContext,
+): string {
+    const fileId = card.repetitionItem?.fileID;
+    if (!fileId || !buildContext?.store?.getFileByID) {
+        return "";
+    }
+
+    return buildContext.store.getFileByID(fileId)?.path ?? "";
+}
+
+function logPayloadOwnershipMismatch(
+    card: Card,
+    expectedFilePath: string,
+    actualFilePath: string,
+    buildContext?: AnkiPayloadBuildContext,
+): void {
+    if (!buildContext?.settings?.showRuntimeDebugMessages) {
+        return;
+    }
+
+    console.warn(
+        `[Syro-Anki] Skip payload for mismatched card binding: notePath=${expectedFilePath || "n/a"} actualFilePath=${
+            actualFilePath || "n/a"
+        } cardId=${card.repetitionItem?.ID ?? "n/a"} uuid=${card.repetitionItem?.uuid ?? "n/a"}`,
+    );
+}
+
 function resolveTrackedFile(
     card: Card,
     filePath: string,
@@ -918,6 +947,12 @@ export function buildSyroAnkiCardPayload(
 
     const deckName = buildDeckName(card);
     const filePath = resolveFilePath(card, buildContext);
+    const actualFilePath = resolveItemOwnerFilePath(card, buildContext);
+    if (filePath && actualFilePath && filePath !== actualFilePath) {
+        logPayloadOwnershipMismatch(card, filePath, actualFilePath, buildContext);
+        return null;
+    }
+
     const renderedFields = renderVisibleFields(card, filePath, buildContext);
     const snapshot = createReviewSnapshotFromItem(item, itemState);
     const cardHash = createCardHash(

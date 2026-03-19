@@ -201,6 +201,23 @@ describe("ankiSync payload", () => {
         expect(payload?.fields.Front).toBe("legacy-front");
         expect(payload?.warnings[0]).toContain("locator fallback");
     });
+
+    it("skips payload generation when the repetition item belongs to a different file", () => {
+        const card = createCard({ filePath: "zh/flashcards/index.md" });
+        card.repetitionItem!.fileID = "file-2";
+
+        const payload = buildSyroAnkiCardPayload(card, undefined, undefined, {
+            settings: { ...DEFAULT_SETTINGS, showRuntimeDebugMessages: true },
+            store: {
+                getTrackedFile: () => null,
+                getFileByID: (fileID: string) =>
+                    fileID === "file-2" ? ({ path: "zh/flashcards/card-authoring.md" } as TrackedFile) : null,
+            },
+        });
+
+        expect(payload).toBeNull();
+    });
+
     it("builds Obsidian source links and one-based breadcrumb lines when vault context is available", () => {
         const payload = buildSyroAnkiCardPayload(createCard({ filePath: "zh/test.md" }), undefined, undefined, {
             vaultName: "plugin_test",
