@@ -807,7 +807,18 @@ describe("ankiSync service", () => {
             expect(debugOutput).toContain("[Syro-Anki][Compare][Mismatch]");
             expect(debugOutput).toContain("\"ankiDue\":false");
             expect(debugOutput).toContain("\"syroDue\":true");
-            expect(result.errors).toContain("[compare:Syro::Deck] mismatch=1 ankiDue=0 syroDue=1 unmapped=0");
+            expect(debugOutput).toContain("\"direction\":\"anki-not-due_syro-due\"");
+            expect(result.errors).toContain(
+                "[compare:Syro::Deck] ankiNotDueButSyroDue=1 ankiDueButSyroNotDue=0 ankiDue=0 syroDue=1 unmapped=0",
+            );
+            expect(
+                result.errors.some(
+                    (message) =>
+                        message.includes("[compare-card:Syro::Deck]") &&
+                        message.includes("direction=anki-not-due_syro-due") &&
+                        message.includes(`uuid=${item.uuid}`),
+                ),
+            ).toBe(true);
         } finally {
             logSpy.mockRestore();
         }
@@ -1079,7 +1090,7 @@ describe("ankiSync service", () => {
                 ensureBinaryMediaFiles: jest.fn(async () => undefined),
                 updateNoteFields: jest.fn(async () => undefined),
                 setSpecificCardValues: jest.fn(async () => undefined),
-                areDue: jest.fn(async () => [false, false]),
+                areDue: jest.fn(async () => [false, true]),
                 notesInfo: jest.fn(async () => [
                     {
                         noteId: 10,
@@ -1158,13 +1169,21 @@ describe("ankiSync service", () => {
             const result = await service.sync(deck, "sig-due-compare");
             const debugOutput = stringifyLogCalls(logSpy);
 
-            expect(result.errors).toContain("[compare:1] mismatch=1 ankiDue=0 syroDue=1 unmapped=0");
+            expect(result.errors).toContain(
+                "[compare:1] ankiNotDueButSyroDue=1 ankiDueButSyroNotDue=1 ankiDue=1 syroDue=1 unmapped=0",
+            );
             expect(debugOutput).toContain("[Syro-Anki][Compare][Deck]");
             expect(debugOutput).toContain("\"deckName\":\"1\"");
             expect(debugOutput).toContain("\"ankiNotDue\":[{\"itemUuid\":\"uuid-1\"");
             expect(debugOutput).toContain("\"syroDue\":[{\"itemUuid\":\"uuid-1\"");
             expect(debugOutput).toContain("\"itemUuid\":\"uuid-2\"");
+            expect(debugOutput).toContain("\"direction\":\"anki-not-due_syro-due\"");
+            expect(debugOutput).toContain("\"direction\":\"anki-due_syro-not-due\"");
             expect(debugOutput).toContain("reviewDueOffset 缺少可用 baseline");
+            const compareCardWarnings = result.errors.filter((message) => message.startsWith("[compare-card:1]"));
+            expect(compareCardWarnings).toHaveLength(1);
+            expect(compareCardWarnings[0]).toContain("direction=anki-not-due_syro-due");
+            expect(compareCardWarnings[0]).toContain("uuid=uuid-1");
         } finally {
             logSpy.mockRestore();
             nowSpy.mockRestore();

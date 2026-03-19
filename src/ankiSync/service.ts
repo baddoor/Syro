@@ -114,6 +114,7 @@ interface DueComparisonCardRef {
 
 interface DueComparisonRow {
     card: DueComparisonCardRef;
+    direction: "match" | "anki-not-due_syro-due" | "anki-due_syro-not-due" | "unknown";
     ankiDue: boolean | null;
     ankiQueue: number | null;
     ankiType: number | null;
@@ -369,6 +370,19 @@ export class AnkiSyncService {
         return analysis;
     }
 
+    private getDueComparisonDirection(
+        ankiDue: boolean | null,
+        syroDue: boolean | null,
+    ): "match" | "anki-not-due_syro-due" | "anki-due_syro-not-due" | "unknown" {
+        if (ankiDue === null || syroDue === null) {
+            return "unknown";
+        }
+        if (ankiDue === syroDue) {
+            return "match";
+        }
+        return ankiDue ? "anki-due_syro-not-due" : "anki-not-due_syro-due";
+    }
+
     private buildDueComparisonRow(
         itemUuid: string,
         mapping: NonNullable<AnkiSyncItemState["mapping"]>,
@@ -383,8 +397,10 @@ export class AnkiSyncService {
         applied: boolean,
         reviewDueOffset: number | null,
     ): DueComparisonRow {
+        const direction = this.getDueComparisonDirection(ankiDue, item ? item.isDue : null);
         const row: DueComparisonRow = {
             card: this.buildDueComparisonCardRef(itemUuid, mapping, builtSnapshot),
+            direction,
             ankiDue,
             ankiQueue: cardInfo.queue ?? null,
             ankiType: cardInfo.type ?? null,
@@ -420,12 +436,12 @@ export class AnkiSyncService {
         }
 
         for (const [deckName, deckRows] of groupedRows.entries()) {
-            const mismatchRows = deckRows.filter(
-                (row) => row.ankiDue !== null && row.syroDue !== null && row.ankiDue !== row.syroDue,
-            );
+            const mismatchRows = deckRows.filter((row) => row.direction !== "match" && row.direction !== "unknown");
             if (mismatchRows.length === 0) {
                 continue;
             }
+            const ankiNotDueButSyroDue = mismatchRows.filter((row) => row.direction === "anki-not-due_syro-due");
+            const ankiDueButSyroNotDue = mismatchRows.filter((row) => row.direction === "anki-due_syro-not-due");
 
             const ankiDue = deckRows.filter((row) => row.ankiDue === true).map((row) => this.summarizeDueCard(row));
             const ankiNotDue = deckRows.filter((row) => row.ankiDue === false).map((row) => this.summarizeDueCard(row));
@@ -441,8 +457,19 @@ export class AnkiSyncService {
                 ankiNotDue,
                 syroDue,
                 syroNotDue,
+                ankiNotDueButSyroDue: ankiNotDueButSyroDue.map((row) => ({
+                    ...this.summarizeDueCard(row),
+                    direction: row.direction,
+                    decision: row.decision,
+                })),
+                ankiDueButSyroNotDue: ankiDueButSyroNotDue.map((row) => ({
+                    ...this.summarizeDueCard(row),
+                    direction: row.direction,
+                    decision: row.decision,
+                })),
                 mismatch: mismatchRows.map((row) => ({
                     ...this.summarizeDueCard(row),
+                    direction: row.direction,
                     ankiDue: row.ankiDue,
                     syroDue: row.syroDue,
                     decision: row.decision,
@@ -469,6 +496,7 @@ export class AnkiSyncService {
                     candidateReason: row.candidateReason,
                     missingBaselineState: row.missingBaselineState,
                     remoteSnapshotSource: row.remoteSnapshotSource,
+                    direction: row.direction,
                     applied: row.applied,
                     decision: row.decision,
                     analysis: row.analysis,
@@ -476,8 +504,13 @@ export class AnkiSyncService {
             }
 
             result.errors.push(
-                `[compare:${deckName}] mismatch=${mismatchRows.length} ankiDue=${ankiDue.length} syroDue=${syroDue.length} unmapped=${unmapped}`,
+                `[compare:${deckName}] ankiNotDueButSyroDue=${ankiNotDueButSyroDue.length} ankiDueButSyroNotDue=${ankiDueButSyroNotDue.length} ankiDue=${ankiDue.length} syroDue=${syroDue.length} unmapped=${unmapped}`,
             );
+            for (const row of ankiNotDueButSyroDue) {
+                result.errors.push(
+                    `[compare-card:${deckName}] direction=${row.direction} file=${row.card.filePath} uuid=${row.card.itemUuid} cardId=${row.card.cardId} front=${row.card.frontPreview} ankiDue=${row.ankiDue} syroDue=${row.syroDue} candidateReason=${row.candidateReason ?? "none"} missingBaselineState=${row.missingBaselineState ?? "none"} remoteSnapshotSource=${row.remoteSnapshotSource ?? "none"} decision=${row.decision} reviewDueOffset=${row.reviewDueOffset ?? "null"}`,
+                );
+            }
         }
     }
 
