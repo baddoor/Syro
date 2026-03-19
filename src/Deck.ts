@@ -145,6 +145,22 @@ export class Deck {
         return distinctCardSet.size;
     }
 
+    public getAvailableLearningCardCount(
+        includeSubdeckCounts: boolean,
+        learnAheadMillis: number,
+        now: number = Date.now(),
+    ): number {
+        const cardList: Card[] = this.getFlattenedCardArray(
+            CardListType.LearningCard,
+            includeSubdeckCounts,
+        );
+        const availableLearningCards = cardList.filter((card) =>
+            card.repetitionItem?.isReviewableLearning(now, learnAheadMillis),
+        );
+
+        return new Set(availableLearningCards).size;
+    }
+
     public getFlattenedCardArray(
         cardListType: CardListType,
         includeSubdeckCounts: boolean,

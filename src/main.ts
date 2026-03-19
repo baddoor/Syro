@@ -1506,8 +1506,9 @@ export default class SRPlugin extends Plugin {
             };
             addItemsToMap(this.deckTree);
 
+            const learnAheadMillis = Math.max(0, this.data.settings.learnAheadMinutes) * 60 * 1000;
             for (const [dName, dItems] of deckItemsMap.entries()) {
-                statsService.calculateDeckStats(dName, dItems);
+                statsService.calculateDeckStats(dName, dItems, learnAheadMillis);
             }
             if (this.data.settings.showSchedulingDebugMessages) {
                 console.log(

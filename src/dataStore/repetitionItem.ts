@@ -274,13 +274,16 @@ export class RepetitionItem {
     }
 
     /**
-     * Is the card displayable as "learning" in the UI?
+     * Returns whether this learning card is reviewable in the current session.
+     * The check intentionally matches FlashcardReviewSequencer.advanceToNextCard():
+     * show learning cards only when they are due now or within the learn-ahead window.
      */
-    get isDisplayableLearning(): boolean {
-        return (
-            this.queue === CardQueue.Learn &&
-            this.nextReview <= globalDateProvider.endofToday.valueOf()
-        );
+    isReviewableLearning(now: number = Date.now(), learnAheadMillis: number = 0): boolean {
+        if (this.queue !== CardQueue.Learn) {
+            return false;
+        }
+
+        return this.nextReview <= now + Math.max(0, learnAheadMillis);
     }
 
     getSchedDurAsStr() {

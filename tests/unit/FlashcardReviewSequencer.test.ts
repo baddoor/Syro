@@ -1,4 +1,5 @@
 import { CardScheduleCalculator, CardScheduleInfo } from "src/CardSchedule";
+import { Card } from "src/Card";
 import {
     CardOrder,
     DeckOrder,
@@ -1251,3 +1252,85 @@ async function checkUpdateCurrentQuestionText(
     expect(await c.file.read()).toEqual(expectedFileText);
     return c;
 }
+
+function createLearningOnlySequencer(
+    nextReview: number,
+    learnAheadMinutes: number = 15,
+): FlashcardReviewSequencer {
+    const settings: SRSettings = {
+        ...DEFAULT_SETTINGS,
+        convertFoldersToDecks: false,
+        learnAheadMinutes,
+    };
+    const cardSequencer: IDeckTreeIterator = new DeckTreeIterator(order_DueFirst_Sequential, null);
+    const noteEaseList = new NoteEaseList(settings);
+    const cardScheduleCalculator = new CardScheduleCalculator(settings, noteEaseList);
+    const questionPostponementList = new QuestionPostponementList(null, settings, []);
+    const sequencer = new FlashcardReviewSequencer(
+        FlashcardReviewMode.Review,
+        cardSequencer,
+        settings,
+        cardScheduleCalculator,
+        questionPostponementList,
+    );
+
+    const root = new Deck("Root", null);
+    const deck = root.getOrCreateDeck(new TopicPath(["Learning"]));
+    const item = new RepetitionItem(1, "test-file", RPITEMTYPE.CARD, "#Learning", {});
+    item.queue = CardQueue.Learn;
+    item.learningStep = 1;
+    item.nextReview = nextReview;
+
+    const card = new Card({
+        Id: item.ID,
+        repetitionItem: item,
+        question: {
+            topicPathList: {
+                list: [new TopicPath(["Learning"])],
+            },
+        } as any,
+    });
+    deck.learningFlashcards.push(card);
+
+    sequencer.setDeckTree(root, root);
+    return sequencer;
+}
+
+describe("learning availability counters", () => {
+    afterEach(() => {
+        jest.restoreAllMocks();
+    });
+
+    test("does not count cross-day learning cards outside the learn-ahead window", () => {
+        const now = Date.UTC(2026, 2, 19, 9, 0, 0);
+        jest.spyOn(Date, "now").mockReturnValue(now);
+
+        const sequencer = createLearningOnlySequencer(now + 24 * 60 * 60 * 1000, 15);
+        const stats = sequencer.getDeckStats(TopicPath.emptyPath);
+
+        expect(stats.learningCount).toBe(0);
+        expect(sequencer.hasCurrentCard).toBe(false);
+    });
+
+    test("counts learning cards that are strictly due now", () => {
+        const now = Date.UTC(2026, 2, 19, 9, 0, 0);
+        jest.spyOn(Date, "now").mockReturnValue(now);
+
+        const sequencer = createLearningOnlySequencer(now - 60 * 1000, 15);
+        const stats = sequencer.getDeckStats(TopicPath.emptyPath);
+
+        expect(stats.learningCount).toBe(1);
+        expect(sequencer.hasCurrentCard).toBe(true);
+    });
+
+    test("counts learning cards that fall inside the learn-ahead window", () => {
+        const now = Date.UTC(2026, 2, 19, 9, 0, 0);
+        jest.spyOn(Date, "now").mockReturnValue(now);
+
+        const sequencer = createLearningOnlySequencer(now + 10 * 60 * 1000, 15);
+        const stats = sequencer.getDeckStats(TopicPath.emptyPath);
+
+        expect(stats.learningCount).toBe(1);
+        expect(sequencer.hasCurrentCard).toBe(true);
+    });
+});

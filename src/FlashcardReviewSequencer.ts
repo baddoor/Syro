@@ -117,6 +117,10 @@ export class FlashcardReviewSequencer implements IFlashcardReviewSequencer {
     }
     private _selectedTopicPath: TopicPath = TopicPath.emptyPath; // 保存用户选择的卡组路径
 
+    private getLearnAheadMillis(): number {
+        return Math.max(0, this.settings.learnAheadMinutes) * 60 * 1000;
+    }
+
     constructor(
         reviewMode: FlashcardReviewMode,
         cardSequencer: IDeckTreeIterator,
@@ -214,7 +218,10 @@ export class FlashcardReviewSequencer implements IFlashcardReviewSequencer {
 
         const newCount = deck.getDistinctCardCount(CardListType.NewCard, true);
         const dueCount = deck.getDistinctCardCount(CardListType.DueCard, true);
-        const learningCount = deck.getDistinctCardCount(CardListType.LearningCard, true);
+        const learningCount = deck.getAvailableLearningCardCount(
+            true,
+            this.getLearnAheadMillis(),
+        );
 
         return new DeckStats(
             dueCount,
@@ -240,7 +247,7 @@ export class FlashcardReviewSequencer implements IFlashcardReviewSequencer {
         this._nextWaitTime = null;
 
         const now = Date.now();
-        const learnAheadTime = this.settings.learnAheadMinutes * 60 * 1000;
+        const learnAheadTime = this.getLearnAheadMillis();
 
         // 1. 获取当前牌组及其所有子牌组中的学习中卡片
         const validLearningCards = this.currentDeck.getFlattenedCardArray(
@@ -544,7 +551,10 @@ export class FlashcardReviewSequencer implements IFlashcardReviewSequencer {
         this.logRuntimeDebug(
             `[SR-DynSync] processReview_ReviewMode: 准备为牌组 [${deckToRecalc?.deckName}] 重新计算统计`,
         );
-        DeckStatsService.getInstance().recalculateDeck(deckToRecalc);
+        DeckStatsService.getInstance().recalculateDeck(
+            deckToRecalc,
+            this.getLearnAheadMillis(),
+        );
 
         this.advanceToNextCard();
     }
@@ -625,7 +635,10 @@ export class FlashcardReviewSequencer implements IFlashcardReviewSequencer {
             this.cardSequencer.nextCard();
         }
         this.logRuntimeDebug(`[SR-DynSync] processReview_CramMode: 准备重新计算统计`);
-        DeckStatsService.getInstance().recalculateDeck(this.currentDeck);
+        DeckStatsService.getInstance().recalculateDeck(
+            this.currentDeck,
+            this.getLearnAheadMillis(),
+        );
         this.advanceToNextCard();
     }
 
@@ -813,7 +826,10 @@ export class FlashcardReviewSequencer implements IFlashcardReviewSequencer {
             this.logRuntimeDebug(
                 `[SR-DynSync] undoReview: 准备为牌组 [${deckToRecalc.deckName}] 重新计算统计`,
             );
-            DeckStatsService.getInstance().recalculateDeck(deckToRecalc);
+            DeckStatsService.getInstance().recalculateDeck(
+                deckToRecalc,
+                this.getLearnAheadMillis(),
+            );
         }
     }
 
@@ -859,7 +875,10 @@ export class FlashcardReviewSequencer implements IFlashcardReviewSequencer {
         }
 
         const deckToRecalculate = this.findDeckForCard(card) || this.currentDeck;
-        DeckStatsService.getInstance().recalculateDeck(deckToRecalculate);
+        DeckStatsService.getInstance().recalculateDeck(
+            deckToRecalculate,
+            this.getLearnAheadMillis(),
+        );
         this.advanceToNextCard();
     }
 }
