@@ -1,6 +1,6 @@
 import {
     buildTimelineRenderModel,
-    hasTimelineInlineFormatting,
+    findTimelineLivePreviewSegments,
     parseTimelineMessage,
     sanitizeTimelineInlineMarkdown,
 } from "src/ui/timeline/timelineMessage";
@@ -66,9 +66,34 @@ describe("timelineMessage", () => {
         });
     });
 
-    it("detects inline markdown for live preview", () => {
-        expect(hasTimelineInlineFormatting("plain text")).toBe(false);
-        expect(hasTimelineInlineFormatting("**bold**")).toBe(true);
-        expect(hasTimelineInlineFormatting("`code`")).toBe(true);
+    it("collects live preview segments for inline syntax", () => {
+        expect(findTimelineLivePreviewSegments("**bold** `code`", false)).toEqual([
+            {
+                kind: "bold",
+                from: 0,
+                to: 8,
+                raw: "**bold**",
+                text: "bold",
+            },
+            {
+                kind: "inline-code",
+                from: 9,
+                to: 15,
+                raw: "`code`",
+                text: "code",
+            },
+        ]);
+    });
+
+    it("collects duration prefix segments only when the setting is enabled", () => {
+        expect(findTimelineLivePreviewSegments("9d:: foo", false)).toEqual([]);
+        expect(findTimelineLivePreviewSegments("9d:: foo", true)[0]).toEqual({
+            kind: "duration-prefix",
+            from: 0,
+            to: 5,
+            raw: "9d:: ",
+            text: "9d",
+            duration: { raw: "9d", totalDays: 9 },
+        });
     });
 });

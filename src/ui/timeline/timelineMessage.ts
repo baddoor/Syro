@@ -28,6 +28,24 @@ export interface TimelineRenderModel {
     duration: TimelineDisplayDuration | null;
 }
 
+export type TimelineLivePreviewSegmentKind =
+    | "duration-prefix"
+    | "bold"
+    | "italic"
+    | "strikethrough"
+    | "highlight"
+    | "inline-code"
+    | "math";
+
+export interface TimelineLivePreviewSegment {
+    kind: TimelineLivePreviewSegmentKind;
+    from: number;
+    to: number;
+    raw: string;
+    text: string;
+    duration?: TimelineDisplayDuration;
+}
+
 const DURATION_UNIT_ALIASES: Record<string, TimelineDurationUnit> = {
     d: "day",
     day: "day",
@@ -134,8 +152,78 @@ export function buildTimelineRenderModel(opts: {
     };
 }
 
-export function hasTimelineInlineFormatting(message: string): boolean {
-    return /(\*\*.+?\*\*|\*[^*\n]+\*|~~.+?~~|==.+?==|`[^`\n]+`|\$[^$\n]+\$)/.test(message);
+function collectTimelineRegexSegments(
+    message: string,
+    offset: number,
+    regex: RegExp,
+    kind: Exclude<TimelineLivePreviewSegmentKind, "duration-prefix">,
+): TimelineLivePreviewSegment[] {
+    const segments: TimelineLivePreviewSegment[] = [];
+    regex.lastIndex = 0;
+
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(message)) !== null) {
+        const raw = match[0];
+        const text = match[1];
+        const from = offset + match.index;
+        const to = from + raw.length;
+        segments.push({
+            kind,
+            from,
+            to,
+            raw,
+            text,
+        });
+    }
+
+    return segments;
+}
+
+export function findTimelineLivePreviewSegments(
+    message: string,
+    enableDurationPrefixSyntax: boolean,
+): TimelineLivePreviewSegment[] {
+    const raw = message ?? "";
+    const segments: TimelineLivePreviewSegment[] = [];
+    let bodyOffset = 0;
+
+    if (enableDurationPrefixSyntax) {
+        const parsed = parseTimelineMessage(raw);
+        if (parsed.durationPrefix) {
+            const prefixMatch = raw.match(PREFIX_CAPTURE);
+            if (prefixMatch) {
+                bodyOffset = prefixMatch[0].length;
+                segments.push({
+                    kind: "duration-prefix",
+                    from: 0,
+                    to: bodyOffset,
+                    raw: prefixMatch[0],
+                    text: parsed.durationPrefix.raw,
+                    duration: {
+                        raw: parsed.durationPrefix.raw,
+                        totalDays: parsed.durationPrefix.totalDays,
+                    },
+                });
+            }
+        }
+    }
+
+    const body = raw.slice(bodyOffset);
+    segments.push(
+        ...collectTimelineRegexSegments(body, bodyOffset, /\*\*(.+?)\*\*/g, "bold"),
+        ...collectTimelineRegexSegments(
+            body,
+            bodyOffset,
+            /(?<!\*)\*([^*\n]+?)\*(?!\*)/g,
+            "italic",
+        ),
+        ...collectTimelineRegexSegments(body, bodyOffset, /~~(.+?)~~/g, "strikethrough"),
+        ...collectTimelineRegexSegments(body, bodyOffset, /==(.+?)==/g, "highlight"),
+        ...collectTimelineRegexSegments(body, bodyOffset, /`([^`\n]+?)`/g, "inline-code"),
+        ...collectTimelineRegexSegments(body, bodyOffset, /(?<!\$)\$([^$\n]+?)\$(?!\$)/g, "math"),
+    );
+
+    return segments.sort((left, right) => left.from - right.from || left.to - right.to);
 }
 
 export function sanitizeTimelineInlineMarkdown(line: string): string {

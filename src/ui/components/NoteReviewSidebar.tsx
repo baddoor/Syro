@@ -25,9 +25,9 @@ import { ReviewCommitLog } from "src/dataStore/reviewCommitStore";
 import { ArrowDownAZ, BarChart3, GripVertical, Menu } from "lucide-react";
 import "../styles/note-review-sidebar.css";
 import { t } from "src/lang/helpers";
+import { TimelineCodeMirror } from "./TimelineCodeMirror";
 import {
     buildTimelineRenderModel,
-    hasTimelineInlineFormatting,
     sanitizeTimelineInlineMarkdown,
     TimelineDisplayDuration,
     normalizeTimelineInlineLines,
@@ -707,45 +707,6 @@ interface TimelinePaneProps {
     showScrollPercentage?: boolean;
 }
 
-type TimelineFormatAction =
-    | "bold"
-    | "italic"
-    | "strikethrough"
-    | "highlight"
-    | "inline-code"
-    | "math";
-
-const TIMELINE_FORMAT_WRAPPERS: Record<TimelineFormatAction, [string, string]> = {
-    bold: ["**", "**"],
-    italic: ["*", "*"],
-    strikethrough: ["~~", "~~"],
-    highlight: ["==", "=="],
-    "inline-code": ["`", "`"],
-    math: ["$", "$"],
-};
-
-function applyTimelineFormat(
-    textarea: HTMLTextAreaElement,
-    value: string,
-    setValue: (value: string) => void,
-    action: TimelineFormatAction,
-): void {
-    const [prefix, suffix] = TIMELINE_FORMAT_WRAPPERS[action];
-    const start = textarea.selectionStart ?? value.length;
-    const end = textarea.selectionEnd ?? start;
-    const selected = value.slice(start, end);
-    const nextValue = value.slice(0, start) + prefix + selected + suffix + value.slice(end);
-    const selectionStart = start + prefix.length;
-    const selectionEnd = selectionStart + selected.length;
-
-    setValue(nextValue);
-
-    requestAnimationFrame(() => {
-        textarea.focus();
-        textarea.setSelectionRange(selectionStart, selectionEnd);
-    });
-}
-
 const TimelineRenderedMessage: React.FC<{
     app: App;
     message: string;
@@ -833,29 +794,6 @@ const TimelineRenderedMessage: React.FC<{
     );
 };
 
-const TimelinePreview: React.FC<{
-    app: App;
-    message: string;
-    enableDurationPrefixSyntax: boolean;
-}> = ({ app, message, enableDurationPrefixSyntax }) => {
-    const trimmed = message.trim();
-    if (!trimmed) return null;
-
-    const shouldShowPreview = enableDurationPrefixSyntax || hasTimelineInlineFormatting(trimmed);
-
-    if (!shouldShowPreview) return null;
-
-    return (
-        <div className="sr-timeline-preview">
-            <TimelineRenderedMessage
-                app={app}
-                message={trimmed}
-                enableDurationPrefixSyntax={enableDurationPrefixSyntax}
-            />
-        </div>
-    );
-};
-
 /**
  * 格式化时间戳为可读的相对时间或日期字符串
  */
@@ -895,13 +833,6 @@ const TimelinePane: React.FC<TimelinePaneProps> = ({
 }) => {
     const [message, setMessage] = useState("");
     const [editText, setEditText] = useState("");
-    const editRef = useRef<HTMLTextAreaElement>(null);
-    const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-    const adjustHeight = (el: HTMLElement) => {
-        el.style.height = "auto";
-        el.style.height = el.scrollHeight + "px";
-    };
 
     // 选中项变化时清空输入
     useEffect(() => {
@@ -915,61 +846,8 @@ const TimelinePane: React.FC<TimelinePaneProps> = ({
             if (log) {
                 setEditText(log.message);
             }
-            setTimeout(() => {
-                if (editRef.current) {
-                    adjustHeight(editRef.current);
-                    editRef.current.focus();
-                    editRef.current.setSelectionRange(
-                        editRef.current.value.length,
-                        editRef.current.value.length,
-                    );
-                }
-            }, 50);
         }
     }, [editingId, logs]);
-
-    // 自动调整高度
-    useEffect(() => {
-        if (textareaRef.current) {
-            adjustHeight(textareaRef.current);
-        }
-    }, [message]);
-
-    useEffect(() => {
-        if (editRef.current) {
-            adjustHeight(editRef.current);
-        }
-    }, [editText]);
-
-    useEffect(() => {
-        const textarea = textareaRef.current;
-        if (!textarea) return;
-
-        const handleFormat = (evt: Event) => {
-            const action = (evt as CustomEvent<{ action: TimelineFormatAction }>).detail?.action;
-            if (!action) return;
-            applyTimelineFormat(textarea, message, setMessage, action);
-        };
-
-        textarea.addEventListener("sr-timeline-format", handleFormat as EventListener);
-        return () =>
-            textarea.removeEventListener("sr-timeline-format", handleFormat as EventListener);
-    }, [message]);
-
-    useEffect(() => {
-        const textarea = editRef.current;
-        if (!textarea || !editingId) return;
-
-        const handleFormat = (evt: Event) => {
-            const action = (evt as CustomEvent<{ action: TimelineFormatAction }>).detail?.action;
-            if (!action) return;
-            applyTimelineFormat(textarea, editText, setEditText, action);
-        };
-
-        textarea.addEventListener("sr-timeline-format", handleFormat as EventListener);
-        return () =>
-            textarea.removeEventListener("sr-timeline-format", handleFormat as EventListener);
-    }, [editText, editingId]);
 
     const handleCommit = useCallback(() => {
         if (!message.trim()) return;
@@ -977,75 +855,19 @@ const TimelinePane: React.FC<TimelinePaneProps> = ({
         setMessage("");
     }, [message, onCommit]);
 
-    const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-        // Native event listener handles Ctrl+Enter now
-    }, []);
-
-    // 监听 Obsidian Scope 派发的 sr-ctrl-enter CustomEvent
-    // Obsidian 在 Electron 层拦截了 Ctrl+Enter，DOM keydown 事件收不到 Enter 键
-    // 所以 ReactNoteReviewView 通过 Scope API 捕获后派发 CustomEvent 到聚焦元素
-    useEffect(() => {
-        const textarea = textareaRef.current;
-        if (!textarea) return;
-
-        const handleSrSubmit = () => {
-            handleCommit();
-        };
-
-        textarea.addEventListener("sr-ctrl-enter", handleSrSubmit);
-        return () => textarea.removeEventListener("sr-ctrl-enter", handleSrSubmit);
-    }, [handleCommit]);
-
-    // 编辑框：监听 sr-ctrl-enter CustomEvent
-    useEffect(() => {
-        const textarea = editRef.current;
-        if (!textarea || !editingId) return;
-
-        const handleSrSubmit = () => {
-            if (onEditCommit) {
-                const trimmed = textarea.value.trim();
-                if (trimmed) {
-                    onEditCommit(editingId, trimmed);
-                }
-            }
-        };
-
-        textarea.addEventListener("sr-ctrl-enter", handleSrSubmit);
-        return () => textarea.removeEventListener("sr-ctrl-enter", handleSrSubmit);
-    }, [editingId, onEditCommit]);
-
-    // 编辑 textarea 失焦 → 自动保存
-    const handleEditBlur = useCallback(() => {
+    const submitEdit = useCallback(() => {
         if (editingId && onEditCommit) {
             const trimmed = editText.trim();
             if (trimmed) {
                 onEditCommit(editingId, trimmed);
             }
         }
-        if (onCancelEdit) onCancelEdit();
-    }, [editingId, editText, onEditCommit, onCancelEdit]);
+    }, [editText, editingId, onEditCommit]);
 
-    // Escape 取消编辑
-    // Escape 取消编辑, Ctrl+Enter 提交编辑
-    const handleEditKeyDown = useCallback(
-        (e: React.KeyboardEvent) => {
-            if (e.key === "Escape") {
-                e.preventDefault();
-                e.stopPropagation();
-                if (onCancelEdit) onCancelEdit();
-            } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-                e.preventDefault();
-                e.stopPropagation();
-                if (editingId && onEditCommit) {
-                    const trimmed = editText.trim();
-                    if (trimmed) {
-                        onEditCommit(editingId, trimmed);
-                    }
-                }
-            }
-        },
-        [onCancelEdit, editingId, onEditCommit, editText],
-    );
+    const handleEditBlur = useCallback(() => {
+        submitEdit();
+        if (onCancelEdit) onCancelEdit();
+    }, [onCancelEdit, submitEdit]);
 
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%" }}>
@@ -1081,22 +903,18 @@ const TimelinePane: React.FC<TimelinePaneProps> = ({
                             {/* Input Area */}
                             <div className="sr-timeline-input-area">
                                 <div className="sr-timeline-textarea-wrap">
-                                    <textarea
-                                        ref={textareaRef}
+                                    <TimelineCodeMirror
+                                        app={app}
                                         value={message}
-                                        onChange={(e) => setMessage(e.target.value)}
-                                        onKeyDown={handleKeyDown}
+                                        onChange={setMessage}
                                         placeholder={t("TIMELINE_INPUT_PLACEHOLDER")}
+                                        enableDurationPrefixSyntax={
+                                            enableDurationPrefixSyntax
+                                        }
                                         className="sr-timeline-textarea"
-                                        spellCheck={false}
-                                        rows={1}
+                                        onSubmit={handleCommit}
                                     />
                                 </div>
-                                <TimelinePreview
-                                    app={app}
-                                    message={message}
-                                    enableDurationPrefixSyntax={enableDurationPrefixSyntax}
-                                />
                                 <button
                                     onClick={handleCommit}
                                     disabled={!message.trim()}
@@ -1152,27 +970,21 @@ const TimelinePane: React.FC<TimelinePaneProps> = ({
                                                     }}
                                                 >
                                                     {isEditing ? (
-                                                        <div className="sr-timeline-edit-wrap">
-                                                            <textarea
-                                                                ref={editRef}
-                                                                value={editText}
-                                                                onChange={(e) =>
-                                                                    setEditText(e.target.value)
-                                                                }
-                                                                onBlur={handleEditBlur}
-                                                                onKeyDown={handleEditKeyDown}
-                                                                className="sr-timeline-edit-textarea"
-                                                                spellCheck={false}
-                                                                rows={1}
-                                                            />
-                                                            <TimelinePreview
-                                                                app={app}
-                                                                message={editText}
-                                                                enableDurationPrefixSyntax={
-                                                                    enableDurationPrefixSyntax
-                                                                }
-                                                            />
-                                                        </div>
+                                                        <TimelineCodeMirror
+                                                            app={app}
+                                                            value={editText}
+                                                            onChange={setEditText}
+                                                            enableDurationPrefixSyntax={
+                                                                enableDurationPrefixSyntax
+                                                            }
+                                                            className="sr-timeline-edit-textarea"
+                                                            maxHeight={150}
+                                                            minHeight={32}
+                                                            autoFocus={true}
+                                                            onSubmit={submitEdit}
+                                                            onCancel={onCancelEdit}
+                                                            onBlur={handleEditBlur}
+                                                        />
                                                     ) : (
                                                         <div className="sr-timeline-message">
                                                             <TimelineRenderedMessage

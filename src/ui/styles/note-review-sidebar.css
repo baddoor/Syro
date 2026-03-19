@@ -723,44 +723,46 @@
     border-color: var(--interactive-accent);
 }
 
-.sr-timeline-textarea {
+.sr-timeline-editor-host {
     width: 100%;
-    background: transparent;
-    font-size: 13px;
-    color: var(--text-normal);
-    padding: 8px;
-    height: auto;
-    min-height: 36px;
-    max-height: 200px;
-    overflow-y: hidden;
-    resize: none;
-    outline: none;
-    resize: none;
-    outline: none;
-    outline: none;
-    font-family: var(--font-interface);
     display: block;
-    line-height: 1.625;
-    border: none;
     box-sizing: border-box;
 }
 
-.sr-timeline-textarea::placeholder {
-    color: var(--text-faint);
+.sr-timeline-editor-host .cm-editor {
+    background: transparent;
+    color: var(--text-normal);
 }
 
-/* 自定义滚动条 */
-.sr-timeline-textarea::-webkit-scrollbar {
+.sr-timeline-editor-host .cm-scroller {
+    scrollbar-width: thin;
+    scrollbar-color: var(--background-modifier-border) transparent;
+}
+
+.sr-timeline-editor-host .cm-scroller::-webkit-scrollbar {
     width: 4px;
 }
 
-.sr-timeline-textarea::-webkit-scrollbar-track {
+.sr-timeline-editor-host .cm-scroller::-webkit-scrollbar-track {
     background: transparent;
 }
 
-.sr-timeline-textarea::-webkit-scrollbar-thumb {
+.sr-timeline-editor-host .cm-scroller::-webkit-scrollbar-thumb {
     background: var(--background-modifier-border);
     border-radius: 2px;
+}
+
+.sr-timeline-editor-host .cm-content {
+    word-break: break-word;
+}
+
+.sr-timeline-editor-host .cm-focused .cm-selectionBackground,
+.sr-timeline-editor-host .cm-selectionBackground {
+    background: var(--text-selection) !important;
+}
+
+.sr-timeline-editor-host .cm-placeholder {
+    color: var(--text-faint);
 }
 
 /* 提交按钮 */
@@ -934,41 +936,54 @@
     font-style: italic;
 }
 
-.sr-timeline-preview,
-.sr-timeline-edit-wrap {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.sr-timeline-preview {
-    padding: 8px 10px;
-    border: 1px solid var(--background-modifier-border);
-    border-radius: var(--syro-sidebar-tag-pill-radius, 6px);
-    background: var(--background-primary-alt);
-}
-
 /* 内联编辑状态 */
 .sr-timeline-edit-textarea {
     width: 100%;
-    font-size: 13px;
-    color: var(--text-normal);
-    line-height: 1.4;
     background: var(--background-primary);
     border: 1px solid var(--interactive-accent);
     border-radius: 2px;
-    padding: 4px 6px;
-    padding: 4px 6px;
-    resize: none;
-    height: auto;
-    min-height: 32px;
-    max-height: 150px;
-    overflow-y: hidden;
-    outline: none;
-    font-family: var(--font-interface);
     box-sizing: border-box;
 }
 
 .sr-timeline-entry.editing {
     background: var(--background-primary-alt);
+}
+
+.sr-timeline-live-bold {
+    font-weight: 700;
+}
+
+.sr-timeline-live-italic {
+    font-style: italic;
+}
+
+.sr-timeline-live-strikethrough {
+    text-decoration: line-through;
+}
+
+.sr-timeline-live-highlight {
+    background: var(--text-highlight-bg, rgba(255, 208, 0, 0.35));
+    border-radius: 3px;
+    padding: 0 2px;
+}
+
+.sr-timeline-live-code {
+    font-family: var(--font-monospace);
+    font-size: 0.95em;
+    background: var(--background-secondary-alt, var(--background-secondary));
+    border-radius: 4px;
+    padding: 1px 4px;
+}
+
+.sr-timeline-live-math {
+    display: inline-flex;
+    align-items: center;
+    min-height: 1.2em;
+}
+
+.sr-timeline-live-duration-widget {
+    display: inline-flex;
+    align-items: center;
+    margin-right: 6px;
+    vertical-align: baseline;
 }

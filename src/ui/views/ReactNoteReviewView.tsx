@@ -216,9 +216,10 @@ export class ReactNoteReviewView extends ItemView {
         this.timelineScopeHandlers.push(
             this.scope.register(["Mod"], "Enter", (evt: KeyboardEvent) => {
                 const activeEl = document.activeElement;
-                if (activeEl && activeEl.closest(".sr-react-note-review-view")) {
+                const timelineTarget = this.getTimelineEventTarget(activeEl);
+                if (timelineTarget) {
                     evt.preventDefault();
-                    activeEl.dispatchEvent(new CustomEvent("sr-ctrl-enter", { bubbles: false }));
+                    timelineTarget.dispatchEvent(new CustomEvent("sr-ctrl-enter", { bubbles: false }));
                     return false;
                 }
                 return true;
@@ -270,13 +271,13 @@ export class ReactNoteReviewView extends ItemView {
             for (const hotkey of hotkeys) {
                 this.timelineScopeHandlers.push(
                     this.scope.register(hotkey.modifiers as any, hotkey.key, (evt: KeyboardEvent) => {
-                        const activeEl = document.activeElement;
-                        if (!this.isTimelineTextarea(activeEl)) {
+                        const timelineTarget = this.getTimelineEventTarget(document.activeElement);
+                        if (!timelineTarget) {
                             return true;
                         }
 
                         evt.preventDefault();
-                        activeEl.dispatchEvent(
+                        timelineTarget.dispatchEvent(
                             new CustomEvent("sr-timeline-format", {
                                 bubbles: false,
                                 detail: { action: hotkeyAction.action },
@@ -336,13 +337,27 @@ export class ReactNoteReviewView extends ItemView {
         return collected;
     }
 
-    private isTimelineTextarea(activeEl: Element | null): activeEl is HTMLTextAreaElement {
+    private getTimelineEventTarget(activeEl: Element | null): HTMLElement | null {
+        if (!(activeEl instanceof HTMLElement)) {
+            return null;
+        }
+
+        if (!activeEl.closest(".sr-react-note-review-view")) {
+            return null;
+        }
+
+        const editorHost = activeEl.closest(".sr-timeline-editor-host");
+        if (editorHost instanceof HTMLElement) {
+            return editorHost;
+        }
+
         return (
             activeEl instanceof HTMLTextAreaElement &&
-            !!activeEl.closest(".sr-react-note-review-view") &&
             (activeEl.classList.contains("sr-timeline-textarea") ||
                 activeEl.classList.contains("sr-timeline-edit-textarea"))
-        );
+        )
+            ? activeEl
+            : null;
     }
 
     // ==========================================
