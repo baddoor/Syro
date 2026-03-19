@@ -842,6 +842,10 @@
     background: var(--background-modifier-hover);
 }
 
+.sr-timeline-entry.is-review-response .sr-timeline-dot {
+    border-color: var(--color-green, var(--interactive-accent));
+}
+
 /* 时间线圆点 */
 .sr-timeline-dot {
     position: absolute;
@@ -858,8 +862,48 @@
     font-size: 13px;
     color: var(--text-normal);
     line-height: 1.4;
-    white-space: pre-wrap;
     word-break: break-word;
+}
+
+.sr-timeline-message-rendered {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.sr-timeline-message-content {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.sr-timeline-message-line {
+    min-height: 1.2em;
+}
+
+.sr-timeline-message-line.is-empty {
+    opacity: 0.45;
+}
+
+.sr-timeline-message-line p {
+    margin: 0;
+}
+
+.sr-timeline-message-line .math,
+.sr-timeline-message-line code {
+    font-size: 0.95em;
+}
+
+.sr-timeline-duration-pill {
+    display: inline-flex;
+    align-items: center;
+    align-self: flex-start;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--interactive-accent) 14%, transparent);
+    color: var(--text-muted);
+    font-size: 11px;
+    line-height: 1.2;
 }
 
 .sr-timeline-time {

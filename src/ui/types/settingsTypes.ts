@@ -52,6 +52,7 @@ export interface UISettingsState {
     hideNoteReviewSidebarFilters: boolean; // Hide the sidebar filter header
     showScrollPercentage: boolean; // Show saved scroll percentage in timeline items
     autoExpandTimeline: boolean; // Auto-expand the timeline when opening a reviewed note
+    timelineAutoCommitReviewSelection: boolean; // Auto-write note review selections to timeline
 
     // Algorithm
     cardAlgorithm: string;

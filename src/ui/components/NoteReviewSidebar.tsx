@@ -19,11 +19,17 @@
 
 import React, { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { flushSync } from "react-dom";
+import { App, Component, MarkdownRenderer } from "obsidian";
 import { NoteReviewSection, NoteReviewItem, NoteReviewSidebarState } from "../types/noteReview";
 import { ReviewCommitLog } from "src/dataStore/reviewCommitStore";
 import { ArrowDownAZ, BarChart3, GripVertical, Menu } from "lucide-react";
 import "../styles/note-review-sidebar.css";
 import { t } from "src/lang/helpers";
+import {
+    normalizeTimelineInlineLines,
+    parseTimelineMessage,
+    sanitizeTimelineInlineMarkdown,
+} from "src/ui/timeline/timelineMessage";
 
 // ==========================================
 // 类型定义
@@ -683,6 +689,7 @@ const ResizableDivider: React.FC<{
 // ==========================================
 
 interface TimelinePaneProps {
+    app: App;
     isOpen: boolean;
     onToggle: () => void;
     selectedItem: NoteReviewItem | null;
@@ -696,6 +703,108 @@ interface TimelinePaneProps {
     onCommitSelect?: (log: ReviewCommitLog) => void;
     showScrollPercentage?: boolean;
 }
+
+type TimelineFormatAction =
+    | "bold"
+    | "italic"
+    | "strikethrough"
+    | "highlight"
+    | "inline-code"
+    | "math";
+
+const TIMELINE_FORMAT_WRAPPERS: Record<TimelineFormatAction, [string, string]> = {
+    bold: ["**", "**"],
+    italic: ["*", "*"],
+    strikethrough: ["~~", "~~"],
+    highlight: ["==", "=="],
+    "inline-code": ["`", "`"],
+    math: ["$", "$"],
+};
+
+function applyTimelineFormat(
+    textarea: HTMLTextAreaElement,
+    value: string,
+    setValue: (value: string) => void,
+    action: TimelineFormatAction,
+): void {
+    const [prefix, suffix] = TIMELINE_FORMAT_WRAPPERS[action];
+    const start = textarea.selectionStart ?? value.length;
+    const end = textarea.selectionEnd ?? start;
+    const selected = value.slice(start, end);
+    const nextValue = value.slice(0, start) + prefix + selected + suffix + value.slice(end);
+    const selectionStart = start + prefix.length;
+    const selectionEnd = selectionStart + selected.length;
+
+    setValue(nextValue);
+
+    requestAnimationFrame(() => {
+        textarea.focus();
+        textarea.setSelectionRange(selectionStart, selectionEnd);
+    });
+}
+
+const TimelineRenderedMessage: React.FC<{ app: App; message: string }> = ({ app, message }) => {
+    const containerRef = useRef<HTMLDivElement>(null);
+    const parsed = useMemo(() => parseTimelineMessage(message), [message]);
+
+    useEffect(() => {
+        const container = containerRef.current;
+        if (!container) return;
+
+        container.replaceChildren();
+        const renderComponent = new Component();
+        renderComponent.load();
+        let cancelled = false;
+
+        const render = async () => {
+            const lines = normalizeTimelineInlineLines(parsed.body);
+
+            for (const line of lines) {
+                if (cancelled) return;
+
+                const lineEl = document.createElement("div");
+                lineEl.className = "sr-timeline-message-line";
+
+                if (!line) {
+                    lineEl.classList.add("is-empty");
+                    lineEl.innerHTML = "&nbsp;";
+                    container.appendChild(lineEl);
+                    continue;
+                }
+
+                container.appendChild(lineEl);
+                await MarkdownRenderer.render(
+                    app,
+                    sanitizeTimelineInlineMarkdown(line),
+                    lineEl,
+                    "",
+                    renderComponent,
+                );
+            }
+        };
+
+        void render();
+
+        return () => {
+            cancelled = true;
+            renderComponent.unload();
+        };
+    }, [app, parsed.body]);
+
+    return (
+        <div className="sr-timeline-message-rendered">
+            {parsed.durationPrefix && (
+                <span
+                    className="sr-timeline-duration-pill"
+                    title={`${parsed.durationPrefix.totalDays}d`}
+                >
+                    {parsed.durationPrefix.raw}
+                </span>
+            )}
+            <div className="sr-timeline-message-content" ref={containerRef} />
+        </div>
+    );
+};
 
 /**
  * 格式化时间戳为可读的相对时间或日期字符串
@@ -719,6 +828,7 @@ function formatTimestamp(timestamp: number): string {
 }
 
 const TimelinePane: React.FC<TimelinePaneProps> = ({
+    app,
     isOpen,
     onToggle,
     selectedItem,
@@ -779,6 +889,36 @@ const TimelinePane: React.FC<TimelinePaneProps> = ({
             adjustHeight(editRef.current);
         }
     }, [editText]);
+
+    useEffect(() => {
+        const textarea = textareaRef.current;
+        if (!textarea) return;
+
+        const handleFormat = (evt: Event) => {
+            const action = (evt as CustomEvent<{ action: TimelineFormatAction }>).detail?.action;
+            if (!action) return;
+            applyTimelineFormat(textarea, message, setMessage, action);
+        };
+
+        textarea.addEventListener("sr-timeline-format", handleFormat as EventListener);
+        return () =>
+            textarea.removeEventListener("sr-timeline-format", handleFormat as EventListener);
+    }, [message]);
+
+    useEffect(() => {
+        const textarea = editRef.current;
+        if (!textarea || !editingId) return;
+
+        const handleFormat = (evt: Event) => {
+            const action = (evt as CustomEvent<{ action: TimelineFormatAction }>).detail?.action;
+            if (!action) return;
+            applyTimelineFormat(textarea, editText, setEditText, action);
+        };
+
+        textarea.addEventListener("sr-timeline-format", handleFormat as EventListener);
+        return () =>
+            textarea.removeEventListener("sr-timeline-format", handleFormat as EventListener);
+    }, [editText, editingId]);
 
     const handleCommit = useCallback(() => {
         if (!message.trim()) return;
@@ -930,7 +1070,11 @@ const TimelinePane: React.FC<TimelinePaneProps> = ({
                                         return (
                                             <div
                                                 key={log.id}
-                                                className={`sr-timeline-entry ${isEditing ? "editing" : ""}`}
+                                                className={`sr-timeline-entry ${isEditing ? "editing" : ""} ${
+                                                    log.entryType === "review-response"
+                                                        ? "is-review-response"
+                                                        : ""
+                                                }`}
                                                 onClick={() =>
                                                     onCommitSelect && onCommitSelect(log)
                                                 }
@@ -965,9 +1109,12 @@ const TimelinePane: React.FC<TimelinePaneProps> = ({
                                                             rows={1}
                                                         />
                                                     ) : (
-                                                        <span className="sr-timeline-message">
-                                                            {log.message}
-                                                        </span>
+                                                        <div className="sr-timeline-message">
+                                                            <TimelineRenderedMessage
+                                                                app={app}
+                                                                message={log.message}
+                                                            />
+                                                        </div>
                                                     )}
                                                     <span className="sr-timeline-time">
                                                         {showScrollPercentage &&
@@ -1237,6 +1384,7 @@ const NoteItemModern: React.FC<NoteItemModernProps> = ({
 // 主组件
 // ==========================================
 interface NoteReviewSidebarProps {
+    app: App;
     data: NoteReviewSidebarState;
     activeFilePath?: string;
     onNoteClick: (item: NoteReviewItem) => void;
@@ -1275,6 +1423,7 @@ interface NoteReviewSidebarProps {
 }
 
 export const NoteReviewSidebar: React.FC<NoteReviewSidebarProps> = ({
+    app,
     data,
     activeFilePath,
     onNoteClick,
@@ -1579,6 +1728,7 @@ export const NoteReviewSidebar: React.FC<NoteReviewSidebarProps> = ({
                 }}
             >
                 <TimelinePane
+                    app={app}
                     isOpen={isTimelineOpen}
                     onToggle={onTimelineToggle || (() => {})}
                     selectedItem={selectedItem}

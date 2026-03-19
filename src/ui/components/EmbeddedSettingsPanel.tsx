@@ -1109,6 +1109,12 @@ const NotesTab: React.FC<TabProps> = ({ settings, onChange }) => (
                 value={settings.autoExpandTimeline}
                 onChange={(v) => onChange("autoExpandTimeline", v)}
             />
+            <ToggleRow
+                label={t("SETTINGS_TIMELINE_AUTO_COMMIT_REVIEW")}
+                desc={t("SETTINGS_TIMELINE_AUTO_COMMIT_REVIEW_DESC")}
+                value={settings.timelineAutoCommitReviewSelection}
+                onChange={(v) => onChange("timelineAutoCommitReviewSelection", v)}
+            />
         </Section>
     </div>
 );

@@ -546,6 +546,8 @@ export default {
     SETTINGS_TIMELINE_SCROLL_DESC: "在时间线条目中显示该条提交时的阅读进度百分比",
     SETTINGS_TIMELINE_AUTO_EXPAND: "自动展开时间线",
     SETTINGS_TIMELINE_AUTO_EXPAND_DESC: "打开复习笔记或在侧边栏点击笔记时，自动弹起时间线面板",
+    SETTINGS_TIMELINE_AUTO_COMMIT_REVIEW: "自动记录复习选项",
+    SETTINGS_TIMELINE_AUTO_COMMIT_REVIEW_DESC: "笔记复习成功后，自动把所选选项写入时间线",
     SETTINGS_SECTION_GENERAL: "常规",
     SETTINGS_SHOW_STATUS_BAR: "显示状态栏信息",
     SETTINGS_SHOW_STATUS_BAR_DESC: "在状态栏显示复习统计信息。",

@@ -213,6 +213,7 @@ export interface SRSettings {
     // Timeline Settings
     showScrollPercentage: boolean;
     autoExpandTimeline: boolean;
+    timelineAutoCommitReviewSelection: boolean;
 
     // License state
     licenseKey: string; // User-entered license key
@@ -368,6 +369,7 @@ export const DEFAULT_SETTINGS: SRSettings = {
     // Timeline Settings
     showScrollPercentage: true,
     autoExpandTimeline: true,
+    timelineAutoCommitReviewSelection: false,
 
     // License defaults
     licenseKey: "",

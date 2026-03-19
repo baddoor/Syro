@@ -741,6 +741,9 @@ export default {
     SETTINGS_TIMELINE_AUTO_EXPAND: "Auto Expand Timeline",
     SETTINGS_TIMELINE_AUTO_EXPAND_DESC:
         "Automatically expand timeline when opening review notes or clicking sidebar notes.",
+    SETTINGS_TIMELINE_AUTO_COMMIT_REVIEW: "Auto Log Review Selection",
+    SETTINGS_TIMELINE_AUTO_COMMIT_REVIEW_DESC:
+        "Automatically write the selected note review option into Timeline after a successful review.",
     SETTINGS_SECTION_GENERAL: "General",
     SETTINGS_SHOW_STATUS_BAR: "Show Status Bar",
     SETTINGS_SHOW_STATUS_BAR_DESC: "Display review stats in the status bar.",

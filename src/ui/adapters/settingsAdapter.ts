@@ -54,6 +54,7 @@ export function settingsToUIState(settings: SRSettings): UISettingsState {
         hideNoteReviewSidebarFilters: settings.hideNoteReviewSidebarFilters ?? false,
         showScrollPercentage: settings.showScrollPercentage ?? true,
         autoExpandTimeline: settings.autoExpandTimeline ?? true,
+        timelineAutoCommitReviewSelection: settings.timelineAutoCommitReviewSelection ?? false,
 
         // Algorithm
         cardAlgorithm: settings.cardAlgorithm || "Fsrs",
@@ -176,6 +177,8 @@ export function mergeUIStateToSettings(
         merged.showScrollPercentage = uiChanges.showScrollPercentage;
     if (uiChanges.autoExpandTimeline !== undefined)
         merged.autoExpandTimeline = uiChanges.autoExpandTimeline;
+    if (uiChanges.timelineAutoCommitReviewSelection !== undefined)
+        merged.timelineAutoCommitReviewSelection = uiChanges.timelineAutoCommitReviewSelection;
 
     // Algorithm
     if (uiChanges.cardAlgorithm !== undefined) merged.cardAlgorithm = uiChanges.cardAlgorithm;

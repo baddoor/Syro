@@ -120,6 +120,8 @@ import {
     SerializedNote,
 } from "src/cache/noteCacheStore";
 import { AnkiSyncService } from "src/ankiSync";
+import { ReviewCommitStore } from "src/dataStore/reviewCommitStore";
+import { autoCommitReviewResponseToTimeline } from "src/ui/timeline/reviewResponseTimeline";
 
 // 每日牌组统计数据结构（持久化存储）
 // 每日牌组统计数据结构（持久化存储）
@@ -235,6 +237,7 @@ export default class SRPlugin extends Plugin {
     public reviewFloatBar: reviewResponseModal;
     public settingTab: SRSettingTab;
     public ankiSyncService: AnkiSyncService | null = null;
+    public reviewCommitStore: ReviewCommitStore;
 
     /** 事件总线：同步完成后广播消息，通知已打开的 UI 组件局部刷新数字 */
     public syncEvents: SyncEvents = new SyncEvents();
@@ -1687,6 +1690,17 @@ export default class SRPlugin extends Plugin {
         }
 
         await this.noteReviewStore.save();
+        try {
+            await autoCommitReviewResponseToTimeline({
+                app: this.app,
+                commitStore: this.reviewCommitStore,
+                enabled: settings.timelineAutoCommitReviewSelection,
+                notePath: note.path,
+                response,
+            });
+        } catch (error) {
+            console.error("[Timeline] Failed to auto-log review response:", error);
+        }
         this.postponeResponse(note, itemToShedNote(item, note));
         this.syncEvents.emit("note-review-updated");
 
@@ -1919,6 +1933,8 @@ export default class SRPlugin extends Plugin {
         this.noteReviewStore = new NoteReviewStore(this.data.settings, this.manifest.dir);
         await this.noteReviewStore.load();
         await this.noteReviewStore.migrateFromLegacyStore(this.store);
+        this.reviewCommitStore = new ReviewCommitStore(this.data.settings, this.manifest.dir);
+        await this.reviewCommitStore.load();
         this.easeByPath = new NoteEaseList(this.data.settings);
         this.linkRank = new LinkRank(this.data.settings, this.app.metadataCache);
         this.reviewDecks = this.noteReviewStore.buildReviewDecks(this.app.vault);

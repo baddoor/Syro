@@ -22,6 +22,7 @@
 import { Iadapter } from "./adapter";
 import { getStorePath } from "./dataLocation";
 import { SRSettings } from "src/settings";
+import type { TimelineReviewResponse } from "src/ui/timeline/reviewResponseTimeline";
 
 /**
  * 单条提交记录
@@ -44,6 +45,8 @@ export interface ReviewCommitLog {
     };
     /** 滚动百分比（0-1，可选） */
     scrollPercentage?: number;
+    entryType?: "manual" | "review-response";
+    reviewResponse?: TimelineReviewResponse;
 }
 
 /**
@@ -118,6 +121,10 @@ export class ReviewCommitStore {
         message: string,
         contextAnchor?: { textSnippet: string; offset: number },
         scrollPercentage?: number,
+        metadata?: {
+            entryType?: "manual" | "review-response";
+            reviewResponse?: TimelineReviewResponse;
+        },
     ): Promise<ReviewCommitLog> {
         const now = Date.now();
         const log: ReviewCommitLog = {
@@ -126,6 +133,8 @@ export class ReviewCommitStore {
             timestamp: now,
             contextAnchor,
             scrollPercentage,
+            entryType: metadata?.entryType ?? "manual",
+            reviewResponse: metadata?.reviewResponse,
         };
 
         if (!this.data[filePath]) {

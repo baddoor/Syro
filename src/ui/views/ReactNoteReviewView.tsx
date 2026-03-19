@@ -30,6 +30,7 @@ import { t } from "src/lang/helpers";
 import { ContextAnchorService } from "src/util/ContextAnchor";
 import { MarkdownView } from "obsidian";
 import { LicenseManager } from "src/services/LicenseManager";
+import { captureTimelineContext } from "src/ui/timeline/timelineContext";
 
 // Stable view type id used when registering the sidebar view.
 export const REACT_REVIEW_QUEUE_VIEW_TYPE = "react-review-queue-list-view";
@@ -52,6 +53,7 @@ export class ReactNoteReviewView extends ItemView {
     private editingId: string | null = null;
     private unsubscribeSyncEvent: (() => void) | null = null;
     private isLoading: boolean = false;
+    private timelineScopeHandlers: any[] = [];
 
     constructor(leaf: WorkspaceLeaf, plugin: SRPlugin) {
         super(leaf);
@@ -111,12 +113,7 @@ export class ReactNoteReviewView extends ItemView {
         contentEl.addClass("sr-react-note-review-view");
         contentEl.style.padding = "0";
 
-        // Load the timeline store before first render.
-        this.commitStore = new ReviewCommitStore(
-            this.plugin.data.settings,
-            this.plugin.manifest.dir,
-        );
-        await this.commitStore.load();
+        this.commitStore = this.plugin.reviewCommitStore;
 
         // Mount the React tree.
         this.root = createRoot(contentEl);
@@ -130,14 +127,7 @@ export class ReactNoteReviewView extends ItemView {
         // Obsidian intercepts Ctrl+Enter before the DOM sees it, so bridge it via Scope.
 
 
-        this.scope.register(["Mod"], "Enter", (evt: KeyboardEvent) => {
-            const activeEl = document.activeElement;
-            if (activeEl && activeEl.closest(".sr-react-note-review-view")) {
-                evt.preventDefault();
-                activeEl.dispatchEvent(new CustomEvent("sr-ctrl-enter", { bubbles: false }));
-            }
-            return false;
-        });
+        this.registerTimelineScopeHotkeys();
 
         // Refresh automatically after sync completes.
         this.unsubscribeSyncEvent = this.plugin.syncEvents.on("note-review-updated", () => {
@@ -155,6 +145,8 @@ export class ReactNoteReviewView extends ItemView {
             this.unsubscribeSyncEvent = null;
         }
 
+        this.unregisterTimelineScopeHotkeys();
+
         if (this.root) {
             this.root.unmount();
             this.root = null;
@@ -169,9 +161,13 @@ export class ReactNoteReviewView extends ItemView {
 
         const activeFile = this.app.workspace.getActiveFile();
         const data = reviewDecksToSidebarState(this.plugin);
+        if (this.selectedItem && this.commitStore) {
+            this.commitLogs = this.commitStore.getCommits(this.selectedItem.path);
+        }
 
         this.root.render(
             React.createElement(NoteReviewSidebar, {
+                app: this.app,
                 data,
                 activeFilePath: activeFile?.path,
                 onNoteClick: (item) => this.handleNoteClick(item),
@@ -208,6 +204,142 @@ export class ReactNoteReviewView extends ItemView {
                 isLoading: this.isLoading,
                 showScrollPercentage: this.plugin.data.settings.showScrollPercentage,
             }),
+        );
+    }
+
+    private registerTimelineScopeHotkeys(): void {
+        if (!this.scope) return;
+        this.unregisterTimelineScopeHotkeys();
+
+        this.timelineScopeHandlers.push(
+            this.scope.register(["Mod"], "Enter", (evt: KeyboardEvent) => {
+                const activeEl = document.activeElement;
+                if (activeEl && activeEl.closest(".sr-react-note-review-view")) {
+                    evt.preventDefault();
+                    activeEl.dispatchEvent(new CustomEvent("sr-ctrl-enter", { bubbles: false }));
+                    return false;
+                }
+                return true;
+            }),
+        );
+
+        const hotkeyActions: Array<{
+            action: "bold" | "italic" | "strikethrough" | "highlight" | "inline-code" | "math";
+            commandIds: string[];
+            fallback: Array<{ modifiers: string[]; key: string }>;
+        }> = [
+            {
+                action: "bold",
+                commandIds: ["editor:toggle-bold"],
+                fallback: [{ modifiers: ["Mod"], key: "b" }],
+            },
+            {
+                action: "italic",
+                commandIds: ["editor:toggle-italics", "editor:toggle-italic"],
+                fallback: [{ modifiers: ["Mod"], key: "i" }],
+            },
+            {
+                action: "strikethrough",
+                commandIds: ["editor:toggle-strikethrough"],
+                fallback: [{ modifiers: ["Mod", "Shift"], key: "s" }],
+            },
+            {
+                action: "highlight",
+                commandIds: ["editor:toggle-highlight"],
+                fallback: [{ modifiers: ["Mod", "Shift"], key: "h" }],
+            },
+            {
+                action: "inline-code",
+                commandIds: ["editor:toggle-inline-code", "editor:toggle-code"],
+                fallback: [{ modifiers: ["Mod"], key: "e" }],
+            },
+            {
+                action: "math",
+                commandIds: ["editor:insert-math-expression", "editor:insert-math"],
+                fallback: [{ modifiers: ["Mod", "Shift"], key: "m" }],
+            },
+        ];
+
+        for (const hotkeyAction of hotkeyActions) {
+            const hotkeys = this.resolveTimelineHotkeys(
+                hotkeyAction.commandIds,
+                hotkeyAction.fallback,
+            );
+            for (const hotkey of hotkeys) {
+                this.timelineScopeHandlers.push(
+                    this.scope.register(hotkey.modifiers as any, hotkey.key, (evt: KeyboardEvent) => {
+                        const activeEl = document.activeElement;
+                        if (!this.isTimelineTextarea(activeEl)) {
+                            return true;
+                        }
+
+                        evt.preventDefault();
+                        activeEl.dispatchEvent(
+                            new CustomEvent("sr-timeline-format", {
+                                bubbles: false,
+                                detail: { action: hotkeyAction.action },
+                            }),
+                        );
+                        return false;
+                    }),
+                );
+            }
+        }
+    }
+
+    private unregisterTimelineScopeHotkeys(): void {
+        if (!this.scope) return;
+        for (const handler of this.timelineScopeHandlers) {
+            this.scope.unregister(handler);
+        }
+        this.timelineScopeHandlers = [];
+    }
+
+    private resolveTimelineHotkeys(
+        commandIds: readonly string[],
+        fallback: ReadonlyArray<{ modifiers: string[]; key: string }>,
+    ): Array<{ modifiers: string[]; key: string }> {
+        const commandsApi = (this.app as any).commands;
+        const hotkeyManager = (this.app as any).hotkeyManager;
+        const collected: Array<{ modifiers: string[]; key: string }> = [];
+        const seen = new Set<string>();
+
+        const pushHotkey = (hotkey: any) => {
+            if (!hotkey || !hotkey.key || !Array.isArray(hotkey.modifiers)) return;
+            const signature = `${hotkey.modifiers.join("+")}::${hotkey.key}`;
+            if (seen.has(signature)) return;
+            seen.add(signature);
+            collected.push({
+                modifiers: hotkey.modifiers,
+                key: hotkey.key,
+            });
+        };
+
+        for (const commandId of commandIds) {
+            const customKeys = hotkeyManager?.customKeys?.[commandId];
+            if (Array.isArray(customKeys) && customKeys.length > 0) {
+                customKeys.forEach(pushHotkey);
+            }
+
+            const defaultCommand = commandsApi?.commands?.[commandId];
+            if (Array.isArray(defaultCommand?.hotkeys) && defaultCommand.hotkeys.length > 0) {
+                defaultCommand.hotkeys.forEach(pushHotkey);
+            }
+        }
+
+        if (collected.length === 0) {
+            fallback.forEach(pushHotkey);
+        }
+
+        return collected;
+    }
+
+    private isTimelineTextarea(activeEl: Element | null): activeEl is HTMLTextAreaElement {
+        return (
+            activeEl instanceof HTMLTextAreaElement &&
+            !!activeEl.closest(".sr-react-note-review-view") &&
+            (activeEl.classList.contains("sr-timeline-textarea") ||
+                activeEl.classList.contains("sr-timeline-edit-textarea"))
         );
     }
 
@@ -481,79 +613,13 @@ export class ReactNoteReviewView extends ItemView {
             if (!hasAccess) return;
         }
 
-        // Capture context information for later navigation.
-        let contextAnchor = undefined;
-        let scrollPercentage = undefined;
-
-        // Prefer the currently active markdown view, then fall back to matching leaves.
-        let activeView: MarkdownView | null = this.app.workspace.getActiveViewOfType(MarkdownView);
-
-        const leaves = this.app.workspace.getLeavesOfType("markdown");
-
-        let targetLeaf = null;
-
-        // 1. Prefer the active view if it matches the target path.
-        if (activeView && activeView.file && activeView.file.path === path) {
-            targetLeaf = activeView.leaf;
-        }
-
-        // 2. Otherwise search all matching markdown leaves.
-        if (!targetLeaf) {
-            const matchingLeaves = leaves.filter((leaf) => {
-                const view = leaf.view as MarkdownView;
-                return view.file && view.file.path === path;
-            });
-
-            // Prefer a visible leaf when multiple matches exist.
-            let visibleLeaf = null;
-            for (const leaf of matchingLeaves) {
-                const view = leaf.view as MarkdownView;
-                if (view.containerEl.offsetWidth > 0 || view.containerEl.offsetHeight > 0) {
-                    visibleLeaf = leaf;
-                    break;
-                }
-            }
-
-            if (visibleLeaf) {
-                targetLeaf = visibleLeaf;
-            } else if (matchingLeaves.length > 0) {
-                targetLeaf = matchingLeaves[0]; // Fallback to first if none visible
-            }
-        }
-
-        if (targetLeaf) {
-            activeView = targetLeaf.view as MarkdownView;
-        } else {
-            activeView = null; // Ensure activeView is null if no match found
-        }
-
-        if (activeView && activeView.file && activeView.file.path === path) {
-            const editor = activeView.editor;
-
-            // Capture the current cursor position from the matched editor.
-
-            const cursor = editor.getCursor();
-            const targetLine = cursor.line;
-            const targetCh = cursor.ch;
-
-            const text = editor.getValue();
-
-            // Capture a text anchor near the cursor.
-            const anchor = ContextAnchorService.capture(text, targetLine, targetCh);
-            if (anchor) {
-                contextAnchor = anchor;
-            }
-
-            // Also save a normalized character offset as a fallback.
-
-            const totalChars = text.length;
-            if (totalChars > 0) {
-                const cursorOffset = editor.posToOffset({ line: targetLine, ch: targetCh });
-                scrollPercentage = cursorOffset / totalChars;
-            }
-        }
-
-        await this.commitStore.addCommit(path, message, contextAnchor, scrollPercentage);
+        const context = captureTimelineContext(this.app, path);
+        await this.commitStore.addCommit(
+            path,
+            message,
+            context.contextAnchor,
+            context.scrollPercentage,
+        );
         this.commitLogs = this.commitStore.getCommits(path);
         this.redraw();
     }
