@@ -6,8 +6,10 @@ import { AnkiSyncService } from "src/ankiSync/service";
 import { AnkiSyncStateStore, ensureAnkiSyncItemState } from "src/ankiSync/stateStore";
 import { DEFAULT_SETTINGS } from "src/settings";
 import { Iadapter } from "src/dataStore/adapter";
-import { CardQueue, RepetitionItem, RPITEMTYPE } from "src/dataStore/repetitionItem";
+import { CardQueue, FsrsReviewEvent, RepetitionItem, RPITEMTYPE } from "src/dataStore/repetitionItem";
 import { TopicPath } from "src/TopicPath";
+import { FsrsData } from "src/algorithms/fsrs";
+import { createEmptyCard, FSRS, generatorParameters, State } from "ts-fsrs";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -23,6 +25,27 @@ function createItem(): RepetitionItem {
     item.timesReviewed = 3;
     item.timesCorrect = 2;
     item.errorStreak = 0;
+    return item;
+}
+
+function createFsrsItem(): RepetitionItem {
+    const item = new RepetitionItem(2, "file-2", RPITEMTYPE.CARD, "#Deck", createEmptyCard());
+    item.uuid = "uuid-fsrs-1";
+    item.queue = CardQueue.Review;
+    item.nextReview = 10 * DAY_MS;
+    item.timesReviewed = 3;
+    item.timesCorrect = 2;
+    item.errorStreak = 0;
+    const data = item.data as FsrsData;
+    data.state = State.Review;
+    data.scheduled_days = 3;
+    data.reps = 3;
+    data.lapses = 1;
+    data.stability = 12.34567;
+    data.difficulty = 4.56789;
+    data.elapsed_days = 3;
+    data.last_review = new Date(7 * DAY_MS);
+    data.due = new Date(10 * DAY_MS);
     return item;
 }
 
@@ -118,6 +141,36 @@ describe("ankiSync service", () => {
         const state = await store.load();
         expect(state.items[item.uuid].pendingReviewWritebacks).toHaveLength(1);
         expect(state.items[item.uuid].lastLocalUpdatedAt).toBe(1234);
+    });
+
+    it("queues review events alongside snapshots for FSRS reviews", async () => {
+        const item = createFsrsItem();
+        const reviewEvent: FsrsReviewEvent = {
+            reviewId: 4321,
+            rating: 3,
+            reviewType: 1,
+            reviewState: State.Review,
+            newInterval: 6,
+            previousInterval: 3,
+            newFactor: 4100,
+            reviewDuration: 987,
+        };
+        const store = new AnkiSyncStateStore(() => ".obsidian/plugins/syro/tracked_files.json");
+        const service = new AnkiSyncService(createPlugin(item), {
+            stateStore: store,
+            clientFactory: () => ({}) as any,
+            now: () => 5000,
+        });
+        await service.initialize();
+
+        await service.queueLocalReviewWriteback(item, reviewEvent);
+
+        const state = await store.load();
+        expect(state.items[item.uuid].pendingReviewWritebacks).toEqual([
+            expect.objectContaining({
+                reviewEvent,
+            }),
+        ]);
     });
 
     it("clears the pending writeback when undo restores the last synced snapshot", async () => {
@@ -306,6 +359,219 @@ describe("ankiSync service", () => {
         const reloaded = await store.load();
         expect(reloaded.items[item.uuid].pendingReviewWritebacks).toHaveLength(0);
         expect(result.writebacks).toBe(1);
+    });
+
+    it("writes review history before surface updates and advances review cursors", async () => {
+        const item = createFsrsItem();
+        const { deck, cardHash, filePath } = createDeckWithCard(item);
+        const store = new AnkiSyncStateStore(() => ".obsidian/plugins/syro/tracked_files.json");
+        const state = await store.load();
+        const itemState = ensureAnkiSyncItemState(state, item.uuid);
+        const snapshot = { ...createReviewSnapshotFromItem(item), updatedAt: 2600 };
+        const reviewEvent: FsrsReviewEvent = {
+            reviewId: 2600,
+            rating: 4,
+            reviewType: 1,
+            reviewState: State.Review,
+            newInterval: 8,
+            previousInterval: 3,
+            newFactor: 3300,
+            reviewDuration: 800,
+        };
+        itemState.mapping = {
+            noteId: 10,
+            cardId: 20,
+            modelName: "Syro::Card",
+            deckName: "Syro::Deck",
+            filePath,
+            cardHash,
+        };
+        itemState.lastRemoteSnapshot = snapshot;
+        itemState.pendingReviewWritebacks = [
+            {
+                id: "p-review",
+                reviewEvent,
+                snapshot,
+                createdAt: 2600,
+                attempts: 0,
+                lastError: null,
+            },
+        ];
+        await store.save(state);
+
+        const client = {
+            getVersion: jest.fn(async () => 6),
+            ensureModel: jest.fn(async () => undefined),
+            insertReviews: jest.fn(async () => undefined),
+            recomputeMemoryState: jest.fn(async () => undefined),
+            getReviewsOfCards: jest.fn(async () => new Map([[20, []]])),
+            notesInfoByQuery: jest.fn(async () => []),
+            canAddNotesWithErrorDetail: jest.fn(async () => []),
+            updateNoteFields: jest.fn(async () => undefined),
+            setSpecificCardValues: jest.fn(async () => undefined),
+            notesInfo: jest.fn(async () => [
+                {
+                    noteId: 10,
+                    cards: [20],
+                    modelName: "Syro::Card",
+                    tags: [],
+                    fields: {
+                        syro_item_uuid: item.uuid,
+                        syro_file_path: filePath,
+                        syro_card_hash: cardHash,
+                        syro_snapshot: JSON.stringify(snapshot),
+                        syro_updated_at: "2600",
+                    },
+                },
+            ]),
+            cardsInfo: jest.fn(async () => [
+                {
+                    cardId: 20,
+                    noteId: 10,
+                    deckName: "Syro::Deck",
+                    factor: 2500,
+                    interval: 8,
+                    type: 2,
+                    queue: 2,
+                    due: 110,
+                    reps: 4,
+                    lapses: 1,
+                    left: 0,
+                    mod: 1,
+                },
+            ]),
+            addNotes: jest.fn(async () => []),
+            ensureDecks: jest.fn(async () => []),
+            ensureBinaryMediaFiles: jest.fn(async () => undefined),
+            changeDeck: jest.fn(async () => undefined),
+            deleteNotes: jest.fn(async () => undefined),
+            areDue: jest.fn(async () => [false]),
+        };
+        const service = new AnkiSyncService(createPlugin(item), {
+            stateStore: store,
+            clientFactory: () => client as any,
+            now: () => 3000,
+        });
+        await service.initialize();
+
+        const result = await service.sync(deck, "sig-review-history");
+        const reloaded = await store.load();
+
+        expect(result.writebacks).toBe(1);
+        expect(client.insertReviews.mock.invocationCallOrder.at(-1)).toBeLessThan(
+            client.updateNoteFields.mock.invocationCallOrder.at(-1),
+        );
+        expect(client.recomputeMemoryState.mock.invocationCallOrder.at(-1)).toBeGreaterThan(
+            client.setSpecificCardValues.mock.invocationCallOrder.at(-1),
+        );
+        expect(reloaded.items[item.uuid].lastPushedReviewId).toBe(2600);
+        expect(reloaded.items[item.uuid].lastMergedReviewId).toBe(2600);
+    });
+
+    it("warns and skips review cursors when review-history capabilities are unavailable", async () => {
+        const item = createFsrsItem();
+        const { deck, cardHash, filePath } = createDeckWithCard(item);
+        const store = new AnkiSyncStateStore(() => ".obsidian/plugins/syro/tracked_files.json");
+        const state = await store.load();
+        const itemState = ensureAnkiSyncItemState(state, item.uuid);
+        const snapshot = { ...createReviewSnapshotFromItem(item), updatedAt: 2600 };
+        const reviewEvent: FsrsReviewEvent = {
+            reviewId: 2600,
+            rating: 4,
+            reviewType: 1,
+            reviewState: State.Review,
+            newInterval: 8,
+            previousInterval: 3,
+            newFactor: 3300,
+            reviewDuration: 800,
+        };
+        itemState.mapping = {
+            noteId: 10,
+            cardId: 20,
+            modelName: "Syro::Card",
+            deckName: "Syro::Deck",
+            filePath,
+            cardHash,
+        };
+        itemState.lastRemoteSnapshot = snapshot;
+        itemState.pendingReviewWritebacks = [
+            {
+                id: "p-review-fallback",
+                reviewEvent,
+                snapshot,
+                createdAt: 2600,
+                attempts: 0,
+                lastError: null,
+            },
+        ];
+        await store.save(state);
+
+        const client = {
+            getVersion: jest.fn(async () => 6),
+            ensureModel: jest.fn(async () => undefined),
+            getReviewsOfCards: jest.fn(async () => new Map([[20, []]])),
+            notesInfoByQuery: jest.fn(async () => []),
+            canAddNotesWithErrorDetail: jest.fn(async () => []),
+            updateNoteFields: jest.fn(async () => undefined),
+            setSpecificCardValues: jest.fn(async () => undefined),
+            notesInfo: jest.fn(async () => [
+                {
+                    noteId: 10,
+                    cards: [20],
+                    modelName: "Syro::Card",
+                    tags: [],
+                    fields: {
+                        syro_item_uuid: item.uuid,
+                        syro_file_path: filePath,
+                        syro_card_hash: cardHash,
+                        syro_snapshot: JSON.stringify(snapshot),
+                        syro_updated_at: "2600",
+                    },
+                },
+            ]),
+            cardsInfo: jest.fn(async () => [
+                {
+                    cardId: 20,
+                    noteId: 10,
+                    deckName: "Syro::Deck",
+                    factor: 2500,
+                    interval: 8,
+                    type: 2,
+                    queue: 2,
+                    due: 110,
+                    reps: 4,
+                    lapses: 1,
+                    left: 0,
+                    mod: 1,
+                },
+            ]),
+            addNotes: jest.fn(async () => []),
+            ensureDecks: jest.fn(async () => []),
+            ensureBinaryMediaFiles: jest.fn(async () => undefined),
+            changeDeck: jest.fn(async () => undefined),
+            deleteNotes: jest.fn(async () => undefined),
+            areDue: jest.fn(async () => [false]),
+        };
+        const service = new AnkiSyncService(createPlugin(item), {
+            stateStore: store,
+            clientFactory: () => client as any,
+            now: () => 3000,
+        });
+        await service.initialize();
+
+        const result = await service.sync(deck, "sig-review-history-fallback");
+        const reloaded = await store.load();
+
+        expect(result.writebacks).toBe(1);
+        expect(result.errors).toContain(
+            `[capability:${item.uuid}] review history sync unavailable; falling back to snapshot-only writeback`,
+        );
+        expect(client.updateNoteFields).toHaveBeenCalledWith(10, {
+            syro_snapshot: JSON.stringify(snapshot),
+            syro_updated_at: "2600",
+        });
+        expect(reloaded.items[item.uuid].lastPushedReviewId).toBe(0);
+        expect(reloaded.items[item.uuid].lastMergedReviewId).toBe(0);
     });
 
     it("recovers mappings from remote Syro notes when the sidecar is empty", async () => {
@@ -832,6 +1098,138 @@ describe("ankiSync service", () => {
             logSpy.mockRestore();
             nowSpy.mockRestore();
         }
+    });
+
+    it("replays newer remote reviews into local FSRS core fields", async () => {
+        const nowSpy = jest.spyOn(Date, "now").mockReturnValue(20 * DAY_MS);
+        try {
+            const item = createFsrsItem();
+            const expectedCard = new FSRS(generatorParameters()).repeat(
+                {
+                    ...(item.data as FsrsData),
+                    due: new Date((item.data as FsrsData).due),
+                    last_review: new Date((item.data as FsrsData).last_review),
+                },
+                new Date(11 * DAY_MS),
+            )[4].card;
+            const { deck, cardHash, filePath } = createDeckWithCard(item);
+            const store = new AnkiSyncStateStore(() => ".obsidian/plugins/syro/tracked_files.json");
+            const state = await store.load();
+            const itemState = ensureAnkiSyncItemState(state, item.uuid);
+            const baseline = {
+                ...createReviewSnapshotFromItem(item),
+                updatedAt: 1000,
+                raw: { queue: 2, type: 2, due: 10 },
+            };
+            itemState.mapping = {
+                noteId: 10,
+                cardId: 20,
+                modelName: "Syro::Card",
+                deckName: "Syro::Deck",
+                filePath,
+                cardHash,
+            };
+            itemState.lastRemoteSnapshot = baseline;
+            itemState.lastRemoteUpdatedAt = baseline.updatedAt;
+            await store.save(state);
+
+            const client = {
+                getVersion: jest.fn(async () => 6),
+                ensureModel: jest.fn(async () => undefined),
+                notesInfoByQuery: jest.fn(async () => []),
+                canAddNotesWithErrorDetail: jest.fn(async () => []),
+                ensureDecks: jest.fn(async () => []),
+                ensureBinaryMediaFiles: jest.fn(async () => undefined),
+                updateNoteFields: jest.fn(async () => undefined),
+                setSpecificCardValues: jest.fn(async () => undefined),
+                areDue: jest.fn(async () => [false]),
+                getReviewsOfCards: jest.fn(async () =>
+                    new Map([
+                        [
+                            20,
+                            [
+                                {
+                                    id: 11 * DAY_MS,
+                                    usn: 1,
+                                    ease: 4,
+                                    ivl: 8,
+                                    lastIvl: 3,
+                                    factor: 3300,
+                                    time: 1200,
+                                    type: 1,
+                                },
+                            ],
+                        ],
+                    ])
+                ),
+                notesInfo: jest.fn(async () => [
+                    {
+                        noteId: 10,
+                        cards: [20],
+                        modelName: "Syro::Card",
+                        tags: ["syro-sync"],
+                        mod: 20,
+                        fields: {
+                            syro_item_uuid: item.uuid,
+                            syro_file_path: filePath,
+                            syro_card_hash: cardHash,
+                            syro_snapshot: JSON.stringify(baseline),
+                            syro_updated_at: "1000",
+                        },
+                    },
+                ]),
+                cardsInfo: jest.fn(async () => [
+                    {
+                        cardId: 20,
+                        noteId: 10,
+                        deckName: "Syro::Deck",
+                        factor: 3300,
+                        interval: 8,
+                        type: 2,
+                        queue: 2,
+                        due: 19,
+                        reps: 4,
+                        lapses: 1,
+                        left: 0,
+                        mod: 20,
+                    },
+                ]),
+                addNotes: jest.fn(async () => []),
+                changeDeck: jest.fn(async () => undefined),
+                deleteNotes: jest.fn(async () => undefined),
+            };
+            const service = new AnkiSyncService(createPlugin(item), {
+                stateStore: store,
+                clientFactory: () => client as any,
+                now: () => 4000,
+            });
+            await service.initialize();
+            jest.spyOn(service as any, "refreshCardRuntime").mockImplementation((card: Card, nextItem: RepetitionItem) => {
+                card.repetitionItem = nextItem;
+                card.scheduleInfo = null as any;
+            });
+
+            const result = await service.sync(deck, "sig-fsrs-replay");
+            const reloaded = await store.load();
+            const itemData = item.data as FsrsData;
+
+            expect(result.pulled).toBe(1);
+            expect(item.queue).toBe(CardQueue.Review);
+            expect(item.nextReview).toBe(expectedCard.due.valueOf());
+            expect(itemData.stability).toBeCloseTo(expectedCard.stability, 5);
+            expect(itemData.difficulty).toBeCloseTo(expectedCard.difficulty, 5);
+            expect(itemData.last_review?.valueOf?.()).toBe(expectedCard.last_review?.valueOf?.());
+            expect(reloaded.items[item.uuid].lastMergedReviewId).toBe(11 * DAY_MS);
+        } finally {
+            nowSpy.mockRestore();
+        }
+    });
+
+    it("keeps local ts-fsrs aligned with the official FSRS-6 parameter shape", () => {
+        const params = generatorParameters();
+
+        expect(params.w).toHaveLength(21);
+        expect(params.enable_short_term).toBe(true);
     });
 
     it("keeps unresolved diagnostics when a newly reviewed card has no baseline and no usable review log", async () => {

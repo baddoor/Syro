@@ -4,6 +4,7 @@ import {
     AnkiCanAddNoteResult,
     AnkiCardInfo,
     AnkiCardReview,
+    AnkiInsertedReview,
     AnkiNoteInfo,
     DEFAULT_ANKI_MODEL_NAME,
     DEFAULT_ANKI_SYNC_ENDPOINT,
@@ -380,6 +381,28 @@ export class AnkiConnectClient {
         }
 
         return result;
+    }
+
+    async insertReviews(reviews: AnkiInsertedReview[]): Promise<void> {
+        await this.invoke("insertReviews", {
+            reviews: reviews.map((review) => [
+                review.reviewTime,
+                review.cardId,
+                review.usn,
+                review.buttonPressed,
+                review.newInterval,
+                review.previousInterval,
+                review.newFactor,
+                review.reviewDuration,
+                review.reviewType,
+            ]),
+        });
+    }
+
+    async recomputeMemoryState(cardIds: number[]): Promise<void> {
+        await this.invoke("recomputeMemoryState", {
+            cards: cardIds,
+        });
     }
 
     async changeDeck(cardIds: number[], deckName: string): Promise<void> {

@@ -755,11 +755,11 @@ export class DataStore {
      * @param {number} itemId
      * @param {string} option
      */
-    reviewId(itemId: number, option: string | number) {
+    reviewId(itemId: number, option: string | number): ReviewResult | null {
         const item = this.getItembyID(itemId);
         let result: ReviewResult;
         if (item == null) {
-            return -1;
+            return null;
         }
 
         // [fix] select algorithm by item type: CARD -> FSRS, NOTE -> WMS
@@ -784,6 +784,7 @@ export class DataStore {
         if (item.timesReviewed < 1) {
             debug("save review data error when reviewId");
         }
+        return result;
     }
 
     /**

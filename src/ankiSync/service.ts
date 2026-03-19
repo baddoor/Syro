@@ -2,9 +2,13 @@ import { Card } from "src/Card";
 import { CardListType, Deck } from "src/Deck";
 import { NoteCardScheduleParser } from "src/CardSchedule";
 import { MarkdownRenderer, TFile } from "obsidian";
+import deepcopy from "deepcopy";
+import * as tsfsrs from "ts-fsrs";
+import { FsrsData } from "src/algorithms/fsrs";
+import { SrsAlgorithm } from "src/algorithms/algorithms";
 import { DataStore } from "src/dataStore/data";
 import { Iadapter } from "src/dataStore/adapter";
-import { CardQueue, RPITEMTYPE, RepetitionItem } from "src/dataStore/repetitionItem";
+import { CardQueue, FsrsReviewEvent, RPITEMTYPE, RepetitionItem } from "src/dataStore/repetitionItem";
 import { SRSettings } from "src/settings";
 import { AnkiConnectClient } from "src/ankiSync/AnkiConnectClient";
 import {
@@ -20,6 +24,7 @@ import {
     AnkiCanAddNoteResult,
     AnkiCardInfo,
     AnkiCardReview,
+    AnkiInsertedReview,
     AnkiMediaFieldName,
     AnkiMediaReference,
     AnkiMediaReferenceCandidate,
@@ -36,6 +41,7 @@ import {
     DEFAULT_ANKI_DELETE_POLICY,
     DEFAULT_ANKI_MODEL_NAME,
     DEFAULT_ANKI_SYNC_ENDPOINT,
+    PendingReviewWriteback,
     ReviewSnapshot,
     createEmptyRunResult,
 } from "src/ankiSync/types";
@@ -389,7 +395,132 @@ export class AnkiSyncService {
     }
 
     private getPendingWritebackSnapshot(itemState: AnkiSyncItemState): ReviewSnapshot | null {
-        return itemState.pendingReviewWritebacks?.[0]?.snapshot ?? null;
+        return itemState.pendingReviewWritebacks?.[itemState.pendingReviewWritebacks.length - 1]?.snapshot ?? null;
+    }
+
+    private getLatestPendingWriteback(itemState: AnkiSyncItemState): PendingReviewWriteback | null {
+        const pending = itemState.pendingReviewWritebacks ?? [];
+        return pending.length > 0 ? pending[pending.length - 1] : null;
+    }
+
+    private buildInsertedReview(
+        cardId: number,
+        pending: PendingReviewWriteback,
+    ): AnkiInsertedReview | null {
+        const event = pending.reviewEvent;
+        if (!event) {
+            return null;
+        }
+
+        return {
+            reviewTime: event.reviewId,
+            cardId,
+            usn: -1,
+            buttonPressed: event.rating,
+            newInterval: event.newInterval,
+            previousInterval: event.previousInterval,
+            newFactor: event.newFactor,
+            reviewDuration: event.reviewDuration,
+            reviewType: event.reviewType,
+        };
+    }
+
+    private async supportsReviewHistorySync(client: AnkiConnectClient): Promise<boolean> {
+        if (typeof client.insertReviews !== "function" || typeof client.recomputeMemoryState !== "function") {
+            return false;
+        }
+
+        try {
+            await client.insertReviews([]);
+            await client.recomputeMemoryState([]);
+            return true;
+        } catch (_error) {
+            return false;
+        }
+    }
+
+    private getFsrsScheduler(): tsfsrs.FSRS {
+        try {
+            const algorithm = SrsAlgorithm.getInstance() as SrsAlgorithm & { fsrs?: tsfsrs.FSRS };
+            if (algorithm?.fsrs instanceof tsfsrs.FSRS) {
+                return algorithm.fsrs;
+            }
+        } catch (_error) {
+            // Fall through to a default scheduler when runtime algorithm access is unavailable.
+        }
+
+        return new tsfsrs.FSRS(tsfsrs.generatorParameters());
+    }
+
+    private cloneFsrsCard(item: RepetitionItem | null | undefined): FsrsData | null {
+        if (!item?.isFsrs || !item.data) {
+            return null;
+        }
+
+        const cloned = deepcopy(item.data) as FsrsData;
+        if (typeof cloned.due === "string") {
+            cloned.due = new Date(cloned.due);
+        }
+        if (typeof cloned.last_review === "string") {
+            cloned.last_review = new Date(cloned.last_review);
+        }
+        return cloned;
+    }
+
+    private getRemoteReviewsToReplay(
+        itemState: AnkiSyncItemState,
+        reviews: AnkiCardReview[] | null | undefined,
+    ): AnkiCardReview[] {
+        const cursor = Math.max(itemState.lastMergedReviewId ?? 0, itemState.lastPushedReviewId ?? 0);
+        return (reviews ?? [])
+            .filter((review) => review.id > cursor)
+            .sort((left, right) => left.id - right.id);
+    }
+
+    private replayRemoteFsrsReviews(
+        item: RepetitionItem | null | undefined,
+        itemState: AnkiSyncItemState,
+        reviews: AnkiCardReview[] | null | undefined,
+    ): { card: FsrsData; latestReviewId: number } | null {
+        const replays = this.getRemoteReviewsToReplay(itemState, reviews);
+        if (!item?.isFsrs || replays.length === 0) {
+            return null;
+        }
+
+        let card = this.cloneFsrsCard(item) ?? tsfsrs.createEmptyCard();
+        const scheduler = this.getFsrsScheduler();
+        for (const review of replays) {
+            const preview = scheduler.repeat(card, new Date(review.id));
+            const next = preview[review.ease as tsfsrs.Grade];
+            if (!next) {
+                continue;
+            }
+
+            card = deepcopy(next.card) as FsrsData;
+            card.stability = Number(card.stability.toFixed(5));
+            card.difficulty = Number(card.difficulty.toFixed(5));
+            card.elapsed_days = Number(card.elapsed_days.toFixed(3));
+        }
+
+        return {
+            card,
+            latestReviewId: replays[replays.length - 1].id,
+        };
+    }
+
+    private applyReplayedFsrsCard(item: RepetitionItem, card: FsrsData): void {
+        if (!item.isFsrs) {
+            return;
+        }
+
+        item.data = card;
+        item.nextReview = card.due?.valueOf?.() ?? 0;
+        item.queue =
+            card.state === tsfsrs.State.Review
+                ? CardQueue.Review
+                : card.state === tsfsrs.State.New
+                  ? CardQueue.New
+                  : CardQueue.Learn;
     }
 
     private pickLatestCardReview(reviews: AnkiCardReview[] | null | undefined): AnkiCardReview | null {
@@ -441,7 +572,7 @@ export class AnkiSyncService {
         return this.pickFreshestNumericChoice([
             {
                 value: this.getPendingWritebackSnapshot(itemState)?.updatedAt ?? 0,
-                source: itemState.pendingReviewWritebacks?.[0] ? "pendingReviewWriteback" : null,
+                source: this.getLatestPendingWriteback(itemState) ? "pendingReviewWriteback" : null,
             },
             {
                 value: itemState.lastLocalSnapshot?.updatedAt ?? 0,
@@ -525,7 +656,7 @@ export class AnkiSyncService {
     }
 
     private discardObsoletePendingWriteback(itemState: AnkiSyncItemState, winnerUpdatedAt: number): void {
-        const pending = itemState.pendingReviewWritebacks?.[0];
+        const pending = this.getLatestPendingWriteback(itemState);
         if (!pending) {
             return;
         }
@@ -1306,7 +1437,7 @@ export class AnkiSyncService {
         state: AnkiSyncStateFile,
     ): Array<[string, AnkiSyncItemState]> {
         return Object.entries(state.items).filter(([, itemState]) => {
-            const pending = itemState.pendingReviewWritebacks?.[0];
+            const pending = this.getLatestPendingWriteback(itemState);
             const mapping = itemState.mapping;
             return !!pending && !!mapping?.noteId && !!mapping.cardId;
         });
@@ -1508,7 +1639,10 @@ export class AnkiSyncService {
         return item?.itemType === RPITEMTYPE.CARD && !!item.uuid;
     }
 
-    async queueLocalReviewWriteback(item: RepetitionItem | null | undefined): Promise<void> {
+    async queueLocalReviewWriteback(
+        item: RepetitionItem | null | undefined,
+        reviewEvent: FsrsReviewEvent | null = null,
+    ): Promise<void> {
         if (!this.shouldTrackItem(item) || !this.isEnabled()) {
             return;
         }
@@ -1524,10 +1658,12 @@ export class AnkiSyncService {
         itemState.lastLocalSnapshot = snapshot;
         itemState.lastLocalUpdatedAt = snapshot.updatedAt;
         itemState.pendingReviewWritebacks = [
+            ...(itemState.pendingReviewWritebacks ?? []),
             {
-                id: createPendingId(item.uuid, snapshot.updatedAt),
+                id: createPendingId(item.uuid, reviewEvent?.reviewId ?? snapshot.updatedAt),
+                reviewEvent,
                 snapshot,
-                createdAt: snapshot.updatedAt,
+                createdAt: reviewEvent?.reviewId ?? snapshot.updatedAt,
                 attempts: 0,
                 lastError: null,
             },
@@ -1559,15 +1695,24 @@ export class AnkiSyncService {
         if (areSnapshotsEquivalent(snapshot, itemState.lastRemoteSnapshot)) {
             itemState.pendingReviewWritebacks = [];
         } else {
-            itemState.pendingReviewWritebacks = [
-                {
-                    id: createPendingId(item.uuid, snapshot.updatedAt),
-                    snapshot,
-                    createdAt: snapshot.updatedAt,
-                    attempts: 0,
-                    lastError: null,
-                },
-            ];
+            const existing = itemState.pendingReviewWritebacks ?? [];
+            const trimmed = existing.length > 0 ? existing.slice(0, -1) : [];
+            const latestRetained = trimmed[trimmed.length - 1];
+            if (latestRetained && areSnapshotsEquivalent(snapshot, latestRetained.snapshot)) {
+                itemState.pendingReviewWritebacks = trimmed;
+            } else {
+                itemState.pendingReviewWritebacks = [
+                    ...trimmed,
+                    {
+                        id: createPendingId(item.uuid, snapshot.updatedAt),
+                        reviewEvent: null,
+                        snapshot,
+                        createdAt: snapshot.updatedAt,
+                        attempts: 0,
+                        lastError: null,
+                    },
+                ];
+            }
         }
 
         await this.persistState();
@@ -1936,6 +2081,7 @@ export class AnkiSyncService {
         client: AnkiConnectClient,
         state: AnkiSyncStateFile,
         result: AnkiSyncRunResult,
+        reviewHistorySyncReady: boolean,
         onProgress?: (current: number, total: number, message: string) => void,
     ): Promise<void> {
         const targets = this.getPendingWritebackTargets(state);
@@ -1947,9 +2093,35 @@ export class AnkiSyncService {
 
         let processed = 0;
         for (const [itemUuid, itemState] of targets) {
-            const pending = itemState.pendingReviewWritebacks[0];
+            const pendingWritebacks = itemState.pendingReviewWritebacks ?? [];
+            const pending = this.getLatestPendingWriteback(itemState);
             const mapping = itemState.mapping!;
+            if (!pending) {
+                processed += 1;
+                onProgress?.(processed, total, `姝ｅ湪鍐欏洖 Anki 澶嶄範鏁版嵁 (${processed}/${total})...`);
+                continue;
+            }
             try {
+                const hasReviewEvents = pendingWritebacks.some((writeback) => !!writeback.reviewEvent);
+                if (hasReviewEvents && !reviewHistorySyncReady) {
+                    result.errors.push(
+                        `[capability:${itemUuid}] review history sync unavailable; falling back to snapshot-only writeback`,
+                    );
+                }
+                if (reviewHistorySyncReady && hasReviewEvents) {
+                    const existingReviews = await client.getReviewsOfCards([mapping.cardId]);
+                    const existingReviewIds = new Set(
+                        (existingReviews.get(mapping.cardId) ?? []).map((review) => review.id),
+                    );
+                    const insertedReviews = pendingWritebacks
+                        .map((writeback) => this.buildInsertedReview(mapping.cardId, writeback))
+                        .filter((review): review is AnkiInsertedReview => !!review)
+                        .filter((review) => review.reviewTime > itemState.lastPushedReviewId)
+                        .filter((review) => !existingReviewIds.has(review.reviewTime))
+                        .sort((left, right) => left.reviewTime - right.reviewTime);
+                    await client.insertReviews(insertedReviews);
+                }
+
                 await client.updateNoteFields(mapping.noteId, {
                     syro_snapshot: JSON.stringify(pending.snapshot),
                     syro_updated_at: String(pending.snapshot.updatedAt),
@@ -1958,6 +2130,9 @@ export class AnkiSyncService {
                     mapping.cardId,
                     this.buildCardValueUpdate(pending.snapshot, state.global.reviewDueOffset),
                 );
+                if (reviewHistorySyncReady && hasReviewEvents) {
+                    await client.recomputeMemoryState([mapping.cardId]);
+                }
 
                 itemState.pendingReviewWritebacks = [];
                 itemState.lastLocalSnapshot = pending.snapshot;
@@ -1965,10 +2140,19 @@ export class AnkiSyncService {
                 itemState.lastLocalUpdatedAt = pending.snapshot.updatedAt;
                 itemState.lastRemoteUpdatedAt = pending.snapshot.updatedAt;
                 itemState.lastMergedUpdatedAt = pending.snapshot.updatedAt;
+                const latestReviewId = pendingWritebacks.reduce((maxReviewId, writeback) => {
+                    return Math.max(maxReviewId, writeback.reviewEvent?.reviewId ?? 0);
+                }, 0);
+                if (reviewHistorySyncReady && latestReviewId > 0) {
+                    itemState.lastPushedReviewId = Math.max(itemState.lastPushedReviewId, latestReviewId);
+                    itemState.lastMergedReviewId = Math.max(itemState.lastMergedReviewId, latestReviewId);
+                }
                 result.writebacks += 1;
             } catch (error) {
-                pending.attempts += 1;
-                pending.lastError = String(error);
+                for (const writeback of pendingWritebacks) {
+                    writeback.attempts += 1;
+                    writeback.lastError = String(error);
+                }
                 result.errors.push(`[writeback:${itemUuid}] ${String(error)}`);
             } finally {
                 processed += 1;
@@ -2158,6 +2342,11 @@ export class AnkiSyncService {
                 const builtSnapshot = builtSnapshots.get(itemUuid);
                 const candidateResult = dueCandidateByItemUuid.get(itemUuid) ?? null;
                 const item = this.findCardItemByUuid(itemUuid);
+                const replayedRemoteFsrs = this.replayRemoteFsrsReviews(
+                    item,
+                    itemState,
+                    reviewLogsByCardId.get(mapping.cardId) ?? [],
+                );
                 const localBaseline = this.chooseLatestLocalSnapshot(itemState);
                 const freshnessBreakdown = this.resolveFreshnessBreakdown(itemState, remoteSnapshot);
                 const authority = this.resolveAuthority(
@@ -2344,6 +2533,9 @@ export class AnkiSyncService {
                     localBaseline: this.summarizeSnapshot(localBaseline),
                 });
                 this.applySnapshotToItem(item, remoteSnapshot);
+                if (replayedRemoteFsrs) {
+                    this.applyReplayedFsrsCard(item, replayedRemoteFsrs.card);
+                }
                 if (builtSnapshot) {
                     this.refreshCardRuntime(builtSnapshot.card, item);
                 }
@@ -2361,6 +2553,12 @@ export class AnkiSyncService {
                 itemState.lastRemoteSnapshot = remoteSnapshot;
                 itemState.lastRemoteUpdatedAt = Math.max(itemState.lastRemoteUpdatedAt, remoteSnapshot.updatedAt);
                 itemState.lastMergedUpdatedAt = remoteSnapshot.updatedAt;
+                if (replayedRemoteFsrs) {
+                    itemState.lastMergedReviewId = Math.max(
+                        itemState.lastMergedReviewId,
+                        replayedRemoteFsrs.latestReviewId,
+                    );
+                }
                 result.pulled += 1;
                 comparisonRows.push(
                     this.buildDueComparisonRow(
@@ -2618,6 +2816,7 @@ export class AnkiSyncService {
             state.global.connection.lastVerifiedAt = this.now();
             await client.ensureModel(modelName);
             state.global.connection.modelReady = true;
+            const reviewHistorySyncReady = await this.supportsReviewHistorySync(client);
             reportProgress("prepare", 1, 1, "Anki 已连接");
 
             const fileTextByPath = await this.buildFileTextMap(deckTree);
@@ -2646,7 +2845,7 @@ export class AnkiSyncService {
             } catch (error) {
                 result.errors.push(`[discover] ${String(error)}`);
             }
-            await this.flushPendingWritebacks(client, state, result, (current, total, message) =>
+            await this.flushPendingWritebacks(client, state, result, reviewHistorySyncReady, (current, total, message) =>
                 reportProgress("writeback", current, total, message),
             );
             await this.pullRemoteChanges(client, state, builtSnapshots, result, (current, total, message) =>

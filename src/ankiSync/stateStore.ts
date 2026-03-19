@@ -31,8 +31,13 @@ function normalizeItemState(value: Partial<AnkiSyncItemState> | null | undefined
         lastLocalSnapshot: value.lastLocalSnapshot ?? null,
         lastRemoteSnapshot: value.lastRemoteSnapshot ?? null,
         pendingReviewWritebacks: Array.isArray(value.pendingReviewWritebacks)
-            ? value.pendingReviewWritebacks
+            ? value.pendingReviewWritebacks.map((pending) => ({
+                  ...pending,
+                  reviewEvent: pending?.reviewEvent ?? null,
+              }))
             : [],
+        lastMergedReviewId: value.lastMergedReviewId ?? 0,
+        lastPushedReviewId: value.lastPushedReviewId ?? 0,
         lastLocalUpdatedAt: value.lastLocalUpdatedAt ?? 0,
         lastRemoteUpdatedAt: value.lastRemoteUpdatedAt ?? 0,
         lastMergedUpdatedAt: value.lastMergedUpdatedAt ?? 0,

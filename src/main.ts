@@ -94,7 +94,7 @@ import { Queue } from "./dataStore/queue";
 import { ReviewDeckSelectionModal } from "./ui/modals/reviewDeckSelectionModal";
 import { setDueDates } from "./algorithms/balance/balance";
 import { postponeItems } from "./algorithms/balance/postpone";
-import { RepetitionItem, RPITEMTYPE } from "./dataStore/repetitionItem";
+import { FsrsReviewEvent, RepetitionItem, RPITEMTYPE } from "./dataStore/repetitionItem";
 import { IReviewNote } from "./reviewNote/review-note";
 import { ReviewView } from "./ui/views/reviewView";
 import * as MixQueSet from "./dataStore/mixQueSet";
@@ -1976,8 +1976,11 @@ export default class SRPlugin extends Plugin {
         }
     }
 
-    public async queueAnkiReviewWriteback(item: RepetitionItem | null | undefined): Promise<void> {
-        await this.ankiSyncService?.queueLocalReviewWriteback(item);
+    public async queueAnkiReviewWriteback(
+        item: RepetitionItem | null | undefined,
+        reviewEvent?: FsrsReviewEvent | null,
+    ): Promise<void> {
+        await this.ankiSyncService?.queueLocalReviewWriteback(item, reviewEvent ?? null);
     }
 
     public async rewriteAnkiReviewWriteback(item: RepetitionItem | null | undefined): Promise<void> {

@@ -33,7 +33,7 @@ import { IDeckTreeIterator } from "./DeckTreeIterator";
 import { IQuestionPostponementList } from "./QuestionPostponementList";
 import { DataStore } from "./dataStore/data";
 import { DataLocation } from "./dataStore/dataLocation";
-import { RPITEMTYPE, CardQueue } from "./dataStore/repetitionItem";
+import { RPITEMTYPE, CardQueue, ReviewResult } from "./dataStore/repetitionItem";
 import { Notice } from "obsidian";
 import SRPlugin, { LearningQueueItem } from "./main";
 import { FsrsData } from "./algorithms/fsrs";
@@ -399,7 +399,7 @@ export class FlashcardReviewSequencer implements IFlashcardReviewSequencer {
         }
 
         // FSRS 更新状态
-        this._processReviewbyAlgo(response);
+        const reviewResult = this._processReviewbyAlgo(response);
 
         let nextStep: number | null = currentStep;
         let nextIntervalMinutes: number = 0;
@@ -531,7 +531,10 @@ export class FlashcardReviewSequencer implements IFlashcardReviewSequencer {
         }
 
         if (item) {
-            await SRPlugin.getInstance()?.queueAnkiReviewWriteback?.(item);
+            await SRPlugin.getInstance()?.queueAnkiReviewWriteback?.(
+                item,
+                reviewResult?.reviewEvent ?? null,
+            );
         }
 
         if (this._isLearning) this._currentCard = null;
@@ -593,7 +596,7 @@ export class FlashcardReviewSequencer implements IFlashcardReviewSequencer {
         }
     }
 
-    private _processReviewbyAlgo(response: ReviewResponse) {
+    private _processReviewbyAlgo(response: ReviewResponse): ReviewResult | null {
         const store = DataStore.getInstance();
         const item = store.getItembyID(this.currentCard.Id);
 
@@ -604,7 +607,7 @@ export class FlashcardReviewSequencer implements IFlashcardReviewSequencer {
                 "[SR] _processReviewbyAlgo: item not found for card Id =",
                 this.currentCard.Id,
             );
-            return;
+            return null;
         }
 
         // 只在首次复习（非学习阶段）时更新计数
@@ -612,7 +615,7 @@ export class FlashcardReviewSequencer implements IFlashcardReviewSequencer {
         if (!this._isLearning) {
             store.updateReviewedCounts(this.currentCard.Id, RPITEMTYPE.CARD);
         }
-        store.reviewId(this.currentCard.Id, response);
+        return store.reviewId(this.currentCard.Id, response);
     }
 
     async processReview_CramMode(response: ReviewResponse): Promise<void> {

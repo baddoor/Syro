@@ -1,4 +1,4 @@
-import { CardQueue } from "src/dataStore/repetitionItem";
+import { CardQueue, FsrsReviewEvent } from "src/dataStore/repetitionItem";
 
 export const ANKI_SYNC_STATE_VERSION = 1;
 export const DEFAULT_ANKI_MODEL_NAME = "Syro::Card";
@@ -40,6 +40,7 @@ export interface ReviewSnapshot {
 
 export interface PendingReviewWriteback {
     id: string;
+    reviewEvent?: FsrsReviewEvent | null;
     snapshot: ReviewSnapshot;
     createdAt: number;
     attempts: number;
@@ -61,6 +62,8 @@ export interface AnkiSyncItemState {
     lastLocalSnapshot: ReviewSnapshot | null;
     lastRemoteSnapshot: ReviewSnapshot | null;
     pendingReviewWritebacks: PendingReviewWriteback[];
+    lastMergedReviewId: number;
+    lastPushedReviewId: number;
     lastLocalUpdatedAt: number;
     lastRemoteUpdatedAt: number;
     lastMergedUpdatedAt: number;
@@ -209,6 +212,18 @@ export interface AnkiCardReview {
     type: number;
 }
 
+export interface AnkiInsertedReview {
+    reviewTime: number;
+    cardId: number;
+    usn: number;
+    buttonPressed: number;
+    newInterval: number;
+    previousInterval: number;
+    newFactor: number;
+    reviewDuration: number;
+    reviewType: number;
+}
+
 export interface AnkiNoteInfo {
     noteId: number;
     cards: number[];
@@ -234,6 +249,8 @@ export function createEmptyAnkiSyncItemState(): AnkiSyncItemState {
         lastLocalSnapshot: null,
         lastRemoteSnapshot: null,
         pendingReviewWritebacks: [],
+        lastMergedReviewId: 0,
+        lastPushedReviewId: 0,
         lastLocalUpdatedAt: 0,
         lastRemoteUpdatedAt: 0,
         lastMergedUpdatedAt: 0,

@@ -25,7 +25,7 @@ import { t } from "src/lang/helpers";
 import deepcopy from "deepcopy";
 import { AnkiData } from "./anki";
 import { Rating, ReviewLog } from "ts-fsrs";
-import { RepetitionItem, ReviewResult } from "src/dataStore/repetitionItem";
+import { FsrsReviewEvent, RepetitionItem, ReviewResult } from "src/dataStore/repetitionItem";
 import { Iadapter } from "src/dataStore/adapter";
 
 // https://github.com/mgmeyers/obsidian-kanban/blob/main/src/Settings.ts
@@ -183,6 +183,59 @@ export class FsrsAlgorithm extends SrsAlgorithm {
         return tsfsrs.createEmptyCard();
     }
 
+    private mapStateToAnkiReviewType(state: tsfsrs.State): number {
+        switch (state) {
+            case tsfsrs.State.Review:
+                return 1;
+            case tsfsrs.State.Relearning:
+                return 2;
+            default:
+                return 0;
+        }
+    }
+
+    private toAnkiReviewInterval(card: FsrsData): number {
+        if (card.state === tsfsrs.State.Review && card.scheduled_days > 0) {
+            return Math.max(1, Math.round(card.scheduled_days));
+        }
+
+        if (card.due instanceof Date && card.last_review instanceof Date) {
+            const seconds = Math.max(
+                1,
+                Math.round((card.due.valueOf() - card.last_review.valueOf()) / 1000),
+            );
+            return -seconds;
+        }
+
+        return 0;
+    }
+
+    private toAnkiReviewFactor(card: FsrsData): number {
+        if (card.state !== tsfsrs.State.Review || card.difficulty <= 0) {
+            return 0;
+        }
+
+        return Math.round((card.difficulty + 0.1) * 1000);
+    }
+
+    private buildReviewEvent(
+        previousData: FsrsData,
+        nextData: FsrsData,
+        reviewLog: ReviewLog,
+        reviewDuration: number,
+    ): FsrsReviewEvent {
+        return {
+            reviewId: reviewLog.review.getTime(),
+            rating: reviewLog.rating,
+            reviewType: this.mapStateToAnkiReviewType(reviewLog.state),
+            reviewState: reviewLog.state,
+            newInterval: this.toAnkiReviewInterval(nextData),
+            previousInterval: this.toAnkiReviewInterval(previousData),
+            newFactor: this.toAnkiReviewFactor(nextData),
+            reviewDuration: Math.max(0, Math.round(reviewDuration)),
+        };
+    }
+
     srsOptions(): string[] {
         return FsrsOptions;
     }
@@ -241,10 +294,12 @@ export class FsrsAlgorithm extends SrsAlgorithm {
             return {
                 correct,
                 nextReview: -1,
+                reviewEvent: null,
             };
         }
 
         const now = new Date();
+        const previousData = deepcopy(data) as FsrsData;
         const scheduling_cards = this.fsrs.repeat(data, now);
         // console.log(scheduling_cards);
 
@@ -255,8 +310,11 @@ export class FsrsAlgorithm extends SrsAlgorithm {
         data.elapsed_days = MiscUtils.fixed(data.elapsed_days, 3);
 
         // Get the review log after rating :
+        const review_log = scheduling_cards[response].log;
+        const reviewDuration =
+            this.review_duration > 0 ? Math.max(0, now.getTime() - this.review_duration) : 0;
+
         if (log) {
-            const review_log = scheduling_cards[response].log;
             // 👈 传入计算后的 stability 和 difficulty
             this.appendRevlog(item, review_log, data.stability, data.difficulty);
         }
@@ -266,6 +324,7 @@ export class FsrsAlgorithm extends SrsAlgorithm {
         return {
             correct,
             nextReview: nextInterval,
+            reviewEvent: this.buildReviewEvent(previousData, data, review_log, reviewDuration),
         };
     }
 

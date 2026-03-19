@@ -41,6 +41,17 @@ export enum CardQueue {
     Review = 2,
 }
 
+export interface FsrsReviewEvent {
+    reviewId: number;
+    rating: number;
+    reviewType: number;
+    reviewState: number;
+    newInterval: number;
+    previousInterval: number;
+    newFactor: number;
+    reviewDuration: number;
+}
+
 // 生成轻量级且唯一的 UUID，例如 "i_lq5j9z_xk3a9b"
 function generateUUID(): string {
     return "i_" + Date.now().toString(36) + "_" + Math.random().toString(36).substring(2, 8);
@@ -58,6 +69,7 @@ export interface ReviewResult {
      * @type {number}
      */
     nextReview: number;
+    reviewEvent?: FsrsReviewEvent | null;
 }
 
 /**

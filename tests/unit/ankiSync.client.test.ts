@@ -303,6 +303,80 @@ describe("AnkiConnectClient", () => {
         });
     });
 
+    it("inserts review history tuples so Anki can rebuild official FSRS state", async () => {
+        mockedRequestUrl.mockResolvedValue({
+            status: 200,
+            headers: {},
+            arrayBuffer: new ArrayBuffer(0),
+            json: { error: null, result: null },
+            text: JSON.stringify({ error: null, result: null }),
+        } as any);
+
+        const client = new AnkiConnectClient("http://127.0.0.1:8765");
+        await client.insertReviews([
+            {
+                reviewTime: 1987200000,
+                cardId: 20,
+                usn: -1,
+                buttonPressed: 3,
+                newInterval: 2,
+                previousInterval: 1,
+                newFactor: 4300,
+                reviewDuration: 1234,
+                reviewType: 1,
+            },
+        ]);
+
+        expect(mockedRequestUrl).toHaveBeenCalledWith({
+            url: "http://127.0.0.1:8765",
+            method: "POST",
+            contentType: "application/json; charset=utf-8",
+            headers: {
+                Accept: "application/json",
+                "Content-Type": "application/json; charset=utf-8",
+            },
+            throw: false,
+            body: JSON.stringify({
+                action: "insertReviews",
+                version: 6,
+                params: {
+                    reviews: [[1987200000, 20, -1, 3, 2, 1, 4300, 1234, 1]],
+                },
+            }),
+        });
+    });
+
+    it("requests immediate memory-state recompute for touched cards", async () => {
+        mockedRequestUrl.mockResolvedValue({
+            status: 200,
+            headers: {},
+            arrayBuffer: new ArrayBuffer(0),
+            json: { error: null, result: null },
+            text: JSON.stringify({ error: null, result: null }),
+        } as any);
+
+        const client = new AnkiConnectClient("http://127.0.0.1:8765");
+        await client.recomputeMemoryState([20, 21]);
+
+        expect(mockedRequestUrl).toHaveBeenCalledWith({
+            url: "http://127.0.0.1:8765",
+            method: "POST",
+            contentType: "application/json; charset=utf-8",
+            headers: {
+                Accept: "application/json",
+                "Content-Type": "application/json; charset=utf-8",
+            },
+            throw: false,
+            body: JSON.stringify({
+                action: "recomputeMemoryState",
+                version: 6,
+                params: {
+                    cards: [20, 21],
+                },
+            }),
+        });
+    });
+
     it("calls canAddNotesWithErrorDetail for detailed add-note diagnostics", async () => {
         mockedRequestUrl.mockResolvedValue({
             status: 200,
