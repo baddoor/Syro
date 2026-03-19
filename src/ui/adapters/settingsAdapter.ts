@@ -55,6 +55,7 @@ export function settingsToUIState(settings: SRSettings): UISettingsState {
         showScrollPercentage: settings.showScrollPercentage ?? true,
         autoExpandTimeline: settings.autoExpandTimeline ?? true,
         timelineAutoCommitReviewSelection: settings.timelineAutoCommitReviewSelection ?? false,
+        timelineEnableDurationPrefixSyntax: settings.timelineEnableDurationPrefixSyntax ?? false,
 
         // Algorithm
         cardAlgorithm: settings.cardAlgorithm || "Fsrs",
@@ -179,6 +180,8 @@ export function mergeUIStateToSettings(
         merged.autoExpandTimeline = uiChanges.autoExpandTimeline;
     if (uiChanges.timelineAutoCommitReviewSelection !== undefined)
         merged.timelineAutoCommitReviewSelection = uiChanges.timelineAutoCommitReviewSelection;
+    if (uiChanges.timelineEnableDurationPrefixSyntax !== undefined)
+        merged.timelineEnableDurationPrefixSyntax = uiChanges.timelineEnableDurationPrefixSyntax;
 
     // Algorithm
     if (uiChanges.cardAlgorithm !== undefined) merged.cardAlgorithm = uiChanges.cardAlgorithm;

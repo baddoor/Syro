@@ -630,6 +630,10 @@ export default {
     TIMELINE_INPUT_PLACEHOLDER: "Commit review log and record cursor position",
     TIMELINE_NO_HISTORY: "No history",
     TIMELINE_EDITED_AT: "edited at",
+    TIMELINE_REVIEW_RESET: "Reset",
+    TIMELINE_REVIEW_HARD: "Hard",
+    TIMELINE_REVIEW_GOOD: "Good",
+    TIMELINE_REVIEW_EASY: "Easy",
     SECTION_NEW_NOTES: "NEW NOTES",
     SECTION_OVERDUE_1_DAY: "1 DAY OVERDUE",
     SECTION_OVERDUE_DAYS: "${days} DAYS OVERDUE",
@@ -744,6 +748,9 @@ export default {
     SETTINGS_TIMELINE_AUTO_COMMIT_REVIEW: "Auto Log Review Selection",
     SETTINGS_TIMELINE_AUTO_COMMIT_REVIEW_DESC:
         "Automatically write the selected note review option into Timeline after a successful review.",
+    SETTINGS_TIMELINE_ENABLE_DURATION_PREFIX: "Enable Duration Prefix Syntax",
+    SETTINGS_TIMELINE_ENABLE_DURATION_PREFIX_DESC:
+        "Enable parsing and rendering of leading duration syntax like 2d:: or 1mo20d:: in Timeline.",
     SETTINGS_SECTION_GENERAL: "General",
     SETTINGS_SHOW_STATUS_BAR: "Show Status Bar",
     SETTINGS_SHOW_STATUS_BAR_DESC: "Display review stats in the status bar.",

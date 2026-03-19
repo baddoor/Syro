@@ -53,6 +53,7 @@ export interface UISettingsState {
     showScrollPercentage: boolean; // Show saved scroll percentage in timeline items
     autoExpandTimeline: boolean; // Auto-expand the timeline when opening a reviewed note
     timelineAutoCommitReviewSelection: boolean; // Auto-write note review selections to timeline
+    timelineEnableDurationPrefixSyntax: boolean; // Enable Nd:: prefix parsing and rendering
 
     // Algorithm
     cardAlgorithm: string;

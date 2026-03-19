@@ -203,6 +203,8 @@ export class ReactNoteReviewView extends ItemView {
                 onCommitSelect: (log) => this.handleCommitSelect(log),
                 isLoading: this.isLoading,
                 showScrollPercentage: this.plugin.data.settings.showScrollPercentage,
+                enableDurationPrefixSyntax:
+                    this.plugin.data.settings.timelineEnableDurationPrefixSyntax,
             }),
         );
     }

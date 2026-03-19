@@ -1677,6 +1677,18 @@ export default class SRPlugin extends Plugin {
             item.updateAlgorithmData("ease", ease);
         }
 
+        let timelineIntervalDays: number | null = null;
+        try {
+            const timelineIntervals = this.noteAlgorithm.calcAllOptsIntervals(item);
+            if (timelineIntervals && timelineIntervals[response] !== undefined) {
+                timelineIntervalDays = timelineIntervals[response];
+            }
+        } catch (error) {
+            if (debugScheduling) {
+                console.warn("[Timeline] Failed to calculate note timeline interval:", error);
+            }
+        }
+
         const option = this.noteAlgorithm.srsOptions()[response];
         const reviewResult = this.noteAlgorithm.onSelection(item, option, false);
         item.reviewUpdate(reviewResult);
@@ -1697,6 +1709,7 @@ export default class SRPlugin extends Plugin {
                 enabled: settings.timelineAutoCommitReviewSelection,
                 notePath: note.path,
                 response,
+                intervalDays: timelineIntervalDays,
             });
         } catch (error) {
             console.error("[Timeline] Failed to auto-log review response:", error);

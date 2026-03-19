@@ -873,8 +873,23 @@
 
 .sr-timeline-message-content {
     display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 4px;
+}
+
+.sr-timeline-message-content-text {
+    display: flex;
     flex-direction: column;
     gap: 4px;
+    flex: 1;
+    min-width: 0;
+}
+
+.sr-timeline-inline-duration-wrap {
+    display: inline-flex;
+    align-items: center;
+    padding-top: 1px;
 }
 
 .sr-timeline-message-line {
@@ -899,11 +914,12 @@
     align-items: center;
     align-self: flex-start;
     padding: 2px 8px;
-    border-radius: 999px;
+    border-radius: var(--syro-sidebar-tag-pill-radius, 6px);
     background: color-mix(in srgb, var(--interactive-accent) 14%, transparent);
     color: var(--text-muted);
     font-size: 11px;
     line-height: 1.2;
+    border: 1px solid color-mix(in srgb, var(--interactive-accent) 18%, transparent);
 }
 
 .sr-timeline-time {
@@ -916,6 +932,20 @@
     font-size: 11px;
     color: var(--text-faint);
     font-style: italic;
+}
+
+.sr-timeline-preview,
+.sr-timeline-edit-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.sr-timeline-preview {
+    padding: 8px 10px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: var(--syro-sidebar-tag-pill-radius, 6px);
+    background: var(--background-primary-alt);
 }
 
 /* 内联编辑状态 */

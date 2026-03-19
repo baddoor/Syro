@@ -1,4 +1,6 @@
 import {
+    buildTimelineRenderModel,
+    hasTimelineInlineFormatting,
     parseTimelineMessage,
     sanitizeTimelineInlineMarkdown,
 } from "src/ui/timeline/timelineMessage";
@@ -37,5 +39,36 @@ describe("timelineMessage", () => {
         expect(sanitizeTimelineInlineMarkdown("**bold** ==mark== `code` $x$")).toBe(
             "**bold** ==mark== `code` $x$",
         );
+    });
+
+    it("does not parse duration prefixes when the setting is disabled", () => {
+        expect(
+            buildTimelineRenderModel({
+                message: "9d:: review",
+                enableDurationPrefixSyntax: false,
+            }),
+        ).toEqual({
+            body: "9d:: review",
+            duration: null,
+        });
+    });
+
+    it("prefers structured display durations over parsing the message prefix", () => {
+        expect(
+            buildTimelineRenderModel({
+                message: "Good:",
+                enableDurationPrefixSyntax: false,
+                displayDuration: { raw: "9d", totalDays: 9 },
+            }),
+        ).toEqual({
+            body: "Good:",
+            duration: { raw: "9d", totalDays: 9 },
+        });
+    });
+
+    it("detects inline markdown for live preview", () => {
+        expect(hasTimelineInlineFormatting("plain text")).toBe(false);
+        expect(hasTimelineInlineFormatting("**bold**")).toBe(true);
+        expect(hasTimelineInlineFormatting("`code`")).toBe(true);
     });
 });

@@ -41,10 +41,12 @@ describe("reviewCommitStore", () => {
         const entry = await store.addCommit("note.md", "Good", undefined, undefined, {
             entryType: "review-response",
             reviewResponse: "Good",
+            displayDuration: { raw: "9d", totalDays: 9 },
         });
 
         expect(entry.entryType).toBe("review-response");
         expect(entry.reviewResponse).toBe("Good");
+        expect(entry.displayDuration).toEqual({ raw: "9d", totalDays: 9 });
         expect(store.getCommits("note.md")[0].reviewResponse).toBe("Good");
     });
 });

@@ -38,17 +38,19 @@ describe("reviewResponseTimeline", () => {
             enabled: true,
             notePath: "note.md",
             response: ReviewResponse.Hard,
+            intervalDays: 9,
         });
 
         expect(committed).toBe(true);
         expect(commitStore.addCommit).toHaveBeenCalledWith(
             "note.md",
-            "Hard",
+            "Hard:",
             undefined,
             undefined,
             {
                 entryType: "review-response",
                 reviewResponse: "Hard",
+                displayDuration: { raw: "9d", totalDays: 9 },
             },
         );
     });

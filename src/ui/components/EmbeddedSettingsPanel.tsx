@@ -1115,6 +1115,12 @@ const NotesTab: React.FC<TabProps> = ({ settings, onChange }) => (
                 value={settings.timelineAutoCommitReviewSelection}
                 onChange={(v) => onChange("timelineAutoCommitReviewSelection", v)}
             />
+            <ToggleRow
+                label={t("SETTINGS_TIMELINE_ENABLE_DURATION_PREFIX")}
+                desc={t("SETTINGS_TIMELINE_ENABLE_DURATION_PREFIX_DESC")}
+                value={settings.timelineEnableDurationPrefixSyntax}
+                onChange={(v) => onChange("timelineEnableDurationPrefixSyntax", v)}
+            />
         </Section>
     </div>
 );

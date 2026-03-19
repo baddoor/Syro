@@ -26,9 +26,11 @@ import { ArrowDownAZ, BarChart3, GripVertical, Menu } from "lucide-react";
 import "../styles/note-review-sidebar.css";
 import { t } from "src/lang/helpers";
 import {
-    normalizeTimelineInlineLines,
-    parseTimelineMessage,
+    buildTimelineRenderModel,
+    hasTimelineInlineFormatting,
     sanitizeTimelineInlineMarkdown,
+    TimelineDisplayDuration,
+    normalizeTimelineInlineLines,
 } from "src/ui/timeline/timelineMessage";
 
 // ==========================================
@@ -690,6 +692,7 @@ const ResizableDivider: React.FC<{
 
 interface TimelinePaneProps {
     app: App;
+    enableDurationPrefixSyntax: boolean;
     isOpen: boolean;
     onToggle: () => void;
     selectedItem: NoteReviewItem | null;
@@ -743,9 +746,29 @@ function applyTimelineFormat(
     });
 }
 
-const TimelineRenderedMessage: React.FC<{ app: App; message: string }> = ({ app, message }) => {
+const TimelineRenderedMessage: React.FC<{
+    app: App;
+    message: string;
+    enableDurationPrefixSyntax: boolean;
+    displayDuration?: TimelineDisplayDuration | null;
+    durationPlacement?: "top" | "inline-after-label";
+}> = ({
+    app,
+    message,
+    enableDurationPrefixSyntax,
+    displayDuration,
+    durationPlacement = "top",
+}) => {
     const containerRef = useRef<HTMLDivElement>(null);
-    const parsed = useMemo(() => parseTimelineMessage(message), [message]);
+    const renderModel = useMemo(
+        () =>
+            buildTimelineRenderModel({
+                message,
+                enableDurationPrefixSyntax,
+                displayDuration,
+            }),
+        [displayDuration, enableDurationPrefixSyntax, message],
+    );
 
     useEffect(() => {
         const container = containerRef.current;
@@ -757,7 +780,7 @@ const TimelineRenderedMessage: React.FC<{ app: App; message: string }> = ({ app,
         let cancelled = false;
 
         const render = async () => {
-            const lines = normalizeTimelineInlineLines(parsed.body);
+            const lines = normalizeTimelineInlineLines(renderModel.body);
 
             for (const line of lines) {
                 if (cancelled) return;
@@ -789,19 +812,46 @@ const TimelineRenderedMessage: React.FC<{ app: App; message: string }> = ({ app,
             cancelled = true;
             renderComponent.unload();
         };
-    }, [app, parsed.body]);
+    }, [app, renderModel.body]);
+
+    const durationChip = renderModel.duration ? (
+        <span className="sr-timeline-duration-pill" title={`${renderModel.duration.totalDays}d`}>
+            {renderModel.duration.raw}
+        </span>
+    ) : null;
 
     return (
         <div className="sr-timeline-message-rendered">
-            {parsed.durationPrefix && (
-                <span
-                    className="sr-timeline-duration-pill"
-                    title={`${parsed.durationPrefix.totalDays}d`}
-                >
-                    {parsed.durationPrefix.raw}
-                </span>
-            )}
-            <div className="sr-timeline-message-content" ref={containerRef} />
+            {durationChip && durationPlacement === "top" && durationChip}
+            <div className="sr-timeline-message-content">
+                <div className="sr-timeline-message-content-text" ref={containerRef} />
+                {durationChip && durationPlacement === "inline-after-label" && (
+                    <div className="sr-timeline-inline-duration-wrap">{durationChip}</div>
+                )}
+            </div>
+        </div>
+    );
+};
+
+const TimelinePreview: React.FC<{
+    app: App;
+    message: string;
+    enableDurationPrefixSyntax: boolean;
+}> = ({ app, message, enableDurationPrefixSyntax }) => {
+    const trimmed = message.trim();
+    if (!trimmed) return null;
+
+    const shouldShowPreview = enableDurationPrefixSyntax || hasTimelineInlineFormatting(trimmed);
+
+    if (!shouldShowPreview) return null;
+
+    return (
+        <div className="sr-timeline-preview">
+            <TimelineRenderedMessage
+                app={app}
+                message={trimmed}
+                enableDurationPrefixSyntax={enableDurationPrefixSyntax}
+            />
         </div>
     );
 };
@@ -829,6 +879,7 @@ function formatTimestamp(timestamp: number): string {
 
 const TimelinePane: React.FC<TimelinePaneProps> = ({
     app,
+    enableDurationPrefixSyntax,
     isOpen,
     onToggle,
     selectedItem,
@@ -1041,6 +1092,11 @@ const TimelinePane: React.FC<TimelinePaneProps> = ({
                                         rows={1}
                                     />
                                 </div>
+                                <TimelinePreview
+                                    app={app}
+                                    message={message}
+                                    enableDurationPrefixSyntax={enableDurationPrefixSyntax}
+                                />
                                 <button
                                     onClick={handleCommit}
                                     disabled={!message.trim()}
@@ -1096,23 +1152,43 @@ const TimelinePane: React.FC<TimelinePaneProps> = ({
                                                     }}
                                                 >
                                                     {isEditing ? (
-                                                        <textarea
-                                                            ref={editRef}
-                                                            value={editText}
-                                                            onChange={(e) =>
-                                                                setEditText(e.target.value)
-                                                            }
-                                                            onBlur={handleEditBlur}
-                                                            onKeyDown={handleEditKeyDown}
-                                                            className="sr-timeline-edit-textarea"
-                                                            spellCheck={false}
-                                                            rows={1}
-                                                        />
+                                                        <div className="sr-timeline-edit-wrap">
+                                                            <textarea
+                                                                ref={editRef}
+                                                                value={editText}
+                                                                onChange={(e) =>
+                                                                    setEditText(e.target.value)
+                                                                }
+                                                                onBlur={handleEditBlur}
+                                                                onKeyDown={handleEditKeyDown}
+                                                                className="sr-timeline-edit-textarea"
+                                                                spellCheck={false}
+                                                                rows={1}
+                                                            />
+                                                            <TimelinePreview
+                                                                app={app}
+                                                                message={editText}
+                                                                enableDurationPrefixSyntax={
+                                                                    enableDurationPrefixSyntax
+                                                                }
+                                                            />
+                                                        </div>
                                                     ) : (
                                                         <div className="sr-timeline-message">
                                                             <TimelineRenderedMessage
                                                                 app={app}
                                                                 message={log.message}
+                                                                enableDurationPrefixSyntax={
+                                                                    enableDurationPrefixSyntax
+                                                                }
+                                                                displayDuration={
+                                                                    log.displayDuration
+                                                                }
+                                                                durationPlacement={
+                                                                    log.displayDuration
+                                                                        ? "inline-after-label"
+                                                                        : "top"
+                                                                }
                                                             />
                                                         </div>
                                                     )}
@@ -1420,6 +1496,7 @@ interface NoteReviewSidebarProps {
     onCommitSelect?: (log: ReviewCommitLog) => void;
     isLoading?: boolean;
     showScrollPercentage?: boolean;
+    enableDurationPrefixSyntax?: boolean;
 }
 
 export const NoteReviewSidebar: React.FC<NoteReviewSidebarProps> = ({
@@ -1458,6 +1535,7 @@ export const NoteReviewSidebar: React.FC<NoteReviewSidebarProps> = ({
     onCommitSelect,
     isLoading = false,
     showScrollPercentage = true,
+    enableDurationPrefixSyntax = false,
 }) => {
     const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
     const [currentHeight, setCurrentHeight] = useState(filterBarHeight);
@@ -1729,6 +1807,7 @@ export const NoteReviewSidebar: React.FC<NoteReviewSidebarProps> = ({
             >
                 <TimelinePane
                     app={app}
+                    enableDurationPrefixSyntax={enableDurationPrefixSyntax}
                     isOpen={isTimelineOpen}
                     onToggle={onTimelineToggle || (() => {})}
                     selectedItem={selectedItem}

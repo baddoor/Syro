@@ -12,10 +12,20 @@ export interface TimelineDurationPrefix {
     parts: TimelineDurationPart[];
 }
 
+export interface TimelineDisplayDuration {
+    raw: string;
+    totalDays: number;
+}
+
 export interface ParsedTimelineMessage {
     raw: string;
     body: string;
     durationPrefix: TimelineDurationPrefix | null;
+}
+
+export interface TimelineRenderModel {
+    body: string;
+    duration: TimelineDisplayDuration | null;
 }
 
 const DURATION_UNIT_ALIASES: Record<string, TimelineDurationUnit> = {
@@ -90,6 +100,42 @@ export function parseTimelineMessage(message: string): ParsedTimelineMessage {
 
 export function normalizeTimelineInlineLines(body: string): string[] {
     return body.replace(/\r\n/g, "\n").split("\n");
+}
+
+export function buildTimelineRenderModel(opts: {
+    message: string;
+    enableDurationPrefixSyntax: boolean;
+    displayDuration?: TimelineDisplayDuration | null;
+}): TimelineRenderModel {
+    const { message, enableDurationPrefixSyntax, displayDuration } = opts;
+    if (displayDuration) {
+        return {
+            body: message,
+            duration: displayDuration,
+        };
+    }
+
+    if (!enableDurationPrefixSyntax) {
+        return {
+            body: message,
+            duration: null,
+        };
+    }
+
+    const parsed = parseTimelineMessage(message);
+    return {
+        body: parsed.body,
+        duration: parsed.durationPrefix
+            ? {
+                  raw: parsed.durationPrefix.raw,
+                  totalDays: parsed.durationPrefix.totalDays,
+              }
+            : null,
+    };
+}
+
+export function hasTimelineInlineFormatting(message: string): boolean {
+    return /(\*\*.+?\*\*|\*[^*\n]+\*|~~.+?~~|==.+?==|`[^`\n]+`|\$[^$\n]+\$)/.test(message);
 }
 
 export function sanitizeTimelineInlineMarkdown(line: string): string {
