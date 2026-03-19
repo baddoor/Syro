@@ -1897,6 +1897,94 @@ describe("ankiSync service", () => {
         }
     });
 
+    it("treats areDue failures as non-fatal diagnostics during pull", async () => {
+        const item = createItem();
+        const { deck, cardHash, filePath } = createDeckWithCard(item);
+        const snapshot = { ...createReviewSnapshotFromItem(item), updatedAt: 1000 };
+        const store = new AnkiSyncStateStore(() => ".obsidian/plugins/syro/tracked_files.json");
+        const state = await store.load();
+        const itemState = ensureAnkiSyncItemState(state, item.uuid);
+        itemState.mapping = {
+            noteId: 10,
+            cardId: 20,
+            modelName: "Syro::Card",
+            deckName: "Syro::Deck",
+            filePath,
+            cardHash,
+        };
+        itemState.lastRemoteSnapshot = snapshot;
+        itemState.lastRemoteUpdatedAt = snapshot.updatedAt;
+        itemState.lastMergedUpdatedAt = snapshot.updatedAt;
+        await store.save(state);
+
+        const client = {
+            getVersion: jest.fn(async () => 6),
+            ensureModel: jest.fn(async () => undefined),
+            notesInfoByQuery: jest.fn(async () => []),
+            canAddNotesWithErrorDetail: jest.fn(async () => []),
+            ensureDecks: jest.fn(async () => []),
+            ensureBinaryMediaFiles: jest.fn(async () => undefined),
+            updateNoteFields: jest.fn(async () => undefined),
+            setSpecificCardValues: jest.fn(async () => undefined),
+            areDue: jest.fn(async () => {
+                throw new Error("AnkiConnect areDue failed: list index out of range");
+            }),
+            getReviewsOfCards: jest.fn(async () => new Map([[20, []]])),
+            notesInfo: jest.fn(async () => [
+                {
+                    noteId: 10,
+                    cards: [20],
+                    modelName: "Syro::Card",
+                    tags: ["syro-sync"],
+                    mod: 10,
+                    fields: {
+                        syro_item_uuid: item.uuid,
+                        syro_file_path: filePath,
+                        syro_card_hash: cardHash,
+                        syro_snapshot: JSON.stringify(snapshot),
+                        syro_updated_at: "1000",
+                    },
+                },
+            ]),
+            cardsInfo: jest.fn(async () => [
+                {
+                    cardId: 20,
+                    noteId: 10,
+                    deckName: "Syro::Deck",
+                    factor: 2500,
+                    interval: 3,
+                    type: 2,
+                    queue: 2,
+                    due: 100,
+                    reps: 3,
+                    lapses: 1,
+                    left: 0,
+                    mod: 10,
+                },
+            ]),
+            addNotes: jest.fn(async () => []),
+            changeDeck: jest.fn(async () => undefined),
+            deleteNotes: jest.fn(async () => undefined),
+        };
+        const service = new AnkiSyncService(createPlugin(item), {
+            stateStore: store,
+            clientFactory: () => client as any,
+            now: () => 3500,
+        });
+        await service.initialize();
+        jest.spyOn(service as any, "refreshCardRuntime").mockImplementation((card: Card, nextItem: RepetitionItem) => {
+            card.repetitionItem = nextItem;
+            card.scheduleInfo = null as any;
+        });
+
+        const result = await service.sync(deck, "sig-are-due-optional");
+
+        expect(client.areDue).toHaveBeenCalledWith([20]);
+        expect(result.errors).not.toEqual(
+            expect.arrayContaining([expect.stringContaining("AnkiConnect areDue failed")]),
+        );
+    });
+
     it("pulls only the remotely newer mapped card and keeps the locally newer card untouched", async () => {
         const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
         const nowSpy = jest.spyOn(Date, "now").mockReturnValue(20 * DAY_MS);

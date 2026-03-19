@@ -2202,17 +2202,29 @@ export class AnkiSyncService {
         for (const cardInfo of await client.cardsInfo(cardIds)) {
             cardInfoById.set(cardInfo.cardId, cardInfo);
         }
+        const existingCardIds = cardIds.filter((cardId) => cardInfoById.has(cardId));
         const ankiDueByCardId = new Map<number, boolean | null>();
-        const areDue = typeof (client as { areDue?: (cards: number[]) => Promise<boolean[]> }).areDue === "function"
-            ? await client.areDue(cardIds)
-            : cardIds.map(() => null);
-        cardIds.forEach((cardId, index) => {
+        cardIds.forEach((cardId) => {
+            ankiDueByCardId.set(cardId, null);
+        });
+        let areDue = existingCardIds.map(() => null as boolean | null);
+        if (typeof (client as { areDue?: (cards: number[]) => Promise<boolean[]> }).areDue === "function") {
+            try {
+                areDue = await client.areDue(existingCardIds);
+            } catch (error) {
+                this.logRuntimeDebug("[Syro-Anki][Pull][Compare] areDue unavailable", {
+                    cardIds: existingCardIds,
+                    error: String(error),
+                });
+            }
+        }
+        existingCardIds.forEach((cardId, index) => {
             ankiDueByCardId.set(cardId, areDue[index] ?? null);
         });
         const reviewLogsByCardId =
             typeof (client as { getReviewsOfCards?: (cards: number[]) => Promise<Map<number, AnkiCardReview[]>> })
                 .getReviewsOfCards === "function"
-                ? await client.getReviewsOfCards(cardIds)
+                ? await client.getReviewsOfCards(existingCardIds)
                 : new Map<number, AnkiCardReview[]>();
         const latestReviewByCardId = new Map<number, AnkiCardReview | null>();
         cardIds.forEach((cardId) => {
