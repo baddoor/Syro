@@ -2077,6 +2077,82 @@ export class AnkiSyncService {
         return values;
     }
 
+    private async syncSnapshotToMapping(
+        client: AnkiConnectClient,
+        itemUuid: string,
+        itemState: AnkiSyncItemState,
+        snapshot: ReviewSnapshot,
+        reviewDueOffset: number | null,
+        reviewHistorySyncReady: boolean,
+        result: AnkiSyncRunResult,
+        errorPrefix: "writeback" | "create-writeback" = "writeback",
+    ): Promise<boolean> {
+        const mapping = itemState.mapping;
+        if (!mapping?.noteId || !mapping.cardId) {
+            result.errors.push(`[${errorPrefix}:${itemUuid}] missing mapping`);
+            return false;
+        }
+
+        const pendingWritebacks = itemState.pendingReviewWritebacks ?? [];
+        const hasReviewEvents = pendingWritebacks.some((writeback) => !!writeback.reviewEvent);
+
+        try {
+            if (hasReviewEvents && !reviewHistorySyncReady) {
+                result.errors.push(
+                    `[capability:${itemUuid}] review history sync unavailable; falling back to snapshot-only writeback`,
+                );
+            }
+            if (reviewHistorySyncReady && hasReviewEvents) {
+                const existingReviews = await client.getReviewsOfCards([mapping.cardId]);
+                const existingReviewIds = new Set(
+                    (existingReviews.get(mapping.cardId) ?? []).map((review) => review.id),
+                );
+                const insertedReviews = pendingWritebacks
+                    .map((writeback) => this.buildInsertedReview(mapping.cardId, writeback))
+                    .filter((review): review is AnkiInsertedReview => !!review)
+                    .filter((review) => review.reviewTime > itemState.lastPushedReviewId)
+                    .filter((review) => !existingReviewIds.has(review.reviewTime))
+                    .sort((left, right) => left.reviewTime - right.reviewTime);
+                await client.insertReviews(insertedReviews);
+            }
+
+            await client.updateNoteFields(mapping.noteId, {
+                syro_snapshot: JSON.stringify(snapshot),
+                syro_updated_at: String(snapshot.updatedAt),
+            });
+            await client.setSpecificCardValues(
+                mapping.cardId,
+                this.buildCardValueUpdate(snapshot, reviewDueOffset),
+            );
+            if (reviewHistorySyncReady && hasReviewEvents) {
+                await client.recomputeMemoryState([mapping.cardId]);
+            }
+
+            itemState.pendingReviewWritebacks = [];
+            itemState.lastLocalSnapshot = snapshot;
+            itemState.lastRemoteSnapshot = snapshot;
+            itemState.lastLocalUpdatedAt = snapshot.updatedAt;
+            itemState.lastRemoteUpdatedAt = snapshot.updatedAt;
+            itemState.lastMergedUpdatedAt = snapshot.updatedAt;
+            const latestReviewId = pendingWritebacks.reduce((maxReviewId, writeback) => {
+                return Math.max(maxReviewId, writeback.reviewEvent?.reviewId ?? 0);
+            }, 0);
+            if (reviewHistorySyncReady && latestReviewId > 0) {
+                itemState.lastPushedReviewId = Math.max(itemState.lastPushedReviewId, latestReviewId);
+                itemState.lastMergedReviewId = Math.max(itemState.lastMergedReviewId, latestReviewId);
+            }
+
+            return true;
+        } catch (error) {
+            for (const writeback of pendingWritebacks) {
+                writeback.attempts += 1;
+                writeback.lastError = String(error);
+            }
+            result.errors.push(`[${errorPrefix}:${itemUuid}] ${String(error)}`);
+            return false;
+        }
+    }
+
     private async flushPendingWritebacks(
         client: AnkiConnectClient,
         state: AnkiSyncStateFile,
@@ -2093,75 +2169,78 @@ export class AnkiSyncService {
 
         let processed = 0;
         for (const [itemUuid, itemState] of targets) {
-            const pendingWritebacks = itemState.pendingReviewWritebacks ?? [];
             const pending = this.getLatestPendingWriteback(itemState);
-            const mapping = itemState.mapping!;
             if (!pending) {
                 processed += 1;
-                onProgress?.(processed, total, `姝ｅ湪鍐欏洖 Anki 澶嶄範鏁版嵁 (${processed}/${total})...`);
+                onProgress?.(processed, total, `Writing back Anki reviews (${processed}/${total})...`);
                 continue;
             }
-            try {
-                const hasReviewEvents = pendingWritebacks.some((writeback) => !!writeback.reviewEvent);
-                if (hasReviewEvents && !reviewHistorySyncReady) {
-                    result.errors.push(
-                        `[capability:${itemUuid}] review history sync unavailable; falling back to snapshot-only writeback`,
-                    );
-                }
-                if (reviewHistorySyncReady && hasReviewEvents) {
-                    const existingReviews = await client.getReviewsOfCards([mapping.cardId]);
-                    const existingReviewIds = new Set(
-                        (existingReviews.get(mapping.cardId) ?? []).map((review) => review.id),
-                    );
-                    const insertedReviews = pendingWritebacks
-                        .map((writeback) => this.buildInsertedReview(mapping.cardId, writeback))
-                        .filter((review): review is AnkiInsertedReview => !!review)
-                        .filter((review) => review.reviewTime > itemState.lastPushedReviewId)
-                        .filter((review) => !existingReviewIds.has(review.reviewTime))
-                        .sort((left, right) => left.reviewTime - right.reviewTime);
-                    await client.insertReviews(insertedReviews);
-                }
 
-                await client.updateNoteFields(mapping.noteId, {
-                    syro_snapshot: JSON.stringify(pending.snapshot),
-                    syro_updated_at: String(pending.snapshot.updatedAt),
-                });
-                await client.setSpecificCardValues(
-                    mapping.cardId,
-                    this.buildCardValueUpdate(pending.snapshot, state.global.reviewDueOffset),
-                );
-                if (reviewHistorySyncReady && hasReviewEvents) {
-                    await client.recomputeMemoryState([mapping.cardId]);
-                }
-
-                itemState.pendingReviewWritebacks = [];
-                itemState.lastLocalSnapshot = pending.snapshot;
-                itemState.lastRemoteSnapshot = pending.snapshot;
-                itemState.lastLocalUpdatedAt = pending.snapshot.updatedAt;
-                itemState.lastRemoteUpdatedAt = pending.snapshot.updatedAt;
-                itemState.lastMergedUpdatedAt = pending.snapshot.updatedAt;
-                const latestReviewId = pendingWritebacks.reduce((maxReviewId, writeback) => {
-                    return Math.max(maxReviewId, writeback.reviewEvent?.reviewId ?? 0);
-                }, 0);
-                if (reviewHistorySyncReady && latestReviewId > 0) {
-                    itemState.lastPushedReviewId = Math.max(itemState.lastPushedReviewId, latestReviewId);
-                    itemState.lastMergedReviewId = Math.max(itemState.lastMergedReviewId, latestReviewId);
-                }
+            const synced = await this.syncSnapshotToMapping(
+                client,
+                itemUuid,
+                itemState,
+                pending.snapshot,
+                state.global.reviewDueOffset,
+                reviewHistorySyncReady,
+                result,
+                "writeback",
+            );
+            if (synced) {
                 result.writebacks += 1;
-            } catch (error) {
-                for (const writeback of pendingWritebacks) {
-                    writeback.attempts += 1;
-                    writeback.lastError = String(error);
-                }
-                result.errors.push(`[writeback:${itemUuid}] ${String(error)}`);
-            } finally {
-                processed += 1;
-                onProgress?.(
-                    processed,
-                    total,
-                    `正在写回 Anki 复习数据 (${processed}/${total})...`,
-                );
             }
+
+            processed += 1;
+            onProgress?.(
+                processed,
+                total,
+                `Writing back Anki reviews (${processed}/${total})...`,
+            );
+        }
+    }
+
+    private async materializeCreatedNotes(
+        client: AnkiConnectClient,
+        ops: AnkiSyncPlanOperation[],
+        state: AnkiSyncStateFile,
+        result: AnkiSyncRunResult,
+        reviewHistorySyncReady: boolean,
+        onProgress?: (current: number, total: number, message: string) => void,
+    ): Promise<void> {
+        const createOps = ops.filter((op) => op.type === "create" && op.payload);
+        if (createOps.length === 0) {
+            onProgress?.(0, 0, "No created Anki cards to materialize");
+            return;
+        }
+
+        let processed = 0;
+        for (const op of createOps) {
+            const itemState = state.items[op.itemUuid];
+            const pending = itemState ? this.getLatestPendingWriteback(itemState) : null;
+            const snapshot = pending?.snapshot ?? op.payload?.snapshot ?? null;
+            const hasMapping = !!itemState?.mapping?.noteId && !!itemState?.mapping?.cardId;
+            if (itemState && snapshot && hasMapping) {
+                const synced = await this.syncSnapshotToMapping(
+                    client,
+                    op.itemUuid,
+                    itemState,
+                    snapshot,
+                    state.global.reviewDueOffset,
+                    reviewHistorySyncReady,
+                    result,
+                    "create-writeback",
+                );
+                if (synced) {
+                    result.writebacks += 1;
+                }
+            }
+
+            processed += 1;
+            onProgress?.(
+                processed,
+                createOps.length,
+                `Materializing created Anki cards (${processed}/${createOps.length})...`,
+            );
         }
     }
 
@@ -2897,6 +2976,9 @@ export class AnkiSyncService {
             );
             await this.createNotes(client, ops, state, result, (current, total, message) =>
                 reportProgress("create", current, total, message),
+            );
+            await this.materializeCreatedNotes(client, ops, state, result, reviewHistorySyncReady, (current, total, message) =>
+                reportProgress("writeback", current, total, message),
             );
             await this.updateNotes(client, ops, state, result, (current, total, message) =>
                 reportProgress("update", current, total, message),

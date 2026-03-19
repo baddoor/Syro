@@ -574,6 +574,231 @@ describe("ankiSync service", () => {
         expect(reloaded.items[item.uuid].lastMergedReviewId).toBe(0);
     });
 
+    it("materializes newly created learning cards after create", async () => {
+        const item = createItem();
+        item.queue = CardQueue.Learn;
+        item.learningStep = 1;
+        item.nextReview = 25_000;
+        item.timesReviewed = 1;
+        item.timesCorrect = 1;
+        const { deck } = createDeckWithCard(item);
+        const store = new AnkiSyncStateStore(() => ".obsidian/plugins/syro/tracked_files.json");
+
+        const client = {
+            getVersion: jest.fn(async () => 6),
+            ensureModel: jest.fn(async () => undefined),
+            notesInfoByQuery: jest.fn(async () => []),
+            canAddNotesWithErrorDetail: jest.fn(async () => [{ canAdd: true }]),
+            updateNoteFields: jest.fn(async () => undefined),
+            setSpecificCardValues: jest.fn(async () => undefined),
+            notesInfo: jest.fn(async (noteIds: number[]) =>
+                noteIds.map((noteId) => ({
+                    noteId,
+                    cards: [20],
+                    modelName: "Syro::Card",
+                    tags: ["syro-sync"],
+                    mod: 1,
+                    fields: {},
+                })),
+            ),
+            cardsInfo: jest.fn(async () => []),
+            addNotes: jest.fn(async () => [10]),
+            ensureDecks: jest.fn(async () => []),
+            ensureBinaryMediaFiles: jest.fn(async () => undefined),
+            changeDeck: jest.fn(async () => undefined),
+            deleteNotes: jest.fn(async () => undefined),
+        };
+        const service = new AnkiSyncService(createPlugin(item), {
+            stateStore: store,
+            clientFactory: () => client as any,
+            now: () => 3000,
+        });
+        await service.initialize();
+
+        const result = await service.sync(deck, "sig-create-learn-materialize");
+        const reloaded = await store.load();
+
+        expect(result.created).toBe(1);
+        expect(result.writebacks).toBe(1);
+        expect(client.setSpecificCardValues).toHaveBeenCalledWith(
+            20,
+            expect.objectContaining({
+                queue: CardQueue.Learn,
+                type: 1,
+                due: Math.floor(item.nextReview / 1000),
+            }),
+        );
+        expect(reloaded.items[item.uuid].mapping).toMatchObject({
+            noteId: 10,
+            cardId: 20,
+        });
+    });
+
+    it("writes review history for newly created cards after mapping is assigned", async () => {
+        const item = createFsrsItem();
+        const { deck } = createDeckWithCard(item);
+        const store = new AnkiSyncStateStore(() => ".obsidian/plugins/syro/tracked_files.json");
+        const state = await store.load();
+        const itemState = ensureAnkiSyncItemState(state, item.uuid);
+        const snapshot = { ...createReviewSnapshotFromItem(item), updatedAt: 2600 };
+        const reviewEvent: FsrsReviewEvent = {
+            reviewId: 2600,
+            rating: 4,
+            reviewType: 1,
+            reviewState: State.Review,
+            newInterval: 8,
+            previousInterval: 3,
+            newFactor: 3300,
+            reviewDuration: 800,
+        };
+        itemState.pendingReviewWritebacks = [
+            {
+                id: "pending-create-review",
+                reviewEvent,
+                snapshot,
+                createdAt: 2600,
+                attempts: 0,
+                lastError: null,
+            },
+        ];
+        await store.save(state);
+
+        const client = {
+            getVersion: jest.fn(async () => 6),
+            ensureModel: jest.fn(async () => undefined),
+            insertReviews: jest.fn(async () => undefined),
+            recomputeMemoryState: jest.fn(async () => undefined),
+            getReviewsOfCards: jest.fn(async () => new Map([[20, []]])),
+            notesInfoByQuery: jest.fn(async () => []),
+            canAddNotesWithErrorDetail: jest.fn(async () => [{ canAdd: true }]),
+            updateNoteFields: jest.fn(async () => undefined),
+            setSpecificCardValues: jest.fn(async () => undefined),
+            notesInfo: jest.fn(async (noteIds: number[]) =>
+                noteIds.map((noteId) => ({
+                    noteId,
+                    cards: [20],
+                    modelName: "Syro::Card",
+                    tags: ["syro-sync"],
+                    mod: 1,
+                    fields: {},
+                })),
+            ),
+            cardsInfo: jest.fn(async () => []),
+            addNotes: jest.fn(async () => [10]),
+            ensureDecks: jest.fn(async () => []),
+            ensureBinaryMediaFiles: jest.fn(async () => undefined),
+            changeDeck: jest.fn(async () => undefined),
+            deleteNotes: jest.fn(async () => undefined),
+        };
+        const service = new AnkiSyncService(createPlugin(item), {
+            stateStore: store,
+            clientFactory: () => client as any,
+            now: () => 3000,
+        });
+        await service.initialize();
+
+        const result = await service.sync(deck, "sig-create-review-history");
+        const reloaded = await store.load();
+
+        expect(result.created).toBe(1);
+        expect(result.writebacks).toBe(1);
+        expect(client.addNotes.mock.invocationCallOrder.at(-1)).toBeLessThan(
+            client.insertReviews.mock.invocationCallOrder.at(-1),
+        );
+        expect(client.insertReviews.mock.invocationCallOrder.at(-1)).toBeLessThan(
+            client.setSpecificCardValues.mock.invocationCallOrder.at(-1),
+        );
+        expect(client.recomputeMemoryState.mock.invocationCallOrder.at(-1)).toBeGreaterThan(
+            client.setSpecificCardValues.mock.invocationCallOrder.at(-1),
+        );
+        expect(reloaded.items[item.uuid].lastPushedReviewId).toBe(2600);
+        expect(reloaded.items[item.uuid].lastMergedReviewId).toBe(2600);
+        expect(reloaded.items[item.uuid].pendingReviewWritebacks).toHaveLength(0);
+    });
+
+    it("falls back to snapshot-only materialization for newly created learning cards", async () => {
+        const item = createFsrsItem();
+        item.queue = CardQueue.Learn;
+        item.learningStep = 1;
+        item.nextReview = 45_000;
+        const { deck } = createDeckWithCard(item);
+        const store = new AnkiSyncStateStore(() => ".obsidian/plugins/syro/tracked_files.json");
+        const state = await store.load();
+        const itemState = ensureAnkiSyncItemState(state, item.uuid);
+        const snapshot = {
+            ...createReviewSnapshotFromItem(item),
+            updatedAt: 2600,
+            queue: CardQueue.Learn,
+            nextReview: 45_000,
+        };
+        const reviewEvent: FsrsReviewEvent = {
+            reviewId: 2600,
+            rating: 3,
+            reviewType: 0,
+            reviewState: State.Learning,
+            newInterval: 1,
+            previousInterval: 0,
+            newFactor: 3000,
+            reviewDuration: 500,
+        };
+        itemState.pendingReviewWritebacks = [
+            {
+                id: "pending-create-learn-fallback",
+                reviewEvent,
+                snapshot,
+                createdAt: 2600,
+                attempts: 0,
+                lastError: null,
+            },
+        ];
+        await store.save(state);
+
+        const client = {
+            getVersion: jest.fn(async () => 6),
+            ensureModel: jest.fn(async () => undefined),
+            notesInfoByQuery: jest.fn(async () => []),
+            canAddNotesWithErrorDetail: jest.fn(async () => [{ canAdd: true }]),
+            updateNoteFields: jest.fn(async () => undefined),
+            setSpecificCardValues: jest.fn(async () => undefined),
+            notesInfo: jest.fn(async (noteIds: number[]) =>
+                noteIds.map((noteId) => ({
+                    noteId,
+                    cards: [20],
+                    modelName: "Syro::Card",
+                    tags: ["syro-sync"],
+                    mod: 1,
+                    fields: {},
+                })),
+            ),
+            cardsInfo: jest.fn(async () => []),
+            addNotes: jest.fn(async () => [10]),
+            ensureDecks: jest.fn(async () => []),
+            ensureBinaryMediaFiles: jest.fn(async () => undefined),
+            changeDeck: jest.fn(async () => undefined),
+            deleteNotes: jest.fn(async () => undefined),
+        };
+        const service = new AnkiSyncService(createPlugin(item), {
+            stateStore: store,
+            clientFactory: () => client as any,
+            now: () => 3000,
+        });
+        await service.initialize();
+
+        const result = await service.sync(deck, "sig-create-snapshot-fallback");
+
+        expect(result.errors).toContain(
+            `[capability:${item.uuid}] review history sync unavailable; falling back to snapshot-only writeback`,
+        );
+        expect(client.setSpecificCardValues).toHaveBeenCalledWith(
+            20,
+            expect.objectContaining({
+                queue: CardQueue.Learn,
+                type: 1,
+                due: Math.floor(snapshot.nextReview / 1000),
+            }),
+        );
+    });
+
     it("recovers mappings from remote Syro notes when the sidecar is empty", async () => {
         const item = createItem();
         const { deck, cardHash, filePath } = createDeckWithCard(item);
