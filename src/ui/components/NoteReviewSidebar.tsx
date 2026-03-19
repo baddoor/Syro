@@ -737,6 +737,15 @@ const TimelineRenderedMessage: React.FC<{
         </span>
     ) : null;
     const isInlineDuration = durationPlacement === "inline-after-label" && !!durationChip;
+    const inlineDurationChip =
+        isInlineDuration && renderModel.duration ? (
+            <span
+                className="sr-timeline-duration-pill"
+                title={`${renderModel.duration.totalDays}d`}
+            >
+                {`${renderModel.body} ${renderModel.duration.raw}`.trim()}
+            </span>
+        ) : null;
 
     useEffect(() => {
         const container = containerRef.current;
@@ -784,8 +793,9 @@ const TimelineRenderedMessage: React.FC<{
 
     return (
         <div className="sr-timeline-message-rendered">
+            {inlineDurationChip}
             {durationChip && durationPlacement === "top" && durationChip}
-            {hasBody && (
+            {!inlineDurationChip && hasBody && (
                 <div
                     className={`sr-timeline-message-content ${isInlineDuration ? "is-inline-duration" : ""}`}
                 >
