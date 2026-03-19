@@ -682,6 +682,10 @@ export class AnkiSyncService {
         unmappedByDeck: Map<string, number>,
         result: AnkiSyncRunResult,
     ): void {
+        if (!this.plugin.data.settings.showRuntimeDebugMessages) {
+            return;
+        }
+
         const groupedRows = new Map<string, DueComparisonRow[]>();
         for (const row of rows) {
             const deckName = row.card.deckName || "unknown";
