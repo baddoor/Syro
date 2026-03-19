@@ -26,7 +26,10 @@ function createItem(): RepetitionItem {
     return item;
 }
 
-function createPlugin(item: RepetitionItem | RepetitionItem[]) {
+function createPlugin(
+    item: RepetitionItem | RepetitionItem[],
+    settingsOverrides: Record<string, unknown> = {},
+) {
     const items = Array.isArray(item) ? item : [item];
     return {
         data: {
@@ -36,6 +39,7 @@ function createPlugin(item: RepetitionItem | RepetitionItem[]) {
                 ankiSyncEndpoint: "http://127.0.0.1:8765",
                 ankiSyncDeletePolicy: "delete",
                 ankiSyncModelName: "Syro::Card",
+                ...settingsOverrides,
             },
         },
         manifest: { dir: ".obsidian/plugins/syro" },
@@ -66,6 +70,16 @@ function createDeckWithCard(item: RepetitionItem): { deck: Deck; cardHash: strin
         cardHash: payloadMap.get(item.uuid)!.payload.cardHash,
         filePath: payloadMap.get(item.uuid)!.payload.filePath,
     };
+}
+
+function stringifyLogCalls(logSpy: jest.SpyInstance): string {
+    return logSpy.mock.calls
+        .map((call) =>
+            call
+                .map((value: unknown) => (typeof value === "string" ? value : JSON.stringify(value)))
+                .join(" "),
+        )
+        .join("\n");
 }
 
 describe("ankiSync service", () => {
@@ -587,6 +601,7 @@ describe("ankiSync service", () => {
 
     it("pulls reviewed remote cards correctly when reviewDueOffset is calibrated from the first mapped card", async () => {
         const nowSpy = jest.spyOn(Date, "now").mockReturnValue(20 * DAY_MS);
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
         try {
             const item = createItem();
             item.nextReview = 10 * DAY_MS;
@@ -656,7 +671,7 @@ describe("ankiSync service", () => {
                 changeDeck: jest.fn(async () => undefined),
                 deleteNotes: jest.fn(async () => undefined),
             };
-            const service = new AnkiSyncService(createPlugin(item), {
+            const service = new AnkiSyncService(createPlugin(item, { showRuntimeDebugMessages: true }), {
                 stateStore: store,
                 clientFactory: () => client as any,
                 now: () => 4000,
@@ -669,14 +684,304 @@ describe("ankiSync service", () => {
 
             const result = await service.sync(deck, "sig-review-offset");
             const reloaded = await store.load();
+            const debugOutput = stringifyLogCalls(logSpy);
 
             expect(result.pulled).toBe(1);
             expect(item.nextReview).toBe(25 * DAY_MS);
             expect(item.isDue).toBe(false);
             expect(deck.dueFlashcards[0].isDue).toBe(false);
             expect(reloaded.global.reviewDueOffset).toBe(90);
+            expect(debugOutput).toContain("[Syro-Anki][Pull][Calibrate] candidate accepted");
+            expect(debugOutput).toContain("\"reason\":\"baseline-available\"");
+            expect(debugOutput).toContain("\"computedNextReview\":2160000000");
         } finally {
+            logSpy.mockRestore();
             nowSpy.mockRestore();
+        }
+    });
+
+    it("logs unresolved remote review diagnostics when a newly reviewed card has no review baseline", async () => {
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        try {
+            const item = createItem();
+            item.queue = CardQueue.New;
+            item.nextReview = 0;
+            item.timesReviewed = 0;
+            item.timesCorrect = 0;
+            item.errorStreak = 0;
+            const { deck, cardHash, filePath } = createDeckWithCard(item);
+            const store = new AnkiSyncStateStore(() => ".obsidian/plugins/syro/tracked_files.json");
+            const state = await store.load();
+            const itemState = ensureAnkiSyncItemState(state, item.uuid);
+            const hiddenSnapshot = {
+                ...createReviewSnapshotFromItem(item),
+                updatedAt: 1000,
+                raw: { queue: 0, type: 0, due: 0 },
+            };
+            itemState.mapping = {
+                noteId: 10,
+                cardId: 20,
+                modelName: "Syro::Card",
+                deckName: "Syro::Deck",
+                filePath,
+                cardHash,
+            };
+            itemState.lastLocalSnapshot = hiddenSnapshot;
+            itemState.lastRemoteSnapshot = hiddenSnapshot;
+            itemState.lastLocalUpdatedAt = hiddenSnapshot.updatedAt;
+            itemState.lastRemoteUpdatedAt = hiddenSnapshot.updatedAt;
+            await store.save(state);
+
+            const client = {
+                getVersion: jest.fn(async () => 6),
+                ensureModel: jest.fn(async () => undefined),
+                notesInfoByQuery: jest.fn(async () => []),
+                canAddNotesWithErrorDetail: jest.fn(async () => []),
+                ensureDecks: jest.fn(async () => []),
+                ensureBinaryMediaFiles: jest.fn(async () => undefined),
+                updateNoteFields: jest.fn(async () => undefined),
+                setSpecificCardValues: jest.fn(async () => undefined),
+                notesInfo: jest.fn(async () => [
+                    {
+                        noteId: 10,
+                        cards: [20],
+                        modelName: "Syro::Card",
+                        tags: ["syro-sync"],
+                        mod: 20,
+                        fields: {
+                            syro_item_uuid: item.uuid,
+                            syro_file_path: filePath,
+                            syro_card_hash: cardHash,
+                            syro_snapshot: JSON.stringify(hiddenSnapshot),
+                            syro_updated_at: "1000",
+                        },
+                    },
+                ]),
+                cardsInfo: jest.fn(async () => [
+                    {
+                        cardId: 20,
+                        noteId: 10,
+                        deckName: "Syro::Deck",
+                        factor: 2500,
+                        interval: 2,
+                        type: 2,
+                        queue: 2,
+                        due: 105,
+                        reps: 1,
+                        lapses: 0,
+                        left: 0,
+                        mod: 20,
+                    },
+                ]),
+                addNotes: jest.fn(async () => []),
+                changeDeck: jest.fn(async () => undefined),
+                deleteNotes: jest.fn(async () => undefined),
+            };
+            const service = new AnkiSyncService(createPlugin(item, { showRuntimeDebugMessages: true }), {
+                stateStore: store,
+                clientFactory: () => client as any,
+                now: () => 4000,
+            });
+            await service.initialize();
+            jest.spyOn(service as any, "refreshCardRuntime").mockImplementation((card: Card, nextItem: RepetitionItem) => {
+                card.repetitionItem = nextItem;
+                card.scheduleInfo = null as any;
+            });
+
+            const result = await service.sync(deck, "sig-missing-baseline");
+            const reloaded = await store.load();
+            const debugOutput = stringifyLogCalls(logSpy);
+
+            expect(result.pulled).toBe(1);
+            expect(item.queue).toBe(CardQueue.Review);
+            expect(item.nextReview).toBe(0);
+            expect(item.isDue).toBe(true);
+            expect(reloaded.global.reviewDueOffset).toBeNull();
+            expect(debugOutput).toContain("\"reason\":\"missing-baseline-next-review\"");
+            expect(debugOutput).toContain("\"missingBaselineState\":\"new-card-without-baseline\"");
+            expect(debugOutput).toContain("[Syro-Anki][Pull][BuildSnapshot][review-offset-unresolved]");
+            expect(debugOutput).toContain("[Syro-Anki][Pull][Diagnosis] remote review due unresolved");
+        } finally {
+            logSpy.mockRestore();
+        }
+    });
+
+    it("uses a calibrated offset from another mapped card before building a newly reviewed card snapshot", async () => {
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        try {
+            const newlyReviewedItem = createItem();
+            newlyReviewedItem.queue = CardQueue.New;
+            newlyReviewedItem.nextReview = 0;
+            newlyReviewedItem.timesReviewed = 0;
+            newlyReviewedItem.timesCorrect = 0;
+            newlyReviewedItem.errorStreak = 0;
+
+            const baselineItem = createItem();
+            baselineItem.ID = 2;
+            baselineItem.uuid = "uuid-2";
+            baselineItem.nextReview = 10 * DAY_MS;
+
+            const firstCard = new Card({ front: "front-1", back: "back-1", cardIdx: 0 });
+            firstCard.repetitionItem = newlyReviewedItem;
+            firstCard.question = {
+                topicPathList: { list: [new TopicPath(["Deck"])] },
+                note: { filePath: "note-new.md" },
+                questionContext: ["context"],
+                lineNo: 10,
+            } as any;
+
+            const secondCard = new Card({ front: "front-2", back: "back-2", cardIdx: 0 });
+            secondCard.repetitionItem = baselineItem;
+            secondCard.question = {
+                topicPathList: { list: [new TopicPath(["Deck"])] },
+                note: { filePath: "note-baseline.md" },
+                questionContext: ["context"],
+                lineNo: 12,
+            } as any;
+
+            const deck = new Deck("root", null);
+            deck.dueFlashcards.push(firstCard, secondCard);
+            const payloadMap = buildSyroAnkiCardSnapshotMap(deck, {}, "Syro::Card");
+            const newPayload = payloadMap.get(newlyReviewedItem.uuid)!.payload;
+            const baselinePayload = payloadMap.get(baselineItem.uuid)!.payload;
+
+            const store = new AnkiSyncStateStore(() => ".obsidian/plugins/syro/tracked_files.json");
+            const state = await store.load();
+            const newItemState = ensureAnkiSyncItemState(state, newlyReviewedItem.uuid);
+            const baselineItemState = ensureAnkiSyncItemState(state, baselineItem.uuid);
+            const newHiddenSnapshot = {
+                ...createReviewSnapshotFromItem(newlyReviewedItem),
+                updatedAt: 1000,
+                raw: { queue: 0, type: 0, due: 0 },
+            };
+            const baselineSnapshot = {
+                ...createReviewSnapshotFromItem(baselineItem),
+                updatedAt: 1000,
+                raw: { queue: 2, type: 2, due: 100 },
+            };
+            newItemState.mapping = {
+                noteId: 10,
+                cardId: 20,
+                modelName: "Syro::Card",
+                deckName: "Syro::Deck",
+                filePath: newPayload.filePath,
+                cardHash: newPayload.cardHash,
+            };
+            newItemState.lastLocalSnapshot = newHiddenSnapshot;
+            newItemState.lastRemoteSnapshot = newHiddenSnapshot;
+            newItemState.lastLocalUpdatedAt = newHiddenSnapshot.updatedAt;
+            newItemState.lastRemoteUpdatedAt = newHiddenSnapshot.updatedAt;
+            baselineItemState.mapping = {
+                noteId: 11,
+                cardId: 21,
+                modelName: "Syro::Card",
+                deckName: "Syro::Deck",
+                filePath: baselinePayload.filePath,
+                cardHash: baselinePayload.cardHash,
+            };
+            baselineItemState.lastRemoteSnapshot = baselineSnapshot;
+            baselineItemState.lastRemoteUpdatedAt = baselineSnapshot.updatedAt;
+            await store.save(state);
+
+            const client = {
+                getVersion: jest.fn(async () => 6),
+                ensureModel: jest.fn(async () => undefined),
+                notesInfoByQuery: jest.fn(async () => []),
+                canAddNotesWithErrorDetail: jest.fn(async () => []),
+                ensureDecks: jest.fn(async () => []),
+                ensureBinaryMediaFiles: jest.fn(async () => undefined),
+                updateNoteFields: jest.fn(async () => undefined),
+                setSpecificCardValues: jest.fn(async () => undefined),
+                notesInfo: jest.fn(async () => [
+                    {
+                        noteId: 10,
+                        cards: [20],
+                        modelName: "Syro::Card",
+                        tags: ["syro-sync"],
+                        mod: 21,
+                        fields: {
+                            syro_item_uuid: newlyReviewedItem.uuid,
+                            syro_file_path: newPayload.filePath,
+                            syro_card_hash: newPayload.cardHash,
+                            syro_snapshot: JSON.stringify(newHiddenSnapshot),
+                            syro_updated_at: "1000",
+                        },
+                    },
+                    {
+                        noteId: 11,
+                        cards: [21],
+                        modelName: "Syro::Card",
+                        tags: ["syro-sync"],
+                        mod: 20,
+                        fields: {
+                            syro_item_uuid: baselineItem.uuid,
+                            syro_file_path: baselinePayload.filePath,
+                            syro_card_hash: baselinePayload.cardHash,
+                            syro_snapshot: JSON.stringify(baselineSnapshot),
+                            syro_updated_at: "1000",
+                        },
+                    },
+                ]),
+                cardsInfo: jest.fn(async () => [
+                    {
+                        cardId: 20,
+                        noteId: 10,
+                        deckName: "Syro::Deck",
+                        factor: 2500,
+                        interval: 2,
+                        type: 2,
+                        queue: 2,
+                        due: 117,
+                        reps: 1,
+                        lapses: 0,
+                        left: 0,
+                        mod: 21,
+                    },
+                    {
+                        cardId: 21,
+                        noteId: 11,
+                        deckName: "Syro::Deck",
+                        factor: 2500,
+                        interval: 15,
+                        type: 2,
+                        queue: 2,
+                        due: 115,
+                        reps: 4,
+                        lapses: 1,
+                        left: 0,
+                        mod: 20,
+                    },
+                ]),
+                addNotes: jest.fn(async () => []),
+                changeDeck: jest.fn(async () => undefined),
+                deleteNotes: jest.fn(async () => undefined),
+            };
+            const service = new AnkiSyncService(
+                createPlugin([newlyReviewedItem, baselineItem], { showRuntimeDebugMessages: true }),
+                {
+                    stateStore: store,
+                    clientFactory: () => client as any,
+                    now: () => 4000,
+                },
+            );
+            await service.initialize();
+            jest.spyOn(service as any, "refreshCardRuntime").mockImplementation((card: Card, nextItem: RepetitionItem) => {
+                card.repetitionItem = nextItem;
+                card.scheduleInfo = null as any;
+            });
+
+            const result = await service.sync(deck, "sig-cross-calibration");
+            const reloaded = await store.load();
+            const debugOutput = stringifyLogCalls(logSpy);
+
+            expect(result.pulled).toBe(2);
+            expect(newlyReviewedItem.nextReview).toBe(27 * DAY_MS);
+            expect(reloaded.global.reviewDueOffset).toBe(90);
+            expect(debugOutput).toContain("[Syro-Anki][Pull][Calibrate] candidate accepted");
+            expect(debugOutput).toContain("\"itemUuid\":\"uuid-1\"");
+            expect(debugOutput).toContain("\"computedNextReview\":2332800000");
+        } finally {
+            logSpy.mockRestore();
         }
     });
 
