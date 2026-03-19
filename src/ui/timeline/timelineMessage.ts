@@ -1,4 +1,4 @@
-export type TimelineDurationUnit = "day" | "month";
+export type TimelineDurationUnit = "day" | "month" | "year";
 
 export interface TimelineDurationPart {
     value: number;
@@ -53,10 +53,13 @@ const DURATION_UNIT_ALIASES: Record<string, TimelineDurationUnit> = {
     mo: "month",
     month: "month",
     months: "month",
+    y: "year",
+    year: "year",
+    years: "year",
 };
 
-const PREFIX_CAPTURE = /^\s*((?:\d+\s*(?:days|day|d|months|month|mo)\s*)+)::\s*/i;
-const PREFIX_SEGMENT = /(\d+)\s*(days|day|d|months|month|mo)/gi;
+const PREFIX_CAPTURE = /^\s*((?:\d+\s*(?:days|day|d|months|month|mo|years|year|y)\s*)+)::\s*/i;
+const PREFIX_SEGMENT = /(\d+)\s*(days|day|d|months|month|mo|years|year|y)/gi;
 
 export function formatTimelineDurationDays(totalDays: number): string {
     return `${Math.max(0, Math.round(totalDays))}d`;
@@ -92,7 +95,7 @@ export function parseTimelineMessage(message: string): ParsedTimelineMessage {
 
         parts.push({ value, unit });
         consumed += `${partMatch[1]}${rawUnit}`;
-        totalDays += unit === "month" ? value * 30 : value;
+        totalDays += unit === "year" ? value * 365 : unit === "month" ? value * 30 : value;
     }
 
     const compactRawPrefix = rawPrefix.replace(/\s+/g, "").toLowerCase();
@@ -105,7 +108,9 @@ export function parseTimelineMessage(message: string): ParsedTimelineMessage {
     }
 
     const normalized = parts
-        .map((part) => `${part.value}${part.unit === "month" ? "mo" : "d"}`)
+        .map((part) =>
+            `${part.value}${part.unit === "year" ? "y" : part.unit === "month" ? "mo" : "d"}`,
+        )
         .join("");
 
     return {

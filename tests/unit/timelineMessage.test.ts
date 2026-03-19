@@ -101,6 +101,26 @@ describe("timelineMessage", () => {
         });
     });
 
+    it("parses year aliases and folds them to 365-day totals", () => {
+        expect(parseTimelineMessage("1y:: plan").durationPrefix).toMatchObject({
+            normalized: "1y",
+            totalDays: 365,
+        });
+        expect(parseTimelineMessage("1year:: plan").durationPrefix).toMatchObject({
+            normalized: "1y",
+            totalDays: 365,
+        });
+        expect(
+            buildTimelineRenderModel({
+                message: "1year::",
+                enableDurationPrefixSyntax: true,
+            }),
+        ).toEqual({
+            body: "",
+            duration: { raw: "365d", totalDays: 365 },
+        });
+    });
+
     it("collects live preview segments for inline syntax", () => {
         expect(findTimelineLivePreviewSegments("**bold** `code`", false)).toEqual([
             {
