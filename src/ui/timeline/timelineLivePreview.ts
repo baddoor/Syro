@@ -22,7 +22,7 @@ function isCursorInRange(
     rangeFrom: number,
     rangeTo: number,
 ): boolean {
-    return !(cursorTo <= rangeFrom || cursorFrom >= rangeTo);
+    return !(cursorTo < rangeFrom || cursorFrom > rangeTo);
 }
 
 class TimelineDurationWidget extends WidgetType {
