@@ -226,6 +226,19 @@ export function findTimelineLivePreviewSegments(
     return segments.sort((left, right) => left.from - right.from || left.to - right.to);
 }
 
+export function getTimelineDurationPrefixSegment(
+    message: string,
+    enableDurationPrefixSyntax: boolean,
+): TimelineLivePreviewSegment | null {
+    if (!enableDurationPrefixSyntax) return null;
+
+    return (
+        findTimelineLivePreviewSegments(message, enableDurationPrefixSyntax).find(
+            (segment) => segment.kind === "duration-prefix",
+        ) ?? null
+    );
+}
+
 export function sanitizeTimelineInlineMarkdown(line: string): string {
     if (!line) return "";
 

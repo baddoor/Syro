@@ -4,6 +4,7 @@ import {
     Decoration,
     type DecorationSet,
     EditorView,
+    keymap,
     ViewPlugin,
     type ViewUpdate,
     WidgetType,
@@ -12,6 +13,7 @@ import { App, Component, MarkdownRenderer } from "obsidian";
 
 import {
     findTimelineLivePreviewSegments,
+    getTimelineDurationPrefixSegment,
     type TimelineDisplayDuration,
     type TimelineLivePreviewSegment,
 } from "./timelineMessage";
@@ -23,6 +25,15 @@ function isCursorInRange(
     rangeTo: number,
 ): boolean {
     return !(cursorTo < rangeFrom || cursorFrom > rangeTo);
+}
+
+function selectionTouchesRange(
+    selectionFrom: number,
+    selectionTo: number,
+    rangeFrom: number,
+    rangeTo: number,
+): boolean {
+    return !(selectionTo < rangeFrom || selectionFrom > rangeTo);
 }
 
 class TimelineDurationWidget extends WidgetType {
@@ -137,23 +148,74 @@ function buildTimelineDecorations(
     view: EditorView,
     app: App,
     enableDurationPrefixSyntax: boolean,
-): DecorationSet {
-    const builder = new RangeSetBuilder<Decoration>();
+): { decorations: DecorationSet; atomicRanges: DecorationSet } {
+    const decorationBuilder = new RangeSetBuilder<Decoration>();
+    const atomicBuilder = new RangeSetBuilder<Decoration>();
     const text = view.state.doc.toString();
     const selection = view.state.selection.main;
     const segments = findTimelineLivePreviewSegments(text, enableDurationPrefixSyntax);
 
     for (const segment of segments) {
-        if (isCursorInRange(selection.from, selection.to, segment.from, segment.to)) {
+        if (segment.kind === "duration-prefix") {
+            const decoration = createTimelineSegmentDecoration(app, segment);
+            if (decoration) {
+                decorationBuilder.add(segment.from, segment.to, decoration);
+                atomicBuilder.add(segment.from, segment.to, Decoration.mark({}));
+            }
             continue;
         }
 
+        if (isCursorInRange(selection.from, selection.to, segment.from, segment.to)) continue;
+
         const decoration = createTimelineSegmentDecoration(app, segment);
         if (!decoration) continue;
-        builder.add(segment.from, segment.to, decoration);
+        decorationBuilder.add(segment.from, segment.to, decoration);
     }
 
-    return builder.finish();
+    return {
+        decorations: decorationBuilder.finish(),
+        atomicRanges: atomicBuilder.finish(),
+    };
+}
+
+function deleteDurationToken(
+    view: EditorView,
+    enableDurationPrefixSyntax: boolean,
+    direction: "backward" | "forward",
+): boolean {
+    const token = getTimelineDurationPrefixSegment(view.state.doc.toString(), enableDurationPrefixSyntax);
+    if (!token) return false;
+
+    const selection = view.state.selection.main;
+    let changeFrom: number | null = null;
+    let changeTo: number | null = null;
+
+    if (!selection.empty) {
+        if (!selectionTouchesRange(selection.from, selection.to, token.from, token.to)) {
+            return false;
+        }
+        changeFrom = Math.min(selection.from, token.from);
+        changeTo = Math.max(selection.to, token.to);
+    } else if (direction === "backward" && selection.from === token.to) {
+        changeFrom = token.from;
+        changeTo = token.to;
+    } else if (direction === "forward" && selection.from === token.from) {
+        changeFrom = token.from;
+        changeTo = token.to;
+    } else {
+        return false;
+    }
+
+    view.dispatch({
+        changes: {
+            from: changeFrom,
+            to: changeTo,
+            insert: "",
+        },
+        selection: { anchor: changeFrom },
+    });
+
+    return true;
 }
 
 export function createTimelineLivePreviewExtensions(opts: {
@@ -165,22 +227,27 @@ export function createTimelineLivePreviewExtensions(opts: {
     const plugin = ViewPlugin.fromClass(
         class {
             decorations: DecorationSet;
+            atomicRanges: DecorationSet;
 
             constructor(view: EditorView) {
-                this.decorations = buildTimelineDecorations(
+                const sets = buildTimelineDecorations(
                     view,
                     app,
                     enableDurationPrefixSyntax,
                 );
+                this.decorations = sets.decorations;
+                this.atomicRanges = sets.atomicRanges;
             }
 
             update(update: ViewUpdate): void {
                 if (update.docChanged || update.selectionSet || update.viewportChanged) {
-                    this.decorations = buildTimelineDecorations(
+                    const sets = buildTimelineDecorations(
                         update.view,
                         app,
                         enableDurationPrefixSyntax,
                     );
+                    this.decorations = sets.decorations;
+                    this.atomicRanges = sets.atomicRanges;
                 }
             }
         },
@@ -224,5 +291,23 @@ export function createTimelineLivePreviewExtensions(opts: {
         },
     });
 
-    return [plugin, theme];
+    return [
+        plugin,
+        EditorView.atomicRanges.of(
+            (view) => view.plugin(plugin)?.atomicRanges ?? Decoration.none,
+        ),
+        keymap.of([
+            {
+                key: "Backspace",
+                run: (view) =>
+                    deleteDurationToken(view, enableDurationPrefixSyntax, "backward"),
+            },
+            {
+                key: "Delete",
+                run: (view) =>
+                    deleteDurationToken(view, enableDurationPrefixSyntax, "forward"),
+            },
+        ]),
+        theme,
+    ];
 }

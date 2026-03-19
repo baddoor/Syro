@@ -880,12 +880,23 @@
     gap: 4px;
 }
 
+.sr-timeline-message-content.is-inline-duration {
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: flex-start;
+}
+
 .sr-timeline-message-content-text {
     display: flex;
     flex-direction: column;
     gap: 4px;
     flex: 1;
     min-width: 0;
+}
+
+.sr-timeline-message-content-text.is-inline-duration {
+    flex: 0 1 auto;
+    gap: 0;
 }
 
 .sr-timeline-inline-duration-wrap {

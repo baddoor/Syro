@@ -730,10 +730,17 @@ const TimelineRenderedMessage: React.FC<{
             }),
         [displayDuration, enableDurationPrefixSyntax, message],
     );
+    const hasBody = renderModel.body.length > 0;
+    const durationChip = renderModel.duration ? (
+        <span className="sr-timeline-duration-pill" title={`${renderModel.duration.totalDays}d`}>
+            {renderModel.duration.raw}
+        </span>
+    ) : null;
+    const isInlineDuration = durationPlacement === "inline-after-label" && !!durationChip;
 
     useEffect(() => {
         const container = containerRef.current;
-        if (!container) return;
+        if (!container || !hasBody) return;
 
         container.replaceChildren();
         const renderComponent = new Component();
@@ -773,23 +780,24 @@ const TimelineRenderedMessage: React.FC<{
             cancelled = true;
             renderComponent.unload();
         };
-    }, [app, renderModel.body]);
-
-    const durationChip = renderModel.duration ? (
-        <span className="sr-timeline-duration-pill" title={`${renderModel.duration.totalDays}d`}>
-            {renderModel.duration.raw}
-        </span>
-    ) : null;
+    }, [app, hasBody, renderModel.body]);
 
     return (
         <div className="sr-timeline-message-rendered">
             {durationChip && durationPlacement === "top" && durationChip}
-            <div className="sr-timeline-message-content">
-                <div className="sr-timeline-message-content-text" ref={containerRef} />
-                {durationChip && durationPlacement === "inline-after-label" && (
-                    <div className="sr-timeline-inline-duration-wrap">{durationChip}</div>
-                )}
-            </div>
+            {hasBody && (
+                <div
+                    className={`sr-timeline-message-content ${isInlineDuration ? "is-inline-duration" : ""}`}
+                >
+                    <div
+                        className={`sr-timeline-message-content-text ${isInlineDuration ? "is-inline-duration" : ""}`}
+                        ref={containerRef}
+                    />
+                    {durationChip && durationPlacement === "inline-after-label" && (
+                        <div className="sr-timeline-inline-duration-wrap">{durationChip}</div>
+                    )}
+                </div>
+            )}
         </div>
     );
 };

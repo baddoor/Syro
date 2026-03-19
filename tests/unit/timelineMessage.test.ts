@@ -1,6 +1,7 @@
 import {
     buildTimelineRenderModel,
     findTimelineLivePreviewSegments,
+    getTimelineDurationPrefixSegment,
     parseTimelineMessage,
     sanitizeTimelineInlineMarkdown,
 } from "src/ui/timeline/timelineMessage";
@@ -66,6 +67,18 @@ describe("timelineMessage", () => {
         });
     });
 
+    it("keeps an empty body when the message only contains a duration prefix", () => {
+        expect(
+            buildTimelineRenderModel({
+                message: "1d::",
+                enableDurationPrefixSyntax: true,
+            }),
+        ).toEqual({
+            body: "",
+            duration: { raw: "1d", totalDays: 1 },
+        });
+    });
+
     it("collects live preview segments for inline syntax", () => {
         expect(findTimelineLivePreviewSegments("**bold** `code`", false)).toEqual([
             {
@@ -95,5 +108,17 @@ describe("timelineMessage", () => {
             text: "9d",
             duration: { raw: "9d", totalDays: 9 },
         });
+    });
+
+    it("extracts the duration prefix segment for atomic token handling", () => {
+        expect(getTimelineDurationPrefixSegment("1mo20d:: foo", true)).toEqual({
+            kind: "duration-prefix",
+            from: 0,
+            to: 9,
+            raw: "1mo20d:: ",
+            text: "1mo20d",
+            duration: { raw: "1mo20d", totalDays: 50 },
+        });
+        expect(getTimelineDurationPrefixSegment("1mo20d:: foo", false)).toBeNull();
     });
 });
