@@ -328,6 +328,18 @@ export class AnkiConnectClient {
         return result;
     }
 
+    async areDue(cardIds: number[]): Promise<boolean[]> {
+        if (cardIds.length === 0) {
+            return [];
+        }
+
+        const result: boolean[] = [];
+        for (const chunk of chunkArray(cardIds)) {
+            result.push(...(await this.invoke<boolean[]>("areDue", { cards: chunk })));
+        }
+        return result;
+    }
+
     async changeDeck(cardIds: number[], deckName: string): Promise<void> {
         if (cardIds.length === 0) {
             return;

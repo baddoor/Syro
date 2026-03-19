@@ -182,6 +182,44 @@ describe("AnkiConnectClient", () => {
         ]);
     });
 
+    it("queries areDue so sync diagnostics can compare Anki and Syro due truth", async () => {
+        mockedRequestUrl.mockResolvedValue({
+            status: 200,
+            headers: {},
+            arrayBuffer: new ArrayBuffer(0),
+            json: {
+                error: null,
+                result: [false, true],
+            },
+            text: JSON.stringify({
+                error: null,
+                result: [false, true],
+            }),
+        } as any);
+
+        const client = new AnkiConnectClient("http://127.0.0.1:8765");
+        const result = await client.areDue([20, 21]);
+
+        expect(result).toEqual([false, true]);
+        expect(mockedRequestUrl).toHaveBeenCalledWith({
+            url: "http://127.0.0.1:8765",
+            method: "POST",
+            contentType: "application/json; charset=utf-8",
+            headers: {
+                Accept: "application/json",
+                "Content-Type": "application/json; charset=utf-8",
+            },
+            throw: false,
+            body: JSON.stringify({
+                action: "areDue",
+                version: 6,
+                params: {
+                    cards: [20, 21],
+                },
+            }),
+        });
+    });
+
     it("calls canAddNotesWithErrorDetail for detailed add-note diagnostics", async () => {
         mockedRequestUrl.mockResolvedValue({
             status: 200,

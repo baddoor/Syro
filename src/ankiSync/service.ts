@@ -102,6 +102,35 @@ interface ReviewDueOffsetCandidateResult {
     missingBaselineState: "new-card-without-baseline" | "baseline-state-missing" | "no-snapshot-history" | null;
 }
 
+interface DueComparisonCardRef {
+    itemUuid: string;
+    noteId: number;
+    cardId: number;
+    deckName: string;
+    filePath: string;
+    cardHash: string;
+    frontPreview: string;
+}
+
+interface DueComparisonRow {
+    card: DueComparisonCardRef;
+    ankiDue: boolean | null;
+    ankiQueue: number | null;
+    ankiType: number | null;
+    ankiDueValue: number | null;
+    ankiInterval: number | null;
+    syroDue: boolean | null;
+    syroQueue: number | null;
+    syroNextReview: number | null;
+    reviewDueOffset: number | null;
+    candidateReason: ReviewDueOffsetCandidateResult["reason"] | null;
+    missingBaselineState: ReviewDueOffsetCandidateResult["missingBaselineState"] | null;
+    remoteSnapshotSource: ReviewSnapshot["source"] | null;
+    applied: boolean;
+    decision: string;
+    analysis: string[];
+}
+
 function safeJsonParse<T>(value: string | null | undefined): T | null {
     if (!value) {
         return null;
@@ -121,6 +150,15 @@ function toNumber(value: unknown, fallback = 0): number {
 
 function createPendingId(itemUuid: string, now: number): string {
     return `${itemUuid}:${now}`;
+}
+
+function truncateText(value: string, maxLength = 80): string {
+    const normalized = (value ?? "").replace(/\s+/g, " ").trim();
+    if (normalized.length <= maxLength) {
+        return normalized;
+    }
+
+    return `${normalized.slice(0, Math.max(0, maxLength - 1))}…`;
 }
 
 function chunkArray<T>(values: T[], chunkSize = 25): T[][] {
@@ -271,6 +309,176 @@ export class AnkiSyncService {
             lapses: cardInfo.lapses,
             mod: cardInfo.mod,
         };
+    }
+
+    private buildDueComparisonCardRef(
+        itemUuid: string,
+        mapping: NonNullable<AnkiSyncItemState["mapping"]>,
+        builtSnapshot: BuiltSyroCardSnapshot | undefined,
+    ): DueComparisonCardRef {
+        return {
+            itemUuid,
+            noteId: mapping.noteId,
+            cardId: mapping.cardId,
+            deckName: mapping.deckName ?? "unknown",
+            filePath: mapping.filePath ?? "",
+            cardHash: mapping.cardHash ?? "",
+            frontPreview: truncateText(builtSnapshot?.card?.front ?? ""),
+        };
+    }
+
+    private summarizeDueCard(row: DueComparisonRow): Record<string, unknown> {
+        return {
+            itemUuid: row.card.itemUuid,
+            noteId: row.card.noteId,
+            cardId: row.card.cardId,
+            filePath: row.card.filePath,
+            cardHash: row.card.cardHash,
+            frontPreview: row.card.frontPreview,
+        };
+    }
+
+    private analyzeDueMismatch(row: DueComparisonRow): string[] {
+        const analysis: string[] = [];
+        if (row.ankiDue === row.syroDue) {
+            return analysis;
+        }
+
+        if (row.candidateReason === "missing-baseline-next-review") {
+            analysis.push("reviewDueOffset 缺少可用 baseline，review due 天数无法可靠换算。");
+        }
+        if (row.remoteSnapshotSource === "anki-hidden") {
+            analysis.push("远端隐藏 snapshot 被选为最新状态，可能覆盖了 cardSnapshot。");
+        }
+        if (row.decision === "stale-pull-cursor") {
+            analysis.push("远端更新被 lastPullCursor 跳过。");
+        }
+        if (row.decision === "remote-not-newer-than-local-baseline") {
+            analysis.push("远端更新未超过本地 baseline.updatedAt。");
+        }
+        if (row.decision === "local-item-missing") {
+            analysis.push("本地 item 未找到，无法将远端状态应用到 Syro。");
+        }
+        if (row.applied && row.syroNextReview !== null && row.syroNextReview > 0 && row.ankiDue !== row.syroDue) {
+            analysis.push("本地 nextReview 已更新，但最终 due 判定仍与 Anki 不一致。");
+        }
+        if (analysis.length === 0) {
+            analysis.push("未命中已知异常路径，需要继续检查该卡的 schedule 计算。");
+        }
+
+        return analysis;
+    }
+
+    private buildDueComparisonRow(
+        itemUuid: string,
+        mapping: NonNullable<AnkiSyncItemState["mapping"]>,
+        builtSnapshot: BuiltSyroCardSnapshot | undefined,
+        cardInfo: AnkiCardInfo,
+        itemState: AnkiSyncItemState,
+        ankiDue: boolean | null,
+        candidateResult: ReviewDueOffsetCandidateResult | null,
+        remoteSnapshot: ReviewSnapshot | null,
+        item: RepetitionItem | null,
+        decision: string,
+        applied: boolean,
+        reviewDueOffset: number | null,
+    ): DueComparisonRow {
+        const row: DueComparisonRow = {
+            card: this.buildDueComparisonCardRef(itemUuid, mapping, builtSnapshot),
+            ankiDue,
+            ankiQueue: cardInfo.queue ?? null,
+            ankiType: cardInfo.type ?? null,
+            ankiDueValue: cardInfo.due ?? null,
+            ankiInterval: cardInfo.interval ?? null,
+            syroDue: item ? item.isDue : null,
+            syroQueue: item?.queue ?? null,
+            syroNextReview: item?.nextReview ?? null,
+            reviewDueOffset,
+            candidateReason: candidateResult?.reason ?? null,
+            missingBaselineState: candidateResult?.missingBaselineState ?? null,
+            remoteSnapshotSource: remoteSnapshot?.source ?? itemState.lastRemoteSnapshot?.source ?? null,
+            applied,
+            decision,
+            analysis: [],
+        };
+        row.analysis = this.analyzeDueMismatch(row);
+        return row;
+    }
+
+    private emitDueComparisonReport(
+        rows: DueComparisonRow[],
+        unmappedByDeck: Map<string, number>,
+        result: AnkiSyncRunResult,
+    ): void {
+        const groupedRows = new Map<string, DueComparisonRow[]>();
+        for (const row of rows) {
+            const deckName = row.card.deckName || "unknown";
+            if (!groupedRows.has(deckName)) {
+                groupedRows.set(deckName, []);
+            }
+            groupedRows.get(deckName)!.push(row);
+        }
+
+        for (const [deckName, deckRows] of groupedRows.entries()) {
+            const mismatchRows = deckRows.filter(
+                (row) => row.ankiDue !== null && row.syroDue !== null && row.ankiDue !== row.syroDue,
+            );
+            if (mismatchRows.length === 0) {
+                continue;
+            }
+
+            const ankiDue = deckRows.filter((row) => row.ankiDue === true).map((row) => this.summarizeDueCard(row));
+            const ankiNotDue = deckRows.filter((row) => row.ankiDue === false).map((row) => this.summarizeDueCard(row));
+            const syroDue = deckRows.filter((row) => row.syroDue === true).map((row) => this.summarizeDueCard(row));
+            const syroNotDue = deckRows.filter((row) => row.syroDue === false).map((row) => this.summarizeDueCard(row));
+            const unmapped = unmappedByDeck.get(deckName) ?? 0;
+
+            this.logRuntimeDebug("[Syro-Anki][Compare][Deck]", {
+                deckName,
+                mapped: deckRows.length,
+                unmapped,
+                ankiDue,
+                ankiNotDue,
+                syroDue,
+                syroNotDue,
+                mismatch: mismatchRows.map((row) => ({
+                    ...this.summarizeDueCard(row),
+                    ankiDue: row.ankiDue,
+                    syroDue: row.syroDue,
+                    decision: row.decision,
+                })),
+            });
+
+            for (const row of mismatchRows) {
+                this.logRuntimeDebug("[Syro-Anki][Compare][Mismatch]", {
+                    deckName,
+                    ...this.summarizeDueCard(row),
+                    anki: {
+                        due: row.ankiDue,
+                        queue: row.ankiQueue,
+                        type: row.ankiType,
+                        dueValue: row.ankiDueValue,
+                        interval: row.ankiInterval,
+                    },
+                    syro: {
+                        due: row.syroDue,
+                        queue: row.syroQueue,
+                        nextReview: row.syroNextReview,
+                    },
+                    reviewDueOffset: row.reviewDueOffset,
+                    candidateReason: row.candidateReason,
+                    missingBaselineState: row.missingBaselineState,
+                    remoteSnapshotSource: row.remoteSnapshotSource,
+                    applied: row.applied,
+                    decision: row.decision,
+                    analysis: row.analysis,
+                });
+            }
+
+            result.errors.push(
+                `[compare:${deckName}] mismatch=${mismatchRows.length} ankiDue=${ankiDue.length} syroDue=${syroDue.length} unmapped=${unmapped}`,
+            );
+        }
     }
 
     private chooseSnapshotByPriority(...choices: Array<[string, ReviewSnapshot | null | undefined]>): SnapshotChoice {
@@ -1382,6 +1590,24 @@ export class AnkiSyncService {
         for (const cardInfo of await client.cardsInfo(cardIds)) {
             cardInfoById.set(cardInfo.cardId, cardInfo);
         }
+        const ankiDueByCardId = new Map<number, boolean | null>();
+        const areDue = typeof (client as { areDue?: (cards: number[]) => Promise<boolean[]> }).areDue === "function"
+            ? await client.areDue(cardIds)
+            : cardIds.map(() => null);
+        cardIds.forEach((cardId, index) => {
+            ankiDueByCardId.set(cardId, areDue[index] ?? null);
+        });
+        const dueCandidateByItemUuid = new Map<string, ReviewDueOffsetCandidateResult>();
+        const comparisonRows: DueComparisonRow[] = [];
+        const unmappedByDeck = new Map<string, number>();
+        for (const [itemUuid, builtSnapshot] of builtSnapshots.entries()) {
+            if (state.items[itemUuid]?.mapping?.cardId) {
+                continue;
+            }
+
+            const deckName = builtSnapshot.payload.deckName || "unknown";
+            unmappedByDeck.set(deckName, (unmappedByDeck.get(deckName) ?? 0) + 1);
+        }
 
         let maxCursor = state.global.lastPullCursor;
         let calibratedReviewDueOffset = state.global.reviewDueOffset;
@@ -1401,6 +1627,7 @@ export class AnkiSyncService {
 
             const hiddenSnapshot = this.buildHiddenSnapshot(noteInfo.fields);
             const candidateResult = this.computeReviewDueOffsetCandidate(cardInfo, itemState, hiddenSnapshot);
+            dueCandidateByItemUuid.set(itemUuid, candidateResult);
             this.logRuntimeDebug("[Syro-Anki][Pull][Calibrate]", {
                 itemUuid,
                 noteId: mapping.noteId,
@@ -1485,6 +1712,10 @@ export class AnkiSyncService {
                     remoteSnapshot?.updatedAt ?? 0,
                 );
                 maxCursor = Math.max(maxCursor, remoteChangedAt);
+                const builtSnapshot = builtSnapshots.get(itemUuid);
+                const candidateResult = dueCandidateByItemUuid.get(itemUuid) ?? null;
+                let decision = "remote-record";
+                let applied = false;
 
                 this.logRuntimeDebug("[Syro-Anki][Pull][Apply] remote-record", {
                     itemUuid,
@@ -1518,12 +1749,29 @@ export class AnkiSyncService {
                 }
 
                 if (!remoteSnapshot || remoteChangedAt <= state.global.lastPullCursor) {
+                    decision = !remoteSnapshot ? "missing-remote-snapshot" : "stale-pull-cursor";
                     this.logRuntimeDebug("[Syro-Anki][Pull][Apply] skipped", {
                         itemUuid,
-                        reason: !remoteSnapshot ? "missing-remote-snapshot" : "stale-pull-cursor",
+                        reason: decision,
                         remoteChangedAt,
                         lastPullCursor: state.global.lastPullCursor,
                     });
+                    comparisonRows.push(
+                        this.buildDueComparisonRow(
+                            itemUuid,
+                            mapping,
+                            builtSnapshot,
+                            cardInfo,
+                            itemState,
+                            ankiDueByCardId.get(mapping.cardId) ?? null,
+                            candidateResult,
+                            remoteSnapshot,
+                            this.findCardItemByUuid(itemUuid),
+                            decision,
+                            applied,
+                            state.global.reviewDueOffset,
+                        ),
+                    );
                     continue;
                 }
 
@@ -1534,12 +1782,29 @@ export class AnkiSyncService {
                 if (localBaseline && remoteSnapshot.updatedAt <= localBaseline.updatedAt) {
                     itemState.lastRemoteSnapshot = remoteSnapshot;
                     itemState.lastRemoteUpdatedAt = remoteSnapshot.updatedAt;
+                    decision = "remote-not-newer-than-local-baseline";
                     this.logRuntimeDebug("[Syro-Anki][Pull][Apply] skipped", {
                         itemUuid,
-                        reason: "remote-not-newer-than-local-baseline",
+                        reason: decision,
                         remoteUpdatedAt: remoteSnapshot.updatedAt,
                         localBaseline: this.summarizeSnapshot(localBaseline),
                     });
+                    comparisonRows.push(
+                        this.buildDueComparisonRow(
+                            itemUuid,
+                            mapping,
+                            builtSnapshot,
+                            cardInfo,
+                            itemState,
+                            ankiDueByCardId.get(mapping.cardId) ?? null,
+                            candidateResult,
+                            remoteSnapshot,
+                            this.findCardItemByUuid(itemUuid),
+                            decision,
+                            applied,
+                            state.global.reviewDueOffset,
+                        ),
+                    );
                     continue;
                 }
 
@@ -1547,25 +1812,43 @@ export class AnkiSyncService {
                 if (!item) {
                     itemState.lastRemoteSnapshot = remoteSnapshot;
                     itemState.lastRemoteUpdatedAt = remoteSnapshot.updatedAt;
+                    decision = "local-item-missing";
                     this.logRuntimeDebug("[Syro-Anki][Pull][Apply] skipped", {
                         itemUuid,
-                        reason: "local-item-missing",
+                        reason: decision,
                         remoteSnapshot: this.summarizeSnapshot(remoteSnapshot),
                     });
+                    comparisonRows.push(
+                        this.buildDueComparisonRow(
+                            itemUuid,
+                            mapping,
+                            builtSnapshot,
+                            cardInfo,
+                            itemState,
+                            ankiDueByCardId.get(mapping.cardId) ?? null,
+                            candidateResult,
+                            remoteSnapshot,
+                            item,
+                            decision,
+                            applied,
+                            state.global.reviewDueOffset,
+                        ),
+                    );
                     continue;
                 }
 
+                decision = "applied";
                 this.logRuntimeDebug("[Syro-Anki][Pull][Apply] applying", {
                     itemUuid,
                     remoteSnapshot: this.summarizeSnapshot(remoteSnapshot),
                     localBaseline: this.summarizeSnapshot(localBaseline),
                 });
                 this.applySnapshotToItem(item, remoteSnapshot);
-                const builtSnapshot = builtSnapshots.get(itemUuid);
                 if (builtSnapshot) {
                     this.refreshCardRuntime(builtSnapshot.card, item);
                 }
                 await this.plugin.store.saveReviewItemDelta(item);
+                applied = true;
 
                 this.logRuntimeDebug("[Syro-Anki][Pull][Apply] applied", {
                     itemUuid,
@@ -1578,6 +1861,22 @@ export class AnkiSyncService {
                 itemState.lastRemoteUpdatedAt = remoteSnapshot.updatedAt;
                 itemState.lastMergedUpdatedAt = remoteSnapshot.updatedAt;
                 result.pulled += 1;
+                comparisonRows.push(
+                    this.buildDueComparisonRow(
+                        itemUuid,
+                        mapping,
+                        builtSnapshot,
+                        cardInfo,
+                        itemState,
+                        ankiDueByCardId.get(mapping.cardId) ?? null,
+                        candidateResult,
+                        remoteSnapshot,
+                        item,
+                        decision,
+                        applied,
+                        state.global.reviewDueOffset,
+                    ),
+                );
             } finally {
                 processed += 1;
                 onProgress?.(
@@ -1589,6 +1888,7 @@ export class AnkiSyncService {
         }
 
         state.global.lastPullCursor = maxCursor;
+        this.emitDueComparisonReport(comparisonRows, unmappedByDeck, result);
     }
 
     private async createSingleNote(

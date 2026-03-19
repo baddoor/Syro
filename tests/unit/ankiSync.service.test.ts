@@ -635,6 +635,7 @@ describe("ankiSync service", () => {
                 ensureBinaryMediaFiles: jest.fn(async () => undefined),
                 updateNoteFields: jest.fn(async () => undefined),
                 setSpecificCardValues: jest.fn(async () => undefined),
+                areDue: jest.fn(async () => [false]),
                 notesInfo: jest.fn(async () => [
                     {
                         noteId: 10,
@@ -741,6 +742,7 @@ describe("ankiSync service", () => {
                 ensureBinaryMediaFiles: jest.fn(async () => undefined),
                 updateNoteFields: jest.fn(async () => undefined),
                 setSpecificCardValues: jest.fn(async () => undefined),
+                areDue: jest.fn(async () => [false]),
                 notesInfo: jest.fn(async () => [
                     {
                         noteId: 10,
@@ -801,6 +803,11 @@ describe("ankiSync service", () => {
             expect(debugOutput).toContain("\"missingBaselineState\":\"new-card-without-baseline\"");
             expect(debugOutput).toContain("[Syro-Anki][Pull][BuildSnapshot][review-offset-unresolved]");
             expect(debugOutput).toContain("[Syro-Anki][Pull][Diagnosis] remote review due unresolved");
+            expect(debugOutput).toContain("[Syro-Anki][Compare][Deck]");
+            expect(debugOutput).toContain("[Syro-Anki][Compare][Mismatch]");
+            expect(debugOutput).toContain("\"ankiDue\":false");
+            expect(debugOutput).toContain("\"syroDue\":true");
+            expect(result.errors).toContain("[compare:Syro::Deck] mismatch=1 ankiDue=0 syroDue=1 unmapped=0");
         } finally {
             logSpy.mockRestore();
         }
@@ -982,6 +989,185 @@ describe("ankiSync service", () => {
             expect(debugOutput).toContain("\"computedNextReview\":2332800000");
         } finally {
             logSpy.mockRestore();
+        }
+    });
+
+    it("reports only the mismatched card when one mapped card disagrees between Anki and Syro", async () => {
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        const nowSpy = jest.spyOn(Date, "now").mockReturnValue(20 * DAY_MS);
+        try {
+            const mismatchedItem = createItem();
+            mismatchedItem.queue = CardQueue.New;
+            mismatchedItem.nextReview = 0;
+            mismatchedItem.timesReviewed = 0;
+            mismatchedItem.timesCorrect = 0;
+            mismatchedItem.errorStreak = 0;
+
+            const matchedItem = createItem();
+            matchedItem.ID = 2;
+            matchedItem.uuid = "uuid-2";
+            matchedItem.nextReview = 10 * DAY_MS;
+
+            const firstCard = new Card({ front: "mismatch-front", back: "mismatch-back", cardIdx: 0 });
+            firstCard.repetitionItem = mismatchedItem;
+            firstCard.question = {
+                topicPathList: { list: [new TopicPath(["Deck"])] },
+                note: { filePath: "deck-1/mismatch.md" },
+                questionContext: ["context"],
+                lineNo: 10,
+            } as any;
+
+            const secondCard = new Card({ front: "match-front", back: "match-back", cardIdx: 0 });
+            secondCard.repetitionItem = matchedItem;
+            secondCard.question = {
+                topicPathList: { list: [new TopicPath(["Deck"])] },
+                note: { filePath: "deck-1/match.md" },
+                questionContext: ["context"],
+                lineNo: 12,
+            } as any;
+
+            const deck = new Deck("root", null);
+            deck.dueFlashcards.push(firstCard, secondCard);
+            const payloadMap = buildSyroAnkiCardSnapshotMap(deck, {}, "Syro::Card");
+            const mismatchPayload = payloadMap.get(mismatchedItem.uuid)!.payload;
+            const matchedPayload = payloadMap.get(matchedItem.uuid)!.payload;
+
+            const store = new AnkiSyncStateStore(() => ".obsidian/plugins/syro/tracked_files.json");
+            const state = await store.load();
+            const mismatchState = ensureAnkiSyncItemState(state, mismatchedItem.uuid);
+            const matchedState = ensureAnkiSyncItemState(state, matchedItem.uuid);
+            const mismatchHiddenSnapshot = {
+                ...createReviewSnapshotFromItem(mismatchedItem),
+                updatedAt: 1000,
+                raw: { queue: 0, type: 0, due: 0 },
+            };
+            const matchedBaselineSnapshot = {
+                ...createReviewSnapshotFromItem(matchedItem),
+                updatedAt: 1000,
+                raw: { queue: 2, type: 2, due: 100 },
+            };
+            mismatchState.mapping = {
+                noteId: 10,
+                cardId: 20,
+                modelName: "Syro::Card",
+                deckName: "1",
+                filePath: mismatchPayload.filePath,
+                cardHash: mismatchPayload.cardHash,
+            };
+            mismatchState.lastLocalSnapshot = mismatchHiddenSnapshot;
+            mismatchState.lastRemoteSnapshot = mismatchHiddenSnapshot;
+            mismatchState.lastLocalUpdatedAt = mismatchHiddenSnapshot.updatedAt;
+            mismatchState.lastRemoteUpdatedAt = mismatchHiddenSnapshot.updatedAt;
+            matchedState.mapping = {
+                noteId: 11,
+                cardId: 21,
+                modelName: "Syro::Card",
+                deckName: "1",
+                filePath: matchedPayload.filePath,
+                cardHash: matchedPayload.cardHash,
+            };
+            matchedState.lastRemoteSnapshot = matchedBaselineSnapshot;
+            matchedState.lastRemoteUpdatedAt = matchedBaselineSnapshot.updatedAt;
+            await store.save(state);
+
+            const client = {
+                getVersion: jest.fn(async () => 6),
+                ensureModel: jest.fn(async () => undefined),
+                notesInfoByQuery: jest.fn(async () => []),
+                canAddNotesWithErrorDetail: jest.fn(async () => []),
+                ensureDecks: jest.fn(async () => []),
+                ensureBinaryMediaFiles: jest.fn(async () => undefined),
+                updateNoteFields: jest.fn(async () => undefined),
+                setSpecificCardValues: jest.fn(async () => undefined),
+                areDue: jest.fn(async () => [false, false]),
+                notesInfo: jest.fn(async () => [
+                    {
+                        noteId: 10,
+                        cards: [20],
+                        modelName: "Syro::Card",
+                        tags: ["syro-sync"],
+                        mod: 21,
+                        fields: {
+                            syro_item_uuid: mismatchedItem.uuid,
+                            syro_file_path: mismatchPayload.filePath,
+                            syro_card_hash: mismatchPayload.cardHash,
+                            syro_snapshot: JSON.stringify(mismatchHiddenSnapshot),
+                            syro_updated_at: "1000",
+                        },
+                    },
+                    {
+                        noteId: 11,
+                        cards: [21],
+                        modelName: "Syro::Card",
+                        tags: ["syro-sync"],
+                        mod: 20,
+                        fields: {
+                            syro_item_uuid: matchedItem.uuid,
+                            syro_file_path: matchedPayload.filePath,
+                            syro_card_hash: matchedPayload.cardHash,
+                            syro_snapshot: JSON.stringify(matchedBaselineSnapshot),
+                            syro_updated_at: "1000",
+                        },
+                    },
+                ]),
+                cardsInfo: jest.fn(async () => [
+                    {
+                        cardId: 20,
+                        noteId: 10,
+                        deckName: "1",
+                        factor: 2500,
+                        interval: 2,
+                        type: 2,
+                        queue: 2,
+                        due: 105,
+                        reps: 1,
+                        lapses: 0,
+                        left: 0,
+                        mod: 21,
+                    },
+                    {
+                        cardId: 21,
+                        noteId: 11,
+                        deckName: "1",
+                        factor: 2500,
+                        interval: 15,
+                        type: 2,
+                        queue: 2,
+                        due: 115,
+                        reps: 4,
+                        lapses: 1,
+                        left: 0,
+                        mod: 20,
+                    },
+                ]),
+                addNotes: jest.fn(async () => []),
+                changeDeck: jest.fn(async () => undefined),
+                deleteNotes: jest.fn(async () => undefined),
+            };
+            const service = new AnkiSyncService(createPlugin([mismatchedItem, matchedItem], { showRuntimeDebugMessages: true }), {
+                stateStore: store,
+                clientFactory: () => client as any,
+                now: () => 4000,
+            });
+            await service.initialize();
+            jest.spyOn(service as any, "refreshCardRuntime").mockImplementation((card: Card, nextItem: RepetitionItem) => {
+                card.repetitionItem = nextItem;
+                card.scheduleInfo = null as any;
+            });
+
+            const result = await service.sync(deck, "sig-due-compare");
+            const debugOutput = stringifyLogCalls(logSpy);
+
+            expect(result.errors).toContain("[compare:1] mismatch=1 ankiDue=0 syroDue=1 unmapped=0");
+            expect(debugOutput).toContain("[Syro-Anki][Compare][Deck]");
+            expect(debugOutput).toContain("\"deckName\":\"1\"");
+            expect(debugOutput).toContain("\"ankiNotDue\":[{\"itemUuid\":\"uuid-1\"");
+            expect(debugOutput).toContain("\"syroDue\":[{\"itemUuid\":\"uuid-1\"");
+            expect(debugOutput).toContain("\"itemUuid\":\"uuid-2\"");
+            expect(debugOutput).toContain("reviewDueOffset 缺少可用 baseline");
+        } finally {
+            logSpy.mockRestore();
+            nowSpy.mockRestore();
         }
     });
 
