@@ -92,6 +92,14 @@ interface NumericChoice {
     source: string | null;
 }
 
+interface FreshnessBreakdown {
+    localReviewFreshness: NumericChoice;
+    remoteReviewFreshness: NumericChoice;
+    syncBookkeepingFreshness: NumericChoice;
+    lastMergedUpdatedAt: number;
+    lastRemoteUpdatedAt: number;
+}
+
 interface ReviewDueOffsetCandidateResult {
     candidate: number | null;
     reason: "not-review-queue" | "missing-due" | "missing-baseline-next-review" | "baseline-available";
@@ -129,8 +137,14 @@ interface DueComparisonRow {
     candidateReason: ReviewDueOffsetCandidateResult["reason"] | null;
     missingBaselineState: ReviewDueOffsetCandidateResult["missingBaselineState"] | null;
     remoteSnapshotSource: ReviewSnapshot["source"] | null;
-    localFreshness: number;
-    remoteFreshness: number;
+    localReviewFreshness: number;
+    remoteReviewFreshness: number;
+    syncBookkeepingFreshness: number;
+    lastMergedUpdatedAt: number;
+    lastRemoteUpdatedAt: number;
+    remoteChangedAt: number;
+    remoteQueue: number | null;
+    remoteNextReview: number | null;
     authority: FreshnessAuthority;
     applied: boolean;
     decision: string;
@@ -348,26 +362,7 @@ export class AnkiSyncService {
         return itemState.pendingReviewWritebacks?.[0]?.snapshot ?? null;
     }
 
-    private resolveLocalFreshness(itemState: AnkiSyncItemState): NumericChoice {
-        const candidates: Array<NumericChoice> = [
-            {
-                value: this.getPendingWritebackSnapshot(itemState)?.updatedAt ?? 0,
-                source: itemState.pendingReviewWritebacks?.[0] ? "pendingReviewWriteback" : null,
-            },
-            {
-                value: itemState.lastLocalSnapshot?.updatedAt ?? 0,
-                source: itemState.lastLocalSnapshot ? "lastLocalSnapshot" : null,
-            },
-            {
-                value: itemState.lastMergedUpdatedAt ?? 0,
-                source: itemState.lastMergedUpdatedAt > 0 ? "lastMergedUpdatedAt" : null,
-            },
-            {
-                value: itemState.lastRemoteUpdatedAt ?? 0,
-                source: itemState.lastRemoteUpdatedAt > 0 ? "lastRemoteUpdatedAt" : null,
-            },
-        ];
-
+    private pickFreshestNumericChoice(candidates: Array<NumericChoice>): NumericChoice {
         let freshest: NumericChoice = { value: 0, source: null };
         for (const candidate of candidates) {
             if (candidate.value > freshest.value) {
@@ -378,16 +373,65 @@ export class AnkiSyncService {
         return freshest;
     }
 
-    private resolveAuthority(localFreshness: number, remoteSnapshot: ReviewSnapshot | null): FreshnessAuthority {
+    private resolveLocalReviewFreshness(itemState: AnkiSyncItemState): NumericChoice {
+        return this.pickFreshestNumericChoice([
+            {
+                value: this.getPendingWritebackSnapshot(itemState)?.updatedAt ?? 0,
+                source: itemState.pendingReviewWritebacks?.[0] ? "pendingReviewWriteback" : null,
+            },
+            {
+                value: itemState.lastLocalSnapshot?.updatedAt ?? 0,
+                source: itemState.lastLocalSnapshot ? "lastLocalSnapshot" : null,
+            },
+        ]);
+    }
+
+    private resolveRemoteReviewFreshness(remoteSnapshot: ReviewSnapshot | null): NumericChoice {
+        return {
+            value: remoteSnapshot?.updatedAt ?? 0,
+            source: remoteSnapshot?.source ?? null,
+        };
+    }
+
+    private resolveSyncBookkeepingFreshness(itemState: AnkiSyncItemState): NumericChoice {
+        return this.pickFreshestNumericChoice([
+            {
+                value: itemState.lastMergedUpdatedAt ?? 0,
+                source: itemState.lastMergedUpdatedAt > 0 ? "lastMergedUpdatedAt" : null,
+            },
+            {
+                value: itemState.lastRemoteUpdatedAt ?? 0,
+                source: itemState.lastRemoteUpdatedAt > 0 ? "lastRemoteUpdatedAt" : null,
+            },
+        ]);
+    }
+
+    private resolveFreshnessBreakdown(
+        itemState: AnkiSyncItemState,
+        remoteSnapshot: ReviewSnapshot | null,
+    ): FreshnessBreakdown {
+        return {
+            localReviewFreshness: this.resolveLocalReviewFreshness(itemState),
+            remoteReviewFreshness: this.resolveRemoteReviewFreshness(remoteSnapshot),
+            syncBookkeepingFreshness: this.resolveSyncBookkeepingFreshness(itemState),
+            lastMergedUpdatedAt: itemState.lastMergedUpdatedAt ?? 0,
+            lastRemoteUpdatedAt: itemState.lastRemoteUpdatedAt ?? 0,
+        };
+    }
+
+    private resolveAuthority(
+        localReviewFreshness: number,
+        remoteReviewFreshness: number,
+        remoteSnapshot: ReviewSnapshot | null,
+    ): FreshnessAuthority {
         if (!remoteSnapshot) {
             return "unknown";
         }
 
-        const remoteFreshness = remoteSnapshot.updatedAt ?? 0;
-        if (remoteFreshness > localFreshness) {
+        if (remoteReviewFreshness > localReviewFreshness) {
             return "anki";
         }
-        if (remoteFreshness < localFreshness) {
+        if (remoteReviewFreshness < localReviewFreshness) {
             return "syro";
         }
 
@@ -469,7 +513,7 @@ export class AnkiSyncService {
         } else if (row.authority === "syro") {
             analysis.push("single-card freshness kept Syro as the source of truth.");
         } else if (row.authority === "tie") {
-            analysis.push("single-card freshness tied, so the local state was kept.");
+            analysis.push("single-card review freshness tied, so the local state was kept.");
         }
         if (row.candidateReason === "missing-baseline-next-review") {
             analysis.push("reviewDueOffset 缺少可用 baseline");
@@ -518,11 +562,12 @@ export class AnkiSyncService {
         candidateResult: ReviewDueOffsetCandidateResult | null,
         remoteSnapshot: ReviewSnapshot | null,
         item: RepetitionItem | null,
-        localFreshness: number,
+        freshnessBreakdown: FreshnessBreakdown,
         authority: FreshnessAuthority,
         decision: string,
         applied: boolean,
         reviewDueOffset: number | null,
+        remoteChangedAt: number,
     ): DueComparisonRow {
         const direction = this.getDueComparisonDirection(ankiDue, item ? item.isDue : null);
         const row: DueComparisonRow = {
@@ -540,8 +585,14 @@ export class AnkiSyncService {
             candidateReason: candidateResult?.reason ?? null,
             missingBaselineState: candidateResult?.missingBaselineState ?? null,
             remoteSnapshotSource: remoteSnapshot?.source ?? itemState.lastRemoteSnapshot?.source ?? null,
-            localFreshness,
-            remoteFreshness: remoteSnapshot?.updatedAt ?? 0,
+            localReviewFreshness: freshnessBreakdown.localReviewFreshness.value,
+            remoteReviewFreshness: freshnessBreakdown.remoteReviewFreshness.value,
+            syncBookkeepingFreshness: freshnessBreakdown.syncBookkeepingFreshness.value,
+            lastMergedUpdatedAt: freshnessBreakdown.lastMergedUpdatedAt,
+            lastRemoteUpdatedAt: freshnessBreakdown.lastRemoteUpdatedAt,
+            remoteChangedAt,
+            remoteQueue: remoteSnapshot?.queue ?? null,
+            remoteNextReview: remoteSnapshot?.nextReview ?? null,
             authority,
             applied,
             decision,
@@ -591,16 +642,22 @@ export class AnkiSyncService {
                     ...this.summarizeDueCard(row),
                     direction: row.direction,
                     authority: row.authority,
-                    localFreshness: row.localFreshness,
-                    remoteFreshness: row.remoteFreshness,
+                    localReviewFreshness: row.localReviewFreshness,
+                    remoteReviewFreshness: row.remoteReviewFreshness,
+                    syncBookkeepingFreshness: row.syncBookkeepingFreshness,
+                    lastMergedUpdatedAt: row.lastMergedUpdatedAt,
+                    lastRemoteUpdatedAt: row.lastRemoteUpdatedAt,
                     decision: row.decision,
                 })),
                 ankiDueButSyroNotDue: ankiDueButSyroNotDue.map((row) => ({
                     ...this.summarizeDueCard(row),
                     direction: row.direction,
                     authority: row.authority,
-                    localFreshness: row.localFreshness,
-                    remoteFreshness: row.remoteFreshness,
+                    localReviewFreshness: row.localReviewFreshness,
+                    remoteReviewFreshness: row.remoteReviewFreshness,
+                    syncBookkeepingFreshness: row.syncBookkeepingFreshness,
+                    lastMergedUpdatedAt: row.lastMergedUpdatedAt,
+                    lastRemoteUpdatedAt: row.lastRemoteUpdatedAt,
                     decision: row.decision,
                 })),
                 mismatch: mismatchRows.map((row) => ({
@@ -609,8 +666,11 @@ export class AnkiSyncService {
                     ankiDue: row.ankiDue,
                     syroDue: row.syroDue,
                     authority: row.authority,
-                    localFreshness: row.localFreshness,
-                    remoteFreshness: row.remoteFreshness,
+                    localReviewFreshness: row.localReviewFreshness,
+                    remoteReviewFreshness: row.remoteReviewFreshness,
+                    syncBookkeepingFreshness: row.syncBookkeepingFreshness,
+                    lastMergedUpdatedAt: row.lastMergedUpdatedAt,
+                    lastRemoteUpdatedAt: row.lastRemoteUpdatedAt,
                     decision: row.decision,
                 })),
             });
@@ -635,8 +695,16 @@ export class AnkiSyncService {
                     candidateReason: row.candidateReason,
                     missingBaselineState: row.missingBaselineState,
                     remoteSnapshotSource: row.remoteSnapshotSource,
-                    localFreshness: row.localFreshness,
-                    remoteFreshness: row.remoteFreshness,
+                    localReviewFreshness: row.localReviewFreshness,
+                    remoteReviewFreshness: row.remoteReviewFreshness,
+                    syncBookkeepingFreshness: row.syncBookkeepingFreshness,
+                    lastMergedUpdatedAt: row.lastMergedUpdatedAt,
+                    lastRemoteUpdatedAt: row.lastRemoteUpdatedAt,
+                    remoteChangedAt: row.remoteChangedAt,
+                    remoteSnapshot: {
+                        queue: row.remoteQueue,
+                        nextReview: row.remoteNextReview,
+                    },
                     authority: row.authority,
                     direction: row.direction,
                     applied: row.applied,
@@ -649,8 +717,34 @@ export class AnkiSyncService {
                 `[compare:${deckName}] ankiNotDueButSyroDue=${ankiNotDueButSyroDue.length} ankiDueButSyroNotDue=${ankiDueButSyroNotDue.length} ankiDue=${ankiDue.length} syroDue=${syroDue.length} unmapped=${unmapped}`,
             );
             for (const row of ankiNotDueButSyroDue) {
+                this.logRuntimeDebug("[Syro-Anki][Compare][ReviewAuthority]", {
+                    deckName,
+                    filePath: row.card.filePath,
+                    itemUuid: row.card.itemUuid,
+                    cardId: row.card.cardId,
+                    localReviewFreshness: row.localReviewFreshness,
+                    remoteReviewFreshness: row.remoteReviewFreshness,
+                    lastMergedUpdatedAt: row.lastMergedUpdatedAt,
+                    lastRemoteUpdatedAt: row.lastRemoteUpdatedAt,
+                    remoteChangedAt: row.remoteChangedAt,
+                    item: {
+                        nextReview: row.syroNextReview,
+                        isDue: row.syroDue,
+                        queue: row.syroQueue,
+                    },
+                    remoteSnapshot: {
+                        nextReview: row.remoteNextReview,
+                        queue: row.remoteQueue,
+                    },
+                    candidateReason: row.candidateReason,
+                    missingBaselineState: row.missingBaselineState,
+                    reviewDueOffset: row.reviewDueOffset,
+                    reviewAuthority: row.authority,
+                    remoteSnapshotSource: row.remoteSnapshotSource,
+                    decision: row.decision,
+                });
                 result.errors.push(
-                    `[compare-card:${deckName}] direction=${row.direction} authority=${row.authority} localFreshness=${row.localFreshness} remoteFreshness=${row.remoteFreshness} file=${row.card.filePath} uuid=${row.card.itemUuid} cardId=${row.card.cardId} front=${row.card.frontPreview} ankiDue=${row.ankiDue} syroDue=${row.syroDue} candidateReason=${row.candidateReason ?? "none"} missingBaselineState=${row.missingBaselineState ?? "none"} remoteSnapshotSource=${row.remoteSnapshotSource ?? "none"} decision=${row.decision} reviewDueOffset=${row.reviewDueOffset ?? "null"}`,
+                    `[compare-card:${deckName}] direction=${row.direction} authority=${row.authority} localReviewFreshness=${row.localReviewFreshness} remoteReviewFreshness=${row.remoteReviewFreshness} lastMergedUpdatedAt=${row.lastMergedUpdatedAt} lastRemoteUpdatedAt=${row.lastRemoteUpdatedAt} remoteChangedAt=${row.remoteChangedAt} file=${row.card.filePath} uuid=${row.card.itemUuid} cardId=${row.card.cardId} front=${row.card.frontPreview} ankiDue=${row.ankiDue} syroDue=${row.syroDue} candidateReason=${row.candidateReason ?? "none"} missingBaselineState=${row.missingBaselineState ?? "none"} remoteSnapshotSource=${row.remoteSnapshotSource ?? "none"} decision=${row.decision} reviewDueOffset=${row.reviewDueOffset ?? "null"}`,
                 );
             }
         }
@@ -1891,8 +1985,12 @@ export class AnkiSyncService {
                 const candidateResult = dueCandidateByItemUuid.get(itemUuid) ?? null;
                 const item = this.findCardItemByUuid(itemUuid);
                 const localBaseline = this.chooseLatestLocalSnapshot(itemState);
-                const localFreshnessChoice = this.resolveLocalFreshness(itemState);
-                const authority = this.resolveAuthority(localFreshnessChoice.value, remoteSnapshot);
+                const freshnessBreakdown = this.resolveFreshnessBreakdown(itemState, remoteSnapshot);
+                const authority = this.resolveAuthority(
+                    freshnessBreakdown.localReviewFreshness.value,
+                    freshnessBreakdown.remoteReviewFreshness.value,
+                    remoteSnapshot,
+                );
                 const cursorWouldSkip = !!remoteSnapshot && remoteChangedAt <= state.global.lastPullCursor;
                 let decision = "remote-record";
                 let applied = false;
@@ -1907,9 +2005,14 @@ export class AnkiSyncService {
                     cardSnapshot: this.summarizeSnapshot(remoteRecord.cardSnapshot),
                     remoteChangedAt,
                     lastPullCursor: state.global.lastPullCursor,
-                    localFreshness: localFreshnessChoice.value,
-                    localFreshnessSource: localFreshnessChoice.source,
-                    remoteFreshness: remoteSnapshot?.updatedAt ?? 0,
+                    localReviewFreshness: freshnessBreakdown.localReviewFreshness.value,
+                    localReviewFreshnessSource: freshnessBreakdown.localReviewFreshness.source,
+                    remoteReviewFreshness: freshnessBreakdown.remoteReviewFreshness.value,
+                    remoteReviewFreshnessSource: freshnessBreakdown.remoteReviewFreshness.source,
+                    syncBookkeepingFreshness: freshnessBreakdown.syncBookkeepingFreshness.value,
+                    syncBookkeepingFreshnessSource: freshnessBreakdown.syncBookkeepingFreshness.source,
+                    lastMergedUpdatedAt: freshnessBreakdown.lastMergedUpdatedAt,
+                    lastRemoteUpdatedAt: freshnessBreakdown.lastRemoteUpdatedAt,
                     authority,
                     cursorWouldSkip,
                 });
@@ -1940,7 +2043,10 @@ export class AnkiSyncService {
                         reason: decision,
                         remoteChangedAt,
                         lastPullCursor: state.global.lastPullCursor,
-                        localFreshness: localFreshnessChoice.value,
+                        localReviewFreshness: freshnessBreakdown.localReviewFreshness.value,
+                        remoteReviewFreshness: freshnessBreakdown.remoteReviewFreshness.value,
+                        lastMergedUpdatedAt: freshnessBreakdown.lastMergedUpdatedAt,
+                        lastRemoteUpdatedAt: freshnessBreakdown.lastRemoteUpdatedAt,
                         authority,
                     });
                     comparisonRows.push(
@@ -1954,11 +2060,12 @@ export class AnkiSyncService {
                             candidateResult,
                             remoteSnapshot,
                             item,
-                            localFreshnessChoice.value,
+                            freshnessBreakdown,
                             authority,
                             decision,
                             applied,
                             state.global.reviewDueOffset,
+                            remoteChangedAt,
                         ),
                     );
                     continue;
@@ -1974,9 +2081,14 @@ export class AnkiSyncService {
                         itemUuid,
                         reason: decision,
                         authority,
-                        localFreshness: localFreshnessChoice.value,
-                        localFreshnessSource: localFreshnessChoice.source,
-                        remoteFreshness: remoteSnapshot.updatedAt,
+                        localReviewFreshness: freshnessBreakdown.localReviewFreshness.value,
+                        localReviewFreshnessSource: freshnessBreakdown.localReviewFreshness.source,
+                        remoteReviewFreshness: freshnessBreakdown.remoteReviewFreshness.value,
+                        remoteReviewFreshnessSource: freshnessBreakdown.remoteReviewFreshness.source,
+                        syncBookkeepingFreshness: freshnessBreakdown.syncBookkeepingFreshness.value,
+                        syncBookkeepingFreshnessSource: freshnessBreakdown.syncBookkeepingFreshness.source,
+                        lastMergedUpdatedAt: freshnessBreakdown.lastMergedUpdatedAt,
+                        lastRemoteUpdatedAt: freshnessBreakdown.lastRemoteUpdatedAt,
                         cursorWouldSkip,
                         localBaseline: this.summarizeSnapshot(localBaseline),
                     });
@@ -1991,11 +2103,12 @@ export class AnkiSyncService {
                             candidateResult,
                             remoteSnapshot,
                             item,
-                            localFreshnessChoice.value,
+                            freshnessBreakdown,
                             authority,
                             decision,
                             applied,
                             state.global.reviewDueOffset,
+                            remoteChangedAt,
                         ),
                     );
                     continue;
@@ -2009,8 +2122,10 @@ export class AnkiSyncService {
                         reason: decision,
                         remoteSnapshot: this.summarizeSnapshot(remoteSnapshot),
                         authority,
-                        localFreshness: localFreshnessChoice.value,
-                        remoteFreshness: remoteSnapshot.updatedAt,
+                        localReviewFreshness: freshnessBreakdown.localReviewFreshness.value,
+                        remoteReviewFreshness: freshnessBreakdown.remoteReviewFreshness.value,
+                        lastMergedUpdatedAt: freshnessBreakdown.lastMergedUpdatedAt,
+                        lastRemoteUpdatedAt: freshnessBreakdown.lastRemoteUpdatedAt,
                         cursorWouldSkip,
                     });
                     comparisonRows.push(
@@ -2024,11 +2139,12 @@ export class AnkiSyncService {
                             candidateResult,
                             remoteSnapshot,
                             item,
-                            localFreshnessChoice.value,
+                            freshnessBreakdown,
                             authority,
                             decision,
                             applied,
                             state.global.reviewDueOffset,
+                            remoteChangedAt,
                         ),
                     );
                     continue;
@@ -2038,9 +2154,14 @@ export class AnkiSyncService {
                 this.logRuntimeDebug("[Syro-Anki][Pull][Apply] applying", {
                     itemUuid,
                     authority,
-                    localFreshness: localFreshnessChoice.value,
-                    localFreshnessSource: localFreshnessChoice.source,
-                    remoteFreshness: remoteSnapshot.updatedAt,
+                    localReviewFreshness: freshnessBreakdown.localReviewFreshness.value,
+                    localReviewFreshnessSource: freshnessBreakdown.localReviewFreshness.source,
+                    remoteReviewFreshness: freshnessBreakdown.remoteReviewFreshness.value,
+                    remoteReviewFreshnessSource: freshnessBreakdown.remoteReviewFreshness.source,
+                    syncBookkeepingFreshness: freshnessBreakdown.syncBookkeepingFreshness.value,
+                    syncBookkeepingFreshnessSource: freshnessBreakdown.syncBookkeepingFreshness.source,
+                    lastMergedUpdatedAt: freshnessBreakdown.lastMergedUpdatedAt,
+                    lastRemoteUpdatedAt: freshnessBreakdown.lastRemoteUpdatedAt,
                     cursorWouldSkip,
                     remoteSnapshot: this.summarizeSnapshot(remoteSnapshot),
                     localBaseline: this.summarizeSnapshot(localBaseline),
@@ -2075,11 +2196,12 @@ export class AnkiSyncService {
                         candidateResult,
                         remoteSnapshot,
                         item,
-                        localFreshnessChoice.value,
+                        freshnessBreakdown,
                         authority,
                         decision,
                         applied,
                         state.global.reviewDueOffset,
+                        remoteChangedAt,
                     ),
                 );
             } finally {

@@ -1180,10 +1180,15 @@ describe("ankiSync service", () => {
             expect(debugOutput).toContain("\"direction\":\"anki-not-due_syro-due\"");
             expect(debugOutput).toContain("\"direction\":\"anki-due_syro-not-due\"");
             expect(debugOutput).toContain("reviewDueOffset 缺少可用 baseline");
+            expect(debugOutput).toContain("[Syro-Anki][Compare][ReviewAuthority]");
             const compareCardWarnings = result.errors.filter((message) => message.startsWith("[compare-card:1]"));
             expect(compareCardWarnings).toHaveLength(1);
             expect(compareCardWarnings[0]).toContain("direction=anki-not-due_syro-due");
             expect(compareCardWarnings[0]).toContain("uuid=uuid-1");
+            expect(compareCardWarnings[0]).toContain("localReviewFreshness=");
+            expect(compareCardWarnings[0]).toContain("remoteReviewFreshness=");
+            expect(compareCardWarnings[0]).toContain("lastMergedUpdatedAt=");
+            expect(compareCardWarnings[0]).toContain("lastRemoteUpdatedAt=");
         } finally {
             logSpy.mockRestore();
             nowSpy.mockRestore();
@@ -1374,6 +1379,8 @@ describe("ankiSync service", () => {
             expect(reloaded.items[localItem.uuid].pendingReviewWritebacks).toHaveLength(0);
             expect(debugOutput).toContain("\"authority\":\"anki\"");
             expect(debugOutput).toContain("\"authority\":\"syro\"");
+            expect(debugOutput).toContain("\"localReviewFreshness\":30000");
+            expect(debugOutput).toContain("\"remoteReviewFreshness\":20000");
         } finally {
             logSpy.mockRestore();
             nowSpy.mockRestore();
@@ -1496,7 +1503,109 @@ describe("ankiSync service", () => {
         }
     });
 
-    it("keeps the local state when local and remote freshness tie", async () => {
+    it("treats bookkeeping timestamps as diagnostic only when Anki reviewed most recently", async () => {
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        const nowSpy = jest.spyOn(Date, "now").mockReturnValue(20 * DAY_MS);
+        try {
+            const item = createItem();
+            item.nextReview = 12 * DAY_MS;
+            const { deck, cardHash, filePath } = createDeckWithCard(item);
+            const store = new AnkiSyncStateStore(() => ".obsidian/plugins/syro/tracked_files.json");
+            const state = await store.load();
+            const itemState = ensureAnkiSyncItemState(state, item.uuid);
+            const remoteBaselineSnapshot = {
+                ...createReviewSnapshotFromItem(item),
+                updatedAt: 1000,
+                raw: { queue: 2, type: 2, due: 102 },
+            };
+            itemState.mapping = {
+                noteId: 10,
+                cardId: 20,
+                modelName: "Syro::Card",
+                deckName: "Syro::Deck",
+                filePath,
+                cardHash,
+            };
+            itemState.lastRemoteSnapshot = remoteBaselineSnapshot;
+            itemState.lastRemoteUpdatedAt = 20000;
+            itemState.lastMergedUpdatedAt = 20000;
+            await store.save(state);
+
+            const client = {
+                getVersion: jest.fn(async () => 6),
+                ensureModel: jest.fn(async () => undefined),
+                notesInfoByQuery: jest.fn(async () => []),
+                canAddNotesWithErrorDetail: jest.fn(async () => []),
+                ensureDecks: jest.fn(async () => []),
+                ensureBinaryMediaFiles: jest.fn(async () => undefined),
+                updateNoteFields: jest.fn(async () => undefined),
+                setSpecificCardValues: jest.fn(async () => undefined),
+                areDue: jest.fn(async () => [false]),
+                notesInfo: jest.fn(async () => [
+                    {
+                        noteId: 10,
+                        cards: [20],
+                        modelName: "Syro::Card",
+                        tags: ["syro-sync"],
+                        mod: 20,
+                        fields: {
+                            syro_item_uuid: item.uuid,
+                            syro_file_path: filePath,
+                            syro_card_hash: cardHash,
+                            syro_snapshot: JSON.stringify(remoteBaselineSnapshot),
+                            syro_updated_at: "1000",
+                        },
+                    },
+                ]),
+                cardsInfo: jest.fn(async () => [
+                    {
+                        cardId: 20,
+                        noteId: 10,
+                        deckName: "Syro::Deck",
+                        factor: 2500,
+                        interval: 15,
+                        type: 2,
+                        queue: 2,
+                        due: 115,
+                        reps: 4,
+                        lapses: 1,
+                        left: 0,
+                        mod: 20,
+                    },
+                ]),
+                addNotes: jest.fn(async () => []),
+                changeDeck: jest.fn(async () => undefined),
+                deleteNotes: jest.fn(async () => undefined),
+            };
+            const service = new AnkiSyncService(createPlugin(item, { showRuntimeDebugMessages: true }), {
+                stateStore: store,
+                clientFactory: () => client as any,
+                now: () => 4000,
+            });
+            await service.initialize();
+            jest.spyOn(service as any, "refreshCardRuntime").mockImplementation((card: Card, nextItem: RepetitionItem) => {
+                card.repetitionItem = nextItem;
+                card.scheduleInfo = null as any;
+            });
+
+            const result = await service.sync(deck, "sig-bookkeeping-not-review");
+            const debugOutput = stringifyLogCalls(logSpy);
+
+            expect(result.pulled).toBe(1);
+            expect(item.nextReview).toBe(25 * DAY_MS);
+            expect(debugOutput).toContain("\"localReviewFreshness\":0");
+            expect(debugOutput).toContain("\"remoteReviewFreshness\":20000");
+            expect(debugOutput).toContain("\"lastMergedUpdatedAt\":20000");
+            expect(debugOutput).toContain("\"lastRemoteUpdatedAt\":20000");
+            expect(debugOutput).toContain("\"authority\":\"anki\"");
+            expect(debugOutput).not.toContain("\"authority\":\"tie\"");
+        } finally {
+            logSpy.mockRestore();
+            nowSpy.mockRestore();
+        }
+    });
+
+    it("keeps the local state when local and remote review freshness tie", async () => {
         const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
         const nowSpy = jest.spyOn(Date, "now").mockReturnValue(20 * DAY_MS);
         try {
@@ -1594,6 +1703,9 @@ describe("ankiSync service", () => {
             expect(result.pulled).toBe(0);
             expect(item.nextReview).toBe(10 * DAY_MS);
             expect(debugOutput).toContain("\"authority\":\"tie\"");
+            expect(debugOutput).toContain("\"localReviewFreshness\":20000");
+            expect(debugOutput).toContain("\"remoteReviewFreshness\":20000");
+            expect(debugOutput).toContain("\"lastMergedUpdatedAt\":20000");
             expect(debugOutput).toContain("\"reason\":\"freshness-tie\"");
         } finally {
             logSpy.mockRestore();
