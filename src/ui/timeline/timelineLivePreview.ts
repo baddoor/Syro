@@ -33,7 +33,45 @@ function selectionTouchesRange(
     rangeFrom: number,
     rangeTo: number,
 ): boolean {
-    return !(selectionTo < rangeFrom || selectionFrom > rangeTo);
+    return selectionFrom < rangeTo && selectionTo > rangeFrom;
+}
+
+export function resolveDurationTokenDeletion(opts: {
+    selectionFrom: number;
+    selectionTo: number;
+    tokenFrom: number;
+    tokenTo: number;
+    docLength: number;
+    direction: "backward" | "forward";
+}): { from: number; to: number; anchor: number } | null {
+    const { selectionFrom, selectionTo, tokenFrom, tokenTo, docLength, direction } = opts;
+    const isEmptySelection = selectionFrom === selectionTo;
+
+    if (isEmptySelection) {
+        if (direction === "backward" && selectionFrom !== tokenTo) return null;
+        if (direction === "forward" && selectionFrom !== tokenFrom) return null;
+
+        const newLength = Math.max(0, docLength - (tokenTo - tokenFrom));
+        return {
+            from: tokenFrom,
+            to: tokenTo,
+            anchor: Math.min(tokenFrom, newLength),
+        };
+    }
+
+    if (!selectionTouchesRange(selectionFrom, selectionTo, tokenFrom, tokenTo)) {
+        return null;
+    }
+
+    const from = Math.min(selectionFrom, tokenFrom);
+    const to = Math.max(selectionTo, tokenTo);
+    const newLength = Math.max(0, docLength - (to - from));
+
+    return {
+        from,
+        to,
+        anchor: Math.min(from, newLength),
+    };
 }
 
 class TimelineDurationWidget extends WidgetType {
@@ -187,32 +225,23 @@ function deleteDurationToken(
     if (!token) return false;
 
     const selection = view.state.selection.main;
-    let changeFrom: number | null = null;
-    let changeTo: number | null = null;
-
-    if (!selection.empty) {
-        if (!selectionTouchesRange(selection.from, selection.to, token.from, token.to)) {
-            return false;
-        }
-        changeFrom = Math.min(selection.from, token.from);
-        changeTo = Math.max(selection.to, token.to);
-    } else if (direction === "backward" && selection.from === token.to) {
-        changeFrom = token.from;
-        changeTo = token.to;
-    } else if (direction === "forward" && selection.from === token.from) {
-        changeFrom = token.from;
-        changeTo = token.to;
-    } else {
-        return false;
-    }
+    const deletion = resolveDurationTokenDeletion({
+        selectionFrom: selection.from,
+        selectionTo: selection.to,
+        tokenFrom: token.from,
+        tokenTo: token.to,
+        docLength: view.state.doc.length,
+        direction,
+    });
+    if (!deletion) return false;
 
     view.dispatch({
         changes: {
-            from: changeFrom,
-            to: changeTo,
+            from: deletion.from,
+            to: deletion.to,
             insert: "",
         },
-        selection: { anchor: changeFrom },
+        selection: { anchor: deletion.anchor },
     });
 
     return true;

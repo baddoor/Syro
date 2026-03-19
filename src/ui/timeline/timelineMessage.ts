@@ -58,6 +58,10 @@ const DURATION_UNIT_ALIASES: Record<string, TimelineDurationUnit> = {
 const PREFIX_CAPTURE = /^\s*((?:\d+\s*(?:days|day|d|months|month|mo)\s*)+)::\s*/i;
 const PREFIX_SEGMENT = /(\d+)\s*(days|day|d|months|month|mo)/gi;
 
+export function formatTimelineDurationDays(totalDays: number): string {
+    return `${Math.max(0, Math.round(totalDays))}d`;
+}
+
 export function parseTimelineMessage(message: string): ParsedTimelineMessage {
     const raw = message ?? "";
     const match = raw.match(PREFIX_CAPTURE);
@@ -145,7 +149,7 @@ export function buildTimelineRenderModel(opts: {
         body: parsed.body,
         duration: parsed.durationPrefix
             ? {
-                  raw: parsed.durationPrefix.raw,
+                  raw: formatTimelineDurationDays(parsed.durationPrefix.totalDays),
                   totalDays: parsed.durationPrefix.totalDays,
               }
             : null,
@@ -198,9 +202,9 @@ export function findTimelineLivePreviewSegments(
                     from: 0,
                     to: bodyOffset,
                     raw: prefixMatch[0],
-                    text: parsed.durationPrefix.raw,
+                    text: formatTimelineDurationDays(parsed.durationPrefix.totalDays),
                     duration: {
-                        raw: parsed.durationPrefix.raw,
+                        raw: formatTimelineDurationDays(parsed.durationPrefix.totalDays),
                         totalDays: parsed.durationPrefix.totalDays,
                     },
                 });

@@ -79,6 +79,28 @@ describe("timelineMessage", () => {
         });
     });
 
+    it("renders month-based prefixes using folded total days", () => {
+        expect(
+            buildTimelineRenderModel({
+                message: "1mo::",
+                enableDurationPrefixSyntax: true,
+            }),
+        ).toEqual({
+            body: "",
+            duration: { raw: "30d", totalDays: 30 },
+        });
+
+        expect(
+            buildTimelineRenderModel({
+                message: "1mo90d::",
+                enableDurationPrefixSyntax: true,
+            }),
+        ).toEqual({
+            body: "",
+            duration: { raw: "120d", totalDays: 120 },
+        });
+    });
+
     it("collects live preview segments for inline syntax", () => {
         expect(findTimelineLivePreviewSegments("**bold** `code`", false)).toEqual([
             {
@@ -116,8 +138,8 @@ describe("timelineMessage", () => {
             from: 0,
             to: 9,
             raw: "1mo20d:: ",
-            text: "1mo20d",
-            duration: { raw: "1mo20d", totalDays: 50 },
+            text: "50d",
+            duration: { raw: "50d", totalDays: 50 },
         });
         expect(getTimelineDurationPrefixSegment("1mo20d:: foo", false)).toBeNull();
     });
