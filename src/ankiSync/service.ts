@@ -1557,14 +1557,18 @@ export class AnkiSyncService {
     private collectDeckNames(ops: AnkiSyncPlanOperation[]): string[] {
         const deckNames = new Set<string>();
         for (const op of ops) {
-            if ((op.type === "create" || op.type === "update") && op.payload?.deckName) {
+            if ((op.type === "create" || op.type === "recreate" || op.type === "update") && op.payload?.deckName) {
                 deckNames.add(op.payload.deckName);
             }
-            if (op.type === "delete" || op.type === "detach") {
+            if (op.type === "delete" || op.type === "detach" || op.type === "recreate") {
                 deckNames.add(DETACHED_DECK_NAME);
             }
         }
         return Array.from(deckNames);
+    }
+
+    private isCreateLikeOperation(op: AnkiSyncPlanOperation): boolean {
+        return (op.type === "create" || op.type === "recreate") && !!op.payload;
     }
 
     private buildAddNoteInput(op: AnkiSyncPlanOperation): Record<string, unknown> {
@@ -1617,7 +1621,7 @@ export class AnkiSyncService {
         result: AnkiSyncRunResult,
     ): Promise<PreparedCreateNote[]> {
         const prepared = ops
-            .filter((op) => op.type === "create" && op.payload)
+            .filter((op) => this.isCreateLikeOperation(op))
             .map((op) => ({ op, noteInput: this.buildAddNoteInput(op) }));
         if (prepared.length === 0) {
             return [];
@@ -1739,6 +1743,9 @@ export class AnkiSyncService {
         };
         itemState.lastKnownCardHash = op.payload?.cardHash ?? "";
         itemState.lastKnownFilePath = op.payload?.filePath ?? "";
+        if (op.type === "recreate") {
+            op.recreateReady = true;
+        }
         result.created += 1;
     }
 
@@ -2314,7 +2321,7 @@ export class AnkiSyncService {
         reviewHistorySyncReady: boolean,
         onProgress?: (current: number, total: number, message: string) => void,
     ): Promise<void> {
-        const createOps = ops.filter((op) => op.type === "create" && op.payload);
+        const createOps = ops.filter((op) => this.isCreateLikeOperation(op));
         if (createOps.length === 0) {
             onProgress?.(0, 0, "No created Anki cards to materialize");
             return;
@@ -2825,7 +2832,7 @@ export class AnkiSyncService {
         result: AnkiSyncRunResult,
         onProgress?: (current: number, total: number, message: string) => void,
     ): Promise<void> {
-        const createOps = ops.filter((op) => op.type === "create" && op.payload);
+        const createOps = ops.filter((op) => this.isCreateLikeOperation(op));
         if (createOps.length === 0) {
             onProgress?.(0, 0, "No new Anki cards to create");
             return;
@@ -2948,7 +2955,11 @@ export class AnkiSyncService {
         result: AnkiSyncRunResult,
         onProgress?: (current: number, total: number, message: string) => void,
     ): Promise<void> {
-        const destructiveOps = ops.filter((op) => (op.type === "delete" || op.type === "detach") && op.mapping);
+        const destructiveOps = ops.filter(
+            (op) =>
+                ((op.type === "delete" || op.type === "detach") && op.mapping) ||
+                (op.type === "recreate" && op.recreateReady && op.mapping),
+        );
         if (destructiveOps.length === 0) {
             onProgress?.(0, 0, "No Anki cards to remove");
             return;
@@ -2959,21 +2970,23 @@ export class AnkiSyncService {
             const mapping = op.mapping!;
             const itemState = ensureAnkiSyncItemState(state, op.itemUuid);
             try {
-                if (op.type === "delete") {
+                if (op.type === "delete" || op.type === "recreate") {
                     try {
                         await client.deleteNotes([mapping.noteId]);
                         result.deleted += 1;
                     } catch (error) {
                         await this.detachNote(client, mapping.noteId, mapping.cardId);
                         result.detached += 1;
-                        result.errors.push(`[delete:${op.itemUuid}] fallback to detach: ${String(error)}`);
+                        result.errors.push(`[${op.type}:${op.itemUuid}] fallback to detach: ${String(error)}`);
                     }
                 } else {
                     await this.detachNote(client, mapping.noteId, mapping.cardId);
                     result.detached += 1;
                 }
-                itemState.mapping = null;
-                itemState.pendingReviewWritebacks = [];
+                if (op.type === "delete" || op.type === "detach") {
+                    itemState.mapping = null;
+                    itemState.pendingReviewWritebacks = [];
+                }
             } catch (error) {
                 result.errors.push(`[${op.type}:${op.itemUuid}] ${String(error)}`);
             } finally {
@@ -2999,12 +3012,8 @@ export class AnkiSyncService {
 
         const settings = this.plugin.data.settings;
         const endpoint = settings.ankiSyncEndpoint || DEFAULT_ANKI_SYNC_ENDPOINT;
-        const basicModelName =
-            settings.ankiSyncBasicModelName ||
-            settings.ankiSyncModelName ||
-            DEFAULT_ANKI_BASIC_MODEL_NAME;
-        const clozeModelName =
-            settings.ankiSyncClozeModelName || DEFAULT_ANKI_CLOZE_MODEL_NAME;
+        const basicModelName = DEFAULT_ANKI_BASIC_MODEL_NAME;
+        const clozeModelName = DEFAULT_ANKI_CLOZE_MODEL_NAME;
         const deletePolicy = settings.ankiSyncDeletePolicy || DEFAULT_ANKI_DELETE_POLICY;
         const state = await this.getState();
         state.global.endpoint = endpoint;

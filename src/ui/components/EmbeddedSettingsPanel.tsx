@@ -1168,18 +1168,6 @@ const SyncTab: React.FC<TabProps> = ({ settings, onChange }) => (
                 value={settings.ankiSyncEndpoint}
                 onChange={(v) => onChange("ankiSyncEndpoint", v)}
             />
-            <InputRow
-                label={"Anki basic model"}
-                desc={"Model used for normal Q&A cards."}
-                value={settings.ankiSyncBasicModelName}
-                onChange={(v) => onChange("ankiSyncBasicModelName", v)}
-            />
-            <InputRow
-                label={"Anki cloze model"}
-                desc={"Native cloze model used for Syro cloze cards. One Syro card still maps to one Anki note/card."}
-                value={settings.ankiSyncClozeModelName}
-                onChange={(v) => onChange("ankiSyncClozeModelName", v)}
-            />
             <SelectRow
                 label={"Delete policy"}
                 desc={"Delete removes missing Syro cards from Anki. Detach keeps the Anki note and clears the Syro mapping."}

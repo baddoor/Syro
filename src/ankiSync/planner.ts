@@ -91,6 +91,17 @@ export function planAnkiSyncOperations(
             continue;
         }
 
+        if (mapping.modelName !== payload.modelName) {
+            operations.push({
+                type: "recreate",
+                itemUuid,
+                payload,
+                mapping,
+                reason: "model-changed",
+            });
+            continue;
+        }
+
         if (needsPayloadUpdate(payload, mapping)) {
             operations.push({
                 type: "update",

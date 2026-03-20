@@ -7,11 +7,7 @@
 
 
 
-import {
-    DEFAULT_ANKI_BASIC_MODEL_NAME,
-    DEFAULT_ANKI_CLOZE_MODEL_NAME,
-    DEFAULT_ANKI_SYNC_ENDPOINT,
-} from "../../ankiSync/types";
+import { DEFAULT_ANKI_SYNC_ENDPOINT } from "../../ankiSync/types";
 import { SRSettings, DEFAULT_PROGRESS_BAR_STYLE, syncDefaultClozePatterns } from "../../settings";
 import { DataLocation } from "../../dataStore/dataLocation";
 import { UISettingsState } from "../types/settingsTypes";
@@ -38,12 +34,6 @@ export function settingsToUIState(settings: SRSettings): UISettingsState {
         ankiSyncEnabled: settings.ankiSyncEnabled ?? false,
         ankiSyncEndpoint: settings.ankiSyncEndpoint ?? DEFAULT_ANKI_SYNC_ENDPOINT,
         ankiSyncDeletePolicy: settings.ankiSyncDeletePolicy ?? "delete",
-        ankiSyncBasicModelName:
-            settings.ankiSyncBasicModelName ??
-            settings.ankiSyncModelName ??
-            DEFAULT_ANKI_BASIC_MODEL_NAME,
-        ankiSyncClozeModelName:
-            settings.ankiSyncClozeModelName ?? DEFAULT_ANKI_CLOZE_MODEL_NAME,
         parseClozesInCodeBlocks: settings.parseClozesInCodeBlocks ?? false,
         codeContextLines: settings.codeContextLines ?? 15,
         clozeContextMode: settings.clozeContextMode ?? "single",
@@ -156,12 +146,6 @@ export function mergeUIStateToSettings(
         merged.ankiSyncEndpoint = uiChanges.ankiSyncEndpoint;
     if (uiChanges.ankiSyncDeletePolicy !== undefined)
         merged.ankiSyncDeletePolicy = uiChanges.ankiSyncDeletePolicy;
-    if (uiChanges.ankiSyncBasicModelName !== undefined) {
-        merged.ankiSyncBasicModelName = uiChanges.ankiSyncBasicModelName;
-        merged.ankiSyncModelName = uiChanges.ankiSyncBasicModelName;
-    }
-    if (uiChanges.ankiSyncClozeModelName !== undefined)
-        merged.ankiSyncClozeModelName = uiChanges.ankiSyncClozeModelName;
     if (uiChanges.parseClozesInCodeBlocks !== undefined)
         merged.parseClozesInCodeBlocks = uiChanges.parseClozesInCodeBlocks;
     if (uiChanges.codeContextLines !== undefined)

@@ -6,6 +6,7 @@ import {
     buildSyroAnkiCardPayload,
     extractMarkdownMediaReferenceCandidates,
 } from "src/ankiSync/payload";
+import { DEFAULT_ANKI_BASIC_MODEL_NAME, DEFAULT_ANKI_CLOZE_MODEL_NAME } from "src/ankiSync/types";
 import { TrackedFile, TrackedItem } from "src/dataStore/trackedFile";
 import { CardQueue, RepetitionItem, RPITEMTYPE } from "src/dataStore/repetitionItem";
 import { DEFAULT_SETTINGS } from "src/settings";
@@ -132,7 +133,7 @@ describe("ankiSync payload", () => {
 
         expect(payload?.renderSource).toBe("locator");
         expect(payload?.modelKind).toBe("cloze");
-        expect(payload?.modelName).toBe("Syro Cloze");
+        expect(payload?.modelName).toBe(DEFAULT_ANKI_CLOZE_MODEL_NAME);
         expect(payload?.fields.Text).toContain("{{c1::");
         expect(payload?.fields.Text).toContain(answerText);
         expect(payload?.fields.Text).not.toContain("legacy-front");
@@ -322,6 +323,7 @@ describe("ankiSync payload", () => {
 
         expect(payload?.renderSource).toBe("locator");
         expect(payload?.modelKind).toBe("basic");
+        expect(payload?.modelName).toBe(DEFAULT_ANKI_BASIC_MODEL_NAME);
         expect(payload?.fields.Front).toBe("问题");
         expect(payload?.fields.Back).toBe("答案");
     });

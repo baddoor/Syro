@@ -471,16 +471,9 @@ export function upgradeSettings(settings: SRSettings) {
         settings.ankiSyncDeletePolicy = "delete";
     }
 
-    if (!settings.ankiSyncBasicModelName) {
-        settings.ankiSyncBasicModelName =
-            settings.ankiSyncModelName || DEFAULT_ANKI_BASIC_MODEL_NAME;
-    }
-
-    if (!settings.ankiSyncClozeModelName) {
-        settings.ankiSyncClozeModelName = DEFAULT_ANKI_CLOZE_MODEL_NAME;
-    }
-
-    settings.ankiSyncModelName = settings.ankiSyncBasicModelName;
+    settings.ankiSyncBasicModelName = DEFAULT_ANKI_BASIC_MODEL_NAME;
+    settings.ankiSyncClozeModelName = DEFAULT_ANKI_CLOZE_MODEL_NAME;
+    settings.ankiSyncModelName = DEFAULT_ANKI_BASIC_MODEL_NAME;
 
     if (settings.showRuntimeDebugMessages === undefined) {
         settings.showRuntimeDebugMessages = false;

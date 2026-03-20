@@ -4,6 +4,7 @@ import { Deck } from "src/Deck";
 import { buildSyroAnkiCardSnapshotMap, createReviewSnapshotFromItem } from "src/ankiSync/payload";
 import { AnkiSyncService } from "src/ankiSync/service";
 import { AnkiSyncStateStore, ensureAnkiSyncItemState } from "src/ankiSync/stateStore";
+import { DEFAULT_ANKI_BASIC_MODEL_NAME, DEFAULT_ANKI_CLOZE_MODEL_NAME } from "src/ankiSync/types";
 import { DEFAULT_SETTINGS } from "src/settings";
 import { Iadapter } from "src/dataStore/adapter";
 import { CardQueue, FsrsReviewEvent, RepetitionItem, RPITEMTYPE } from "src/dataStore/repetitionItem";
@@ -54,7 +55,8 @@ function createPlugin(
     settingsOverrides: Record<string, unknown> = {},
 ) {
     const items = Array.isArray(item) ? item : [item];
-    const legacyModelName = (settingsOverrides.ankiSyncModelName as string | undefined) ?? "Syro Card";
+    const legacyModelName =
+        (settingsOverrides.ankiSyncModelName as string | undefined) ?? DEFAULT_ANKI_BASIC_MODEL_NAME;
     return {
         data: {
             settings: {
@@ -64,7 +66,7 @@ function createPlugin(
                 ankiSyncDeletePolicy: "delete",
                 ankiSyncModelName: legacyModelName,
                 ankiSyncBasicModelName: legacyModelName,
-                ankiSyncClozeModelName: "Syro Cloze",
+                ankiSyncClozeModelName: DEFAULT_ANKI_CLOZE_MODEL_NAME,
                 ...settingsOverrides,
             },
         },
@@ -90,7 +92,7 @@ function createDeckWithCard(item: RepetitionItem): { deck: Deck; cardHash: strin
     const deck = new Deck("root", null);
     deck.dueFlashcards.push(card);
 
-    const payloadMap = buildSyroAnkiCardSnapshotMap(deck, {}, "Syro::Card");
+    const payloadMap = buildSyroAnkiCardSnapshotMap(deck, {}, DEFAULT_ANKI_BASIC_MODEL_NAME);
     return {
         deck,
         cardHash: payloadMap.get(item.uuid)!.payload.cardHash,
@@ -216,7 +218,7 @@ describe("ankiSync service", () => {
         itemState.mapping = {
             noteId: 10,
             cardId: 20,
-            modelName: "Syro::Card",
+            modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
             deckName: "Syro::Deck",
             filePath,
             cardHash,
@@ -240,7 +242,7 @@ describe("ankiSync service", () => {
                 {
                     noteId: 10,
                     cards: [20],
-                    modelName: "Syro::Card",
+                    modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
                     tags: [],
                     fields: {
                         syro_item_uuid: item.uuid,
@@ -296,7 +298,7 @@ describe("ankiSync service", () => {
         itemState.mapping = {
             noteId: 10,
             cardId: 20,
-            modelName: "Syro::Card",
+            modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
             deckName: "Syro::Deck",
             filePath,
             cardHash,
@@ -318,7 +320,7 @@ describe("ankiSync service", () => {
                 {
                     noteId: 10,
                     cards: [20],
-                    modelName: "Syro::Card",
+                    modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
                     tags: [],
                     fields: {
                         syro_item_uuid: item.uuid,
@@ -384,7 +386,7 @@ describe("ankiSync service", () => {
         itemState.mapping = {
             noteId: 10,
             cardId: 20,
-            modelName: "Syro::Card",
+            modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
             deckName: "Syro::Deck",
             filePath,
             cardHash,
@@ -416,7 +418,7 @@ describe("ankiSync service", () => {
                 {
                     noteId: 10,
                     cards: [20],
-                    modelName: "Syro::Card",
+                    modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
                     tags: [],
                     fields: {
                         syro_item_uuid: item.uuid,
@@ -491,7 +493,7 @@ describe("ankiSync service", () => {
         itemState.mapping = {
             noteId: 10,
             cardId: 20,
-            modelName: "Syro::Card",
+            modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
             deckName: "Syro::Deck",
             filePath,
             cardHash,
@@ -521,7 +523,7 @@ describe("ankiSync service", () => {
                 {
                     noteId: 10,
                     cards: [20],
-                    modelName: "Syro::Card",
+                    modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
                     tags: [],
                     fields: {
                         syro_item_uuid: item.uuid,
@@ -598,7 +600,7 @@ describe("ankiSync service", () => {
                 noteIds.map((noteId) => ({
                     noteId,
                     cards: [20],
-                    modelName: "Syro::Card",
+                    modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
                     tags: ["syro-sync"],
                     mod: 1,
                     fields: {},
@@ -680,7 +682,7 @@ describe("ankiSync service", () => {
                 noteIds.map((noteId) => ({
                     noteId,
                     cards: [20],
-                    modelName: "Syro::Card",
+                    modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
                     tags: ["syro-sync"],
                     mod: 1,
                     fields: {},
@@ -767,7 +769,7 @@ describe("ankiSync service", () => {
                 noteIds.map((noteId) => ({
                     noteId,
                     cards: [20],
-                    modelName: "Syro::Card",
+                    modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
                     tags: ["syro-sync"],
                     mod: 1,
                     fields: {},
@@ -802,6 +804,123 @@ describe("ankiSync service", () => {
         );
     });
 
+    it("ignores configured Anki model names and uses the fixed Syro notetype names", async () => {
+        const item = createItem();
+        const { deck } = createDeckWithCard(item);
+        const client = {
+            getVersion: jest.fn(async () => 6),
+            ensureModel: jest.fn(async () => undefined),
+            notesInfoByQuery: jest.fn(async () => []),
+            canAddNotesWithErrorDetail: jest.fn(async () => []),
+            updateNoteFields: jest.fn(async () => undefined),
+            setSpecificCardValues: jest.fn(async () => undefined),
+            notesInfo: jest.fn(async () => []),
+            cardsInfo: jest.fn(async () => []),
+            addNotes: jest.fn(async () => []),
+            ensureDecks: jest.fn(async () => []),
+            ensureBinaryMediaFiles: jest.fn(async () => undefined),
+            changeDeck: jest.fn(async () => undefined),
+            deleteNotes: jest.fn(async () => undefined),
+        };
+        const service = new AnkiSyncService(
+            createPlugin(item, {
+                ankiSyncModelName: "Custom Basic",
+                ankiSyncBasicModelName: "Custom Basic",
+                ankiSyncClozeModelName: "Custom Cloze",
+            }),
+            {
+                clientFactory: () => client as any,
+                now: () => 3000,
+            },
+        );
+        await service.initialize();
+
+        await service.sync(deck, "sig-fixed-model-names");
+
+        expect(client.ensureModel).toHaveBeenNthCalledWith(1, DEFAULT_ANKI_BASIC_MODEL_NAME, "basic");
+        expect(client.ensureModel).toHaveBeenNthCalledWith(2, DEFAULT_ANKI_CLOZE_MODEL_NAME, "cloze");
+    });
+
+    it("recreates mapped notes when the stored Anki model name no longer matches the fixed Syro notetype", async () => {
+        const item = createItem();
+        const { deck, cardHash, filePath } = createDeckWithCard(item);
+        const store = new AnkiSyncStateStore(() => ".obsidian/plugins/syro/tracked_files.json");
+        const state = await store.load();
+        const itemState = ensureAnkiSyncItemState(state, item.uuid);
+        itemState.mapping = {
+            noteId: 10,
+            cardId: 20,
+            modelName: "Syro Card",
+            deckName: "Syro::Deck",
+            filePath,
+            cardHash,
+        };
+        itemState.lastRemoteSnapshot = { ...createReviewSnapshotFromItem(item), updatedAt: 1500 };
+        await store.save(state);
+
+        const client = {
+            getVersion: jest.fn(async () => 6),
+            ensureModel: jest.fn(async () => undefined),
+            notesInfoByQuery: jest.fn(async () => []),
+            canAddNotesWithErrorDetail: jest.fn(async () => [{ canAdd: true }]),
+            updateNoteFields: jest.fn(async () => undefined),
+            setSpecificCardValues: jest.fn(async () => undefined),
+            notesInfo: jest.fn(async (noteIds: number[]) =>
+                noteIds.map((noteId) => ({
+                    noteId,
+                    cards: [40],
+                    modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
+                    tags: ["syro-sync"],
+                    mod: 1,
+                    fields: {},
+                })),
+            ),
+            cardsInfo: jest.fn(async (cardIds: number[]) =>
+                cardIds.map((cardId) => ({
+                    cardId,
+                    noteId: 10,
+                    deckName: "Syro::Deck",
+                    factor: 2500,
+                    interval: 1,
+                    type: 0,
+                    queue: 0,
+                    due: 1,
+                    reps: 0,
+                    lapses: 0,
+                    left: 0,
+                    mod: 1,
+                })),
+            ),
+            addNotes: jest.fn(async () => [30]),
+            ensureDecks: jest.fn(async () => []),
+            ensureBinaryMediaFiles: jest.fn(async () => undefined),
+            changeDeck: jest.fn(async () => undefined),
+            deleteNotes: jest.fn(async () => undefined),
+        };
+        const service = new AnkiSyncService(createPlugin(item), {
+            stateStore: store,
+            clientFactory: () => client as any,
+            now: () => 3000,
+        });
+        await service.initialize();
+
+        const result = await service.sync(deck, "sig-recreate-model-mismatch");
+        const reloaded = await store.load();
+
+        expect(result.created).toBe(1);
+        expect(result.deleted).toBe(1);
+        expect(result.updated).toBe(0);
+        expect(client.addNotes.mock.invocationCallOrder.at(-1)).toBeLessThan(
+            client.deleteNotes.mock.invocationCallOrder.at(-1),
+        );
+        expect(client.deleteNotes).toHaveBeenCalledWith([10]);
+        expect(reloaded.items[item.uuid].mapping).toMatchObject({
+            noteId: 30,
+            cardId: 40,
+            modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
+        });
+    });
+
     it("recovers mappings from remote Syro notes when the sidecar is empty", async () => {
         const item = createItem();
         const { deck, cardHash, filePath } = createDeckWithCard(item);
@@ -814,7 +933,7 @@ describe("ankiSync service", () => {
                 {
                     noteId: 30,
                     cards: [40],
-                    modelName: "Syro Card",
+                    modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
                     tags: ["syro-sync"],
                     mod: 10,
                     fields: {
@@ -833,7 +952,7 @@ describe("ankiSync service", () => {
                 {
                     noteId: 30,
                     cards: [40],
-                    modelName: "Syro::Card",
+                    modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
                     tags: ["syro-sync"],
                     mod: 10,
                     fields: {
@@ -928,7 +1047,7 @@ describe("ankiSync service", () => {
                 noteIds.map((noteId) => ({
                     noteId,
                     cards: [noteId + 100],
-                    modelName: "Syro::Card",
+                    modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
                     tags: ["syro-sync"],
                     mod: 1,
                     fields: {},
@@ -979,7 +1098,7 @@ describe("ankiSync service", () => {
                 noteIds.map((noteId) => ({
                     noteId,
                     cards: [noteId + 100],
-                    modelName: "Syro::Card",
+                    modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
                     tags: [],
                     fields: {},
                 })),
@@ -1022,7 +1141,7 @@ describe("ankiSync service", () => {
         itemState.mapping = {
             noteId: 10,
             cardId: 20,
-            modelName: "Syro::Card",
+            modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
             deckName: "Syro::Deck",
             filePath,
             cardHash,
@@ -1044,7 +1163,7 @@ describe("ankiSync service", () => {
                 {
                     noteId: 10,
                     cards: [20],
-                    modelName: "Syro::Card",
+                    modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
                     tags: ["syro-sync"],
                     mod: 20,
                     fields: {
@@ -1111,7 +1230,7 @@ describe("ankiSync service", () => {
             itemState.mapping = {
                 noteId: 10,
                 cardId: 20,
-                modelName: "Syro::Card",
+                modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
                 deckName: "Syro::Deck",
                 filePath,
                 cardHash,
@@ -1134,7 +1253,7 @@ describe("ankiSync service", () => {
                     {
                         noteId: 10,
                         cards: [20],
-                        modelName: "Syro::Card",
+                        modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
                         tags: ["syro-sync"],
                         mod: 20,
                         fields: {
@@ -1217,7 +1336,7 @@ describe("ankiSync service", () => {
             itemState.mapping = {
                 noteId: 10,
                 cardId: 20,
-                modelName: "Syro::Card",
+                modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
                 deckName: "Syro::Deck",
                 filePath,
                 cardHash,
@@ -1261,7 +1380,7 @@ describe("ankiSync service", () => {
                     {
                         noteId: 10,
                         cards: [20],
-                        modelName: "Syro::Card",
+                        modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
                         tags: ["syro-sync"],
                         mod: 20,
                         fields: {
@@ -1352,7 +1471,7 @@ describe("ankiSync service", () => {
             itemState.mapping = {
                 noteId: 10,
                 cardId: 20,
-                modelName: "Syro::Card",
+                modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
                 deckName: "Syro::Deck",
                 filePath,
                 cardHash,
@@ -1394,7 +1513,7 @@ describe("ankiSync service", () => {
                     {
                         noteId: 10,
                         cards: [20],
-                        modelName: "Syro::Card",
+                        modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
                         tags: ["syro-sync"],
                         mod: 20,
                         fields: {
@@ -1482,7 +1601,7 @@ describe("ankiSync service", () => {
             itemState.mapping = {
                 noteId: 10,
                 cardId: 20,
-                modelName: "Syro::Card",
+                modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
                 deckName: "Syro::Deck",
                 filePath,
                 cardHash,
@@ -1508,7 +1627,7 @@ describe("ankiSync service", () => {
                     {
                         noteId: 10,
                         cards: [20],
-                        modelName: "Syro::Card",
+                        modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
                         tags: ["syro-sync"],
                         mod: 20,
                         fields: {
@@ -1618,7 +1737,7 @@ describe("ankiSync service", () => {
 
             const deck = new Deck("root", null);
             deck.dueFlashcards.push(firstCard, secondCard);
-            const payloadMap = buildSyroAnkiCardSnapshotMap(deck, {}, "Syro::Card");
+            const payloadMap = buildSyroAnkiCardSnapshotMap(deck, {}, DEFAULT_ANKI_BASIC_MODEL_NAME);
             const newPayload = payloadMap.get(newlyReviewedItem.uuid)!.payload;
             const baselinePayload = payloadMap.get(baselineItem.uuid)!.payload;
 
@@ -1639,7 +1758,7 @@ describe("ankiSync service", () => {
             newItemState.mapping = {
                 noteId: 10,
                 cardId: 20,
-                modelName: "Syro::Card",
+                modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
                 deckName: "Syro::Deck",
                 filePath: newPayload.filePath,
                 cardHash: newPayload.cardHash,
@@ -1651,7 +1770,7 @@ describe("ankiSync service", () => {
             baselineItemState.mapping = {
                 noteId: 11,
                 cardId: 21,
-                modelName: "Syro::Card",
+                modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
                 deckName: "Syro::Deck",
                 filePath: baselinePayload.filePath,
                 cardHash: baselinePayload.cardHash,
@@ -1673,7 +1792,7 @@ describe("ankiSync service", () => {
                     {
                         noteId: 10,
                         cards: [20],
-                        modelName: "Syro::Card",
+                        modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
                         tags: ["syro-sync"],
                         mod: 21,
                         fields: {
@@ -1687,7 +1806,7 @@ describe("ankiSync service", () => {
                     {
                         noteId: 11,
                         cards: [21],
-                        modelName: "Syro::Card",
+                        modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
                         tags: ["syro-sync"],
                         mod: 20,
                         fields: {
@@ -1798,7 +1917,7 @@ describe("ankiSync service", () => {
 
             const deck = new Deck("root", null);
             deck.dueFlashcards.push(firstCard, secondCard);
-            const payloadMap = buildSyroAnkiCardSnapshotMap(deck, {}, "Syro::Card");
+            const payloadMap = buildSyroAnkiCardSnapshotMap(deck, {}, DEFAULT_ANKI_BASIC_MODEL_NAME);
             const mismatchPayload = payloadMap.get(mismatchedItem.uuid)!.payload;
             const matchedPayload = payloadMap.get(matchedItem.uuid)!.payload;
 
@@ -1819,7 +1938,7 @@ describe("ankiSync service", () => {
             mismatchState.mapping = {
                 noteId: 10,
                 cardId: 20,
-                modelName: "Syro::Card",
+                modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
                 deckName: "1",
                 filePath: mismatchPayload.filePath,
                 cardHash: mismatchPayload.cardHash,
@@ -1831,7 +1950,7 @@ describe("ankiSync service", () => {
             matchedState.mapping = {
                 noteId: 11,
                 cardId: 21,
-                modelName: "Syro::Card",
+                modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
                 deckName: "1",
                 filePath: matchedPayload.filePath,
                 cardHash: matchedPayload.cardHash,
@@ -1854,7 +1973,7 @@ describe("ankiSync service", () => {
                     {
                         noteId: 10,
                         cards: [20],
-                        modelName: "Syro::Card",
+                        modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
                         tags: ["syro-sync"],
                         mod: 21,
                         fields: {
@@ -1868,7 +1987,7 @@ describe("ankiSync service", () => {
                     {
                         noteId: 11,
                         cards: [21],
-                        modelName: "Syro::Card",
+                        modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
                         tags: ["syro-sync"],
                         mod: 20,
                         fields: {
@@ -1989,7 +2108,7 @@ describe("ankiSync service", () => {
 
             const deck = new Deck("root", null);
             deck.dueFlashcards.push(firstCard, secondCard);
-            const payloadMap = buildSyroAnkiCardSnapshotMap(deck, {}, "Syro::Card");
+            const payloadMap = buildSyroAnkiCardSnapshotMap(deck, {}, DEFAULT_ANKI_BASIC_MODEL_NAME);
             const mismatchPayload = payloadMap.get(mismatchedItem.uuid)!.payload;
             const matchedPayload = payloadMap.get(matchedItem.uuid)!.payload;
 
@@ -2010,7 +2129,7 @@ describe("ankiSync service", () => {
             mismatchState.mapping = {
                 noteId: 10,
                 cardId: 20,
-                modelName: "Syro::Card",
+                modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
                 deckName: "1",
                 filePath: mismatchPayload.filePath,
                 cardHash: mismatchPayload.cardHash,
@@ -2022,7 +2141,7 @@ describe("ankiSync service", () => {
             matchedState.mapping = {
                 noteId: 11,
                 cardId: 21,
-                modelName: "Syro::Card",
+                modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
                 deckName: "1",
                 filePath: matchedPayload.filePath,
                 cardHash: matchedPayload.cardHash,
@@ -2045,7 +2164,7 @@ describe("ankiSync service", () => {
                     {
                         noteId: 10,
                         cards: [20],
-                        modelName: "Syro::Card",
+                        modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
                         tags: ["syro-sync"],
                         mod: 21,
                         fields: {
@@ -2059,7 +2178,7 @@ describe("ankiSync service", () => {
                     {
                         noteId: 11,
                         cards: [21],
-                        modelName: "Syro::Card",
+                        modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
                         tags: ["syro-sync"],
                         mod: 20,
                         fields: {
@@ -2135,7 +2254,7 @@ describe("ankiSync service", () => {
         itemState.mapping = {
             noteId: 10,
             cardId: 20,
-            modelName: "Syro::Card",
+            modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
             deckName: "Syro::Deck",
             filePath,
             cardHash,
@@ -2162,7 +2281,7 @@ describe("ankiSync service", () => {
                 {
                     noteId: 10,
                     cards: [20],
-                    modelName: "Syro::Card",
+                    modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
                     tags: ["syro-sync"],
                     mod: 10,
                     fields: {
@@ -2245,7 +2364,7 @@ describe("ankiSync service", () => {
 
             const deck = new Deck("root", null);
             deck.dueFlashcards.push(remoteCard, localCard);
-            const payloadMap = buildSyroAnkiCardSnapshotMap(deck, {}, "Syro::Card");
+            const payloadMap = buildSyroAnkiCardSnapshotMap(deck, {}, DEFAULT_ANKI_BASIC_MODEL_NAME);
             const remotePayload = payloadMap.get(remoteItem.uuid)!.payload;
             const localPayload = payloadMap.get(localItem.uuid)!.payload;
 
@@ -2271,7 +2390,7 @@ describe("ankiSync service", () => {
             remoteState.mapping = {
                 noteId: 10,
                 cardId: 20,
-                modelName: "Syro::Card",
+                modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
                 deckName: "1",
                 filePath: remotePayload.filePath,
                 cardHash: remotePayload.cardHash,
@@ -2281,7 +2400,7 @@ describe("ankiSync service", () => {
             localState.mapping = {
                 noteId: 11,
                 cardId: 21,
-                modelName: "Syro::Card",
+                modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
                 deckName: "1",
                 filePath: localPayload.filePath,
                 cardHash: localPayload.cardHash,
@@ -2315,7 +2434,7 @@ describe("ankiSync service", () => {
                     {
                         noteId: 10,
                         cards: [20],
-                        modelName: "Syro::Card",
+                        modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
                         tags: ["syro-sync"],
                         mod: 21,
                         fields: {
@@ -2329,7 +2448,7 @@ describe("ankiSync service", () => {
                     {
                         noteId: 11,
                         cards: [21],
-                        modelName: "Syro::Card",
+                        modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
                         tags: ["syro-sync"],
                         mod: 20,
                         fields: {
@@ -2429,7 +2548,7 @@ describe("ankiSync service", () => {
             itemState.mapping = {
                 noteId: 10,
                 cardId: 20,
-                modelName: "Syro::Card",
+                modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
                 deckName: "Syro::Deck",
                 filePath,
                 cardHash,
@@ -2463,7 +2582,7 @@ describe("ankiSync service", () => {
                     {
                         noteId: 10,
                         cards: [20],
-                        modelName: "Syro::Card",
+                        modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
                         tags: ["syro-sync"],
                         mod: 21,
                         fields: {
@@ -2543,7 +2662,7 @@ describe("ankiSync service", () => {
             itemState.mapping = {
                 noteId: 10,
                 cardId: 20,
-                modelName: "Syro::Card",
+                modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
                 deckName: "Syro::Deck",
                 filePath,
                 cardHash,
@@ -2586,7 +2705,7 @@ describe("ankiSync service", () => {
                     {
                         noteId: 10,
                         cards: [20],
-                        modelName: "Syro::Card",
+                        modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
                         tags: ["syro-sync"],
                         mod: (23 * DAY_MS) / 1000,
                         fields: {
@@ -2671,7 +2790,7 @@ describe("ankiSync service", () => {
             itemState.mapping = {
                 noteId: 10,
                 cardId: 20,
-                modelName: "Syro::Card",
+                modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
                 deckName: "Syro::Deck",
                 filePath,
                 cardHash,
@@ -2697,7 +2816,7 @@ describe("ankiSync service", () => {
                     {
                         noteId: 10,
                         cards: [20],
-                        modelName: "Syro::Card",
+                        modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
                         tags: ["syro-sync"],
                         mod: 20,
                         fields: {
@@ -2804,7 +2923,7 @@ describe("ankiSync service", () => {
                 noteIds.map((noteId) => ({
                     noteId,
                     cards: [noteId + 100],
-                    modelName: "Syro::Card",
+                    modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
                     tags: [],
                     fields: {},
                 })),
@@ -2853,7 +2972,7 @@ describe("ankiSync service", () => {
             const payload = {
                 itemUuid: item.uuid,
                 deckName: "Syro::Deck",
-                modelName: "Syro Cloze",
+                modelName: DEFAULT_ANKI_CLOZE_MODEL_NAME,
                 modelKind: "cloze",
                 filePath: "note.md",
                 front: "alpha **bold** {{c1::first}} beta second gamma",
@@ -2916,7 +3035,7 @@ describe("ankiSync service", () => {
             const payload = {
                 itemUuid: item.uuid,
                 deckName: "Syro::Deck",
-                modelName: "Syro Cloze",
+                modelName: DEFAULT_ANKI_CLOZE_MODEL_NAME,
                 modelKind: "cloze",
                 filePath: "note.md",
                 front: "👉 **{{c1::疑问}}**：对于之前的进度，我们需要在代码里写一个“后备兼容”逻辑吗？",
@@ -3041,7 +3160,7 @@ describe("ankiSync service", () => {
                 noteIds.map((noteId) => ({
                     noteId,
                     cards: [noteId + 100],
-                    modelName: "Syro::Card",
+                    modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
                     tags: [],
                     fields: {},
                 })),
@@ -3086,7 +3205,7 @@ describe("ankiSync service", () => {
                 noteIds.map((noteId) => ({
                     noteId,
                     cards: [noteId + 100],
-                    modelName: "Syro::Card",
+                    modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
                     tags: [],
                     fields: {},
                 })),
@@ -3131,7 +3250,7 @@ describe("ankiSync service", () => {
         itemState.mapping = {
             noteId: 10,
             cardId: 20,
-            modelName: "Syro::Card",
+            modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
             deckName: "Syro::Deck",
             filePath: "note.md",
             cardHash: "hash-1",
@@ -3151,7 +3270,7 @@ describe("ankiSync service", () => {
                 {
                     noteId: 10,
                     cards: [20],
-                    modelName: "Syro::Card",
+                    modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
                     tags: [],
                     fields: {},
                 },
@@ -3192,3 +3311,4 @@ describe("ankiSync service", () => {
         expect(client.changeDeck).toHaveBeenCalledWith([20], "Syro::Detached");
     });
 });
+

@@ -1,5 +1,6 @@
 import { requestUrl } from "obsidian";
 import { AnkiConnectClient } from "src/ankiSync/AnkiConnectClient";
+import { DEFAULT_ANKI_BASIC_MODEL_NAME, DEFAULT_ANKI_CLOZE_MODEL_NAME } from "src/ankiSync/types";
 
 jest.mock("obsidian");
 
@@ -63,7 +64,7 @@ describe("AnkiConnectClient", () => {
         } as any);
 
         const client = new AnkiConnectClient("http://127.0.0.1:8765");
-        await client.ensureModel("Syro Card", "basic");
+        await client.ensureModel(DEFAULT_ANKI_BASIC_MODEL_NAME, "basic");
 
         const actions = mockedRequestUrl.mock.calls.map(
             (call) => JSON.parse((call[0] as any).body).action,
@@ -94,7 +95,7 @@ describe("AnkiConnectClient", () => {
         } as any);
 
         const client = new AnkiConnectClient("http://127.0.0.1:8765");
-        await client.ensureModel("Syro Cloze", "cloze");
+        await client.ensureModel(DEFAULT_ANKI_CLOZE_MODEL_NAME, "cloze");
 
         const createModelRequest = mockedRequestUrl.mock.calls.find(
             (call) => JSON.parse((call[0] as any).body).action === "createModel",
@@ -157,7 +158,7 @@ describe("AnkiConnectClient", () => {
                 result: [
                     {
                         noteId: 10,
-                        modelName: "Syro Card",
+                        modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
                         cards: [20],
                         tags: ["syro-sync"],
                         mod: 123,
@@ -172,7 +173,7 @@ describe("AnkiConnectClient", () => {
                 result: [
                     {
                         noteId: 10,
-                        modelName: "Syro Card",
+                        modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
                         cards: [20],
                         tags: ["syro-sync"],
                         mod: 123,
@@ -190,7 +191,7 @@ describe("AnkiConnectClient", () => {
         expect(result).toEqual([
             {
                 noteId: 10,
-                modelName: "Syro Card",
+                        modelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
                 cards: [20],
                 tags: ["syro-sync"],
                 mod: 123,

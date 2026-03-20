@@ -30,9 +30,13 @@ describe("ankiSync template", () => {
         const front = buildSyroAnkiClozeTemplateFront();
         const back = buildSyroAnkiClozeTemplateBack();
 
+        expect(front).toContain('<link rel="stylesheet" href="_syro_anki_sync.css">');
+        expect(front).toContain('<div class="syro-container">');
+        expect(front).toContain('<div class="syro-front-content">');
         expect(front).toContain("{{cloze:Text}}");
         expect(back).toContain("{{cloze:Text}}");
         expect(back).toContain("{{Back Extra}}");
+        expect(front).not.toContain("syro-answer-region");
         expect(back).not.toContain("syro-back-payload");
     });
 });
