@@ -1229,7 +1229,7 @@ export class AnkiSyncService {
         const protectedMarkdown = markdown.replace(
             /\{\{c\d+(?:::|锛氾細)(.*?)(?:(?:::|锛氾細).*?)?\}\}/giu,
             (match) => {
-                const token = `SR_NATIVE_CLOZE_TOKEN_${markers.length}__`;
+                const token = `SRNATIVECLOZETOKEN${markers.length}PLACEHOLDER`;
                 markers.push(match);
                 return token;
             },
@@ -1239,7 +1239,8 @@ export class AnkiSyncService {
             markdown: protectedMarkdown,
             restore: (value: string) =>
                 markers.reduce(
-                    (result, marker, index) => result.split(`SR_NATIVE_CLOZE_TOKEN_${index}__`).join(marker),
+                    (result, marker, index) =>
+                        result.split(`SRNATIVECLOZETOKEN${index}PLACEHOLDER`).join(marker),
                     value,
                 ),
         };

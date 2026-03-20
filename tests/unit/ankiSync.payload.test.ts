@@ -191,6 +191,100 @@ describe("ankiSync payload", () => {
         expect(payload?.fields.Text).toBe("alpha {{c1::first}} beta second gamma");
     });
 
+    it("builds a native cloze note for non-first bold clozes in a multiline block", () => {
+        const noteText =
+            "- A. 只要 `timesReviewed === 0`，它就**一定**是 New，不管 `nextReview` 是多少。\n" +
+            "- B. 必须 `nextReview === 0` (或 null) 才算 New。如果被设置了未来的排程时间，即便从未复习过，也不算 New。\n" +
+            "- C. 这种情况被视为**脏数据/Bug**，正常逻辑下不该存在，你打算在其他地方拦截/清洗它。";
+        const card = createCard({
+            noteText,
+            questionType: CardType.Cloze,
+        });
+        card.repetitionItem!.ID = 2;
+        const trackedItems = [
+            new TrackedItem(
+                "一定",
+                12,
+                "",
+                CardType.Cloze,
+                {
+                    startOffset: noteText.indexOf("一定"),
+                    endOffset: noteText.indexOf("一定") + "一定".length,
+                    blockStartOffset: 0,
+                    blockEndOffset: noteText.length,
+                },
+                "bd0",
+                1,
+            ),
+            new TrackedItem(
+                "脏数据/Bug",
+                12,
+                "",
+                CardType.Cloze,
+                {
+                    startOffset: noteText.indexOf("脏数据/Bug"),
+                    endOffset: noteText.indexOf("脏数据/Bug") + "脏数据/Bug".length,
+                    blockStartOffset: 0,
+                    blockEndOffset: noteText.length,
+                },
+                "bd1",
+                2,
+            ),
+        ];
+        const trackedFile = createLocatorTrackedFile(noteText, trackedItems[0]);
+        trackedFile.trackedItems = trackedItems;
+
+        const payload = buildSyroAnkiCardPayload(card, undefined, undefined, {
+            settings: DEFAULT_SETTINGS,
+            store: {
+                getTrackedFile: () => trackedFile,
+                getFileByID: () => trackedFile,
+            },
+            fileTextByPath: new Map([["note.md", noteText]]),
+        });
+
+        expect(payload?.fields.Text).toContain("一定");
+        expect(payload?.fields.Text).toContain("{{c1::脏数据/Bug}}");
+        expect(payload?.fields.Text).not.toContain("{{c1::一定}}");
+    });
+
+    it("builds a native cloze note for emoji-prefixed bold clozes", () => {
+        const noteText =
+            "👉 **疑问**：对于之前的进度，我们需要在代码里写一个“后备兼容”逻辑吗？";
+        const card = createCard({
+            noteText,
+            questionType: CardType.Cloze,
+        });
+        card.repetitionItem!.ID = 88;
+        const trackedItem = new TrackedItem(
+            "疑问",
+            85,
+            "",
+            CardType.Cloze,
+            {
+                startOffset: noteText.indexOf("疑问"),
+                endOffset: noteText.indexOf("疑问") + "疑问".length,
+                blockStartOffset: 0,
+                blockEndOffset: noteText.length,
+            },
+            "bd0",
+            88,
+        );
+        const trackedFile = createLocatorTrackedFile(noteText, trackedItem);
+
+        const payload = buildSyroAnkiCardPayload(card, undefined, undefined, {
+            settings: DEFAULT_SETTINGS,
+            store: {
+                getTrackedFile: () => trackedFile,
+                getFileByID: () => trackedFile,
+            },
+            fileTextByPath: new Map([["note.md", noteText]]),
+        });
+
+        expect(payload?.fields.Text).toContain("{{c1::疑问}}");
+        expect(payload?.fields.Text).toContain("后备兼容");
+    });
+
     it("renders QA cards from locator blocks instead of legacy serialized content", () => {
         const noteText = "问题::答案";
         const card = createCard({
