@@ -73,7 +73,7 @@ describe("AnkiConnectClient", () => {
         expect(actions).toContain("updateModelTemplates");
         expect(actions).toContain("updateModelStyling");
         expect(actions.filter((action) => action === "modelFieldAdd").length).toBeGreaterThanOrEqual(12);
-        expect(actions.filter((action) => action === "storeMediaFile").length).toBe(1);
+        expect(actions.filter((action) => action === "storeMediaFile").length).toBe(0);
 
         const createModelRequest = mockedRequestUrl.mock.calls.find(
             (call) => JSON.parse((call[0] as any).body).action === "createModel",
@@ -82,6 +82,8 @@ describe("AnkiConnectClient", () => {
         const createParams = createModelRequest && JSON.parse((createModelRequest[0] as any).body).params;
         expect(createParams.inOrderFields).toEqual(expect.arrayContaining(["Front", "Back", "Context"]));
         expect(createParams.isCloze).toBe(false);
+        expect(createParams.cardTemplates[0].Front).toContain("<style>");
+        expect(createParams.cardTemplates[0].Front).not.toContain('_syro_anki_sync.css');
         expect(createParams.cardTemplates[0].Front).not.toContain("_syro_anki_sync.js");
     });
 
@@ -104,8 +106,10 @@ describe("AnkiConnectClient", () => {
         const createParams = createModelRequest && JSON.parse((createModelRequest[0] as any).body).params;
         expect(createParams.inOrderFields).toEqual(expect.arrayContaining(["Text", "Back Extra"]));
         expect(createParams.isCloze).toBe(true);
+        expect(createParams.cardTemplates[0].Front).toContain("<style>");
         expect(createParams.cardTemplates[0].Front).toContain("{{cloze:Text}}");
         expect(createParams.cardTemplates[0].Back).toContain("{{cloze:Text}}");
+        expect(createParams.cardTemplates[0].Back).not.toContain('_syro_anki_sync.css');
         expect(createParams.cardTemplates[0].Back).not.toContain("{{Back Extra}}");
     });
 

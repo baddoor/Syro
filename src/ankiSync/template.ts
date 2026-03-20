@@ -1,7 +1,6 @@
 import { AnkiModelKind } from "src/ankiSync/types";
 
-export const SYRO_ANKI_MEDIA_FILES: Record<string, string> = {
-    "_syro_anki_sync.css": `
+const SYRO_ANKI_SHARED_CSS = `
 :root {
     --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
     --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
@@ -189,8 +188,7 @@ mark,
 .nightMode .syro-highlight {
     background-color: rgba(250, 204, 21, 0.25) !important;
 }
-`,
-};
+`;
 
 const SHARED_FIELDS = [
     "Source",
@@ -227,9 +225,13 @@ export function buildSyroAnkiModelCss(): string {
 `;
 }
 
+function buildInlineStyleTag(): string {
+    return `<style>\n${SYRO_ANKI_SHARED_CSS}\n</style>`;
+}
+
 function buildHeaderShell(body: string): string {
     return `
-<link rel="stylesheet" href="_syro_anki_sync.css">
+${buildInlineStyleTag()}
 <div class="syro-container">
     <div class="syro-header">
         <div class="syro-path">{{Breadcrumb}}</div>
@@ -254,7 +256,6 @@ export function buildSyroAnkiTemplateFront(): string {
 
 export function buildSyroAnkiTemplateBack(): string {
     return `
-<link rel="stylesheet" href="_syro_anki_sync.css">
 {{FrontSide}}
 <div class="syro-back-payload" id="syro-back-payload">
     {{Back}}

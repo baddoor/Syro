@@ -12,7 +12,6 @@ import {
 } from "src/ankiSync/types";
 import {
     getSyroAnkiModelSpec,
-    SYRO_ANKI_MEDIA_FILES,
 } from "src/ankiSync/template";
 
 interface AnkiInvokeResponse<T> {
@@ -154,19 +153,6 @@ export class AnkiConnectClient {
         return this.invoke<number>("version");
     }
 
-    async storeTextMediaFile(filename: string, data: string): Promise<void> {
-        await this.invoke("storeMediaFile", {
-            filename,
-            data: Buffer.from(data, "utf8").toString("base64"),
-        });
-    }
-
-    async ensureMediaFiles(mediaFiles: Record<string, string>): Promise<void> {
-        for (const [filename, data] of Object.entries(mediaFiles)) {
-            await this.storeTextMediaFile(filename, data);
-        }
-    }
-
     async storeBinaryMediaFile(filename: string, base64Data: string): Promise<void> {
         await this.invoke("storeMediaFile", {
             filename,
@@ -253,8 +239,6 @@ export class AnkiConnectClient {
                 throw error;
             }
         }
-
-        await this.ensureMediaFiles(SYRO_ANKI_MEDIA_FILES);
     }
 
     async createDeck(deckName: string): Promise<void> {
