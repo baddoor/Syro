@@ -37,6 +37,13 @@ export interface AnkiPayloadBuildContext {
     fileTextByPath?: Map<string, string> | null;
     vaultName?: string | null;
     hasAdvancedUri?: boolean;
+    locatorRepairCache?: Map<
+        string,
+        {
+            trackedFile: TrackedFile | null;
+            resynced: boolean;
+        }
+    >;
 }
 
 interface RenderedPayloadFields {
@@ -63,6 +70,17 @@ interface BlockRenderContext {
     cleanOffset: number;
     filePath: string;
     lineNo: number | null;
+}
+
+type ClozeWrapperKind = "none" | "bold" | "highlight";
+
+interface StandardClozeRange {
+    item: TrackedItem;
+    contentStart: number;
+    contentEnd: number;
+    fullStart: number;
+    fullEnd: number;
+    wrapperKind: ClozeWrapperKind;
 }
 
 function normalizeText(value: string | null | undefined): string {
@@ -530,6 +548,66 @@ function findTrackedItem(card: Card, trackedFile: TrackedFile | null): TrackedIt
     );
 }
 
+function refindTrackedItem(
+    card: Card,
+    trackedFile: TrackedFile | null,
+    previousItem?: TrackedItem,
+): TrackedItem | undefined {
+    const byReviewId = findTrackedItemByReviewId(trackedFile, card.repetitionItem?.ID);
+    if (byReviewId) {
+        return byReviewId;
+    }
+
+    if (previousItem?.lineNo != null && isClozeType(previousItem.cardType)) {
+        const byLineAndCloze = trackedFile?.getTrackedItem(
+            previousItem.lineNo,
+            previousItem.clozeId ?? "c1",
+        );
+        if (byLineAndCloze) {
+            return byLineAndCloze;
+        }
+    }
+
+    return guessTrackedItemFromQuestion(card, trackedFile);
+}
+
+function getLocatorRepairCache(
+    buildContext?: AnkiPayloadBuildContext,
+): NonNullable<AnkiPayloadBuildContext["locatorRepairCache"]> | null {
+    if (!buildContext) {
+        return null;
+    }
+    if (!buildContext.locatorRepairCache) {
+        buildContext.locatorRepairCache = new Map();
+    }
+
+    return buildContext.locatorRepairCache;
+}
+
+function getLocatorRepairState(
+    filePath: string,
+    trackedFile: TrackedFile,
+    buildContext?: AnkiPayloadBuildContext,
+): { trackedFile: TrackedFile | null; resynced: boolean } {
+    const cacheKey = filePath || trackedFile.path || "__syro_locator_unknown__";
+    const cache = getLocatorRepairCache(buildContext);
+    if (!cache) {
+        return { trackedFile, resynced: false };
+    }
+
+    const existing = cache.get(cacheKey);
+    if (existing) {
+        if (!existing.trackedFile) {
+            existing.trackedFile = trackedFile;
+        }
+        return existing;
+    }
+
+    const state = { trackedFile, resynced: false };
+    cache.set(cacheKey, state);
+    return state;
+}
+
 function normalizeBlockForRendering(
     blockText: string,
     settings?: SRSettings,
@@ -782,33 +860,226 @@ function resolveSiblingClozeItems(
     return siblings.sort((left, right) => left.span.startOffset - right.span.startOffset);
 }
 
-function resolveMarkerWrappedRange(
+function inferClozeWrapperKind(trackedItem: TrackedItem): ClozeWrapperKind {
+    if (trackedItem.clozeId?.startsWith("bd")) {
+        return "bold";
+    }
+    if (trackedItem.clozeId?.startsWith("hl")) {
+        return "highlight";
+    }
+
+    return "none";
+}
+
+function getWrapperDelimiter(wrapperKind: ClozeWrapperKind): string {
+    if (wrapperKind === "bold") {
+        return "**";
+    }
+    if (wrapperKind === "highlight") {
+        return "==";
+    }
+
+    return "";
+}
+
+function escapeForRegex(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function findLiteralOccurrences(text: string, literal: string): number[] {
+    if (!literal) {
+        return [];
+    }
+
+    const indices: number[] = [];
+    const pattern = new RegExp(escapeForRegex(literal), "gu");
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(text)) !== null) {
+        indices.push(match.index);
+        if (match[0].length === 0) {
+            pattern.lastIndex += 1;
+        }
+    }
+
+    return indices;
+}
+
+function buildStandardClozeRange(
     displayBlock: string,
+    trackedItem: TrackedItem,
+    contentStart: number,
+    contentEnd: number,
+): StandardClozeRange | null {
+    const fingerprint = normalizeText(trackedItem.fingerprint);
+    if (!fingerprint) {
+        return null;
+    }
+    if (contentStart < 0 || contentEnd <= contentStart || contentEnd > displayBlock.length) {
+        return null;
+    }
+    if (displayBlock.slice(contentStart, contentEnd) !== fingerprint) {
+        return null;
+    }
+
+    const wrapperKind = inferClozeWrapperKind(trackedItem);
+    const delimiter = getWrapperDelimiter(wrapperKind);
+    let fullStart = contentStart;
+    let fullEnd = contentEnd;
+    let resolvedWrapperKind: ClozeWrapperKind = "none";
+
+    if (delimiter) {
+        const prefix = displayBlock.slice(
+            Math.max(0, contentStart - delimiter.length),
+            contentStart,
+        );
+        const suffix = displayBlock.slice(
+            contentEnd,
+            Math.min(displayBlock.length, contentEnd + delimiter.length),
+        );
+        if (prefix === delimiter && suffix === delimiter) {
+            fullStart = contentStart - delimiter.length;
+            fullEnd = contentEnd + delimiter.length;
+            resolvedWrapperKind = wrapperKind;
+        }
+    }
+
+    return {
+        item: trackedItem,
+        contentStart,
+        contentEnd,
+        fullStart,
+        fullEnd,
+        wrapperKind: resolvedWrapperKind,
+    };
+}
+
+function pickNearestOccurrence(indices: number[], preferredIndex: number): number | null {
+    if (indices.length === 0) {
+        return null;
+    }
+
+    let best = indices[0];
+    let bestDistance = Math.abs(best - preferredIndex);
+    for (let index = 1; index < indices.length; index += 1) {
+        const candidate = indices[index];
+        const distance = Math.abs(candidate - preferredIndex);
+        if (distance < bestDistance) {
+            best = candidate;
+            bestDistance = distance;
+        }
+    }
+
+    return best;
+}
+
+function resolveStandardClozeRange(
     renderContext: BlockRenderContext,
     trackedItem: TrackedItem,
-): { start: number; end: number } {
+): StandardClozeRange | null {
+    const fingerprint = normalizeText(trackedItem.fingerprint);
+    if (!fingerprint) {
+        return null;
+    }
+
     const localStart =
         trackedItem.span.startOffset - trackedItem.span.blockStartOffset - renderContext.cleanOffset;
     const localEnd =
         trackedItem.span.endOffset - trackedItem.span.blockStartOffset - renderContext.cleanOffset;
 
-    let markerStart = localStart;
-    let markerEnd = localEnd;
-    const prefix = displayBlock.slice(Math.max(0, localStart - 2), localStart);
-    const suffix = displayBlock.slice(localEnd, Math.min(displayBlock.length, localEnd + 2));
-
-    if (trackedItem.clozeId?.startsWith("hl") && prefix === "==" && suffix === "==") {
-        markerStart -= 2;
-        markerEnd += 2;
-    } else if (trackedItem.clozeId?.startsWith("bd") && prefix === "**" && suffix === "**") {
-        markerStart -= 2;
-        markerEnd += 2;
+    const exactRange = buildStandardClozeRange(
+        renderContext.displayBlock,
+        trackedItem,
+        localStart,
+        localEnd,
+    );
+    if (exactRange) {
+        return exactRange;
     }
 
-    return {
-        start: Math.max(0, markerStart),
-        end: Math.min(displayBlock.length, markerEnd),
-    };
+    const wrapperKind = inferClozeWrapperKind(trackedItem);
+    const delimiter = getWrapperDelimiter(wrapperKind);
+    if (delimiter) {
+        const wrappedLiteral = `${delimiter}${fingerprint}${delimiter}`;
+        const wrappedMatches = findLiteralOccurrences(renderContext.displayBlock, wrappedLiteral);
+        if (wrappedMatches.length === 1) {
+            const wrappedStart = wrappedMatches[0] + delimiter.length;
+            const wrappedEnd = wrappedStart + fingerprint.length;
+            const uniqueWrappedRange = buildStandardClozeRange(
+                renderContext.displayBlock,
+                trackedItem,
+                wrappedStart,
+                wrappedEnd,
+            );
+            if (uniqueWrappedRange) {
+                return uniqueWrappedRange;
+            }
+        }
+    }
+
+    const bareMatches = findLiteralOccurrences(renderContext.displayBlock, fingerprint);
+    const preferredStart = localStart >= 0 ? localStart : 0;
+    const nearestStart = pickNearestOccurrence(bareMatches, preferredStart);
+    if (nearestStart == null) {
+        return null;
+    }
+
+    return buildStandardClozeRange(
+        renderContext.displayBlock,
+        trackedItem,
+        nearestStart,
+        nearestStart + fingerprint.length,
+    );
+}
+
+function isSameTrackedItem(left: TrackedItem, right: TrackedItem): boolean {
+    if (left === right) {
+        return true;
+    }
+    if (left.reviewId >= 0 && right.reviewId >= 0) {
+        return left.reviewId === right.reviewId;
+    }
+
+    return (
+        left.clozeId === right.clozeId &&
+        left.lineNo === right.lineNo &&
+        left.fingerprint === right.fingerprint &&
+        left.span.blockStartOffset === right.span.blockStartOffset &&
+        left.span.startOffset === right.span.startOffset
+    );
+}
+
+function resolveStandardClozeRanges(
+    renderContext: BlockRenderContext,
+    trackedItem: TrackedItem,
+    siblingItems: TrackedItem[],
+): StandardClozeRange[] | null {
+    const items = siblingItems.length > 0 ? siblingItems : [trackedItem];
+    const resolvedRanges: StandardClozeRange[] = [];
+
+    for (const item of items) {
+        const range = resolveStandardClozeRange(renderContext, item);
+        if (!range) {
+            return null;
+        }
+        resolvedRanges.push(range);
+    }
+
+    resolvedRanges.sort((left, right) => {
+        if (left.fullStart !== right.fullStart) {
+            return left.fullStart - right.fullStart;
+        }
+        return left.contentStart - right.contentStart;
+    });
+
+    let previousEnd = -1;
+    for (const range of resolvedRanges) {
+        if (range.fullStart < previousEnd) {
+            return null;
+        }
+        previousEnd = range.fullEnd;
+    }
+
+    return resolvedRanges;
 }
 
 function renderStandardClozeText(
@@ -816,25 +1087,24 @@ function renderStandardClozeText(
     trackedItem: TrackedItem,
     siblingItems: TrackedItem[],
 ): string | null {
-    if (!normalizeText(trackedItem.fingerprint)) {
+    const ranges = resolveStandardClozeRanges(renderContext, trackedItem, siblingItems);
+    if (!ranges) {
         return null;
     }
 
-    const items = siblingItems.length > 0 ? siblingItems : [trackedItem];
     let cursor = 0;
     let text = "";
 
-    for (const item of items) {
-        const range = resolveMarkerWrappedRange(renderContext.displayBlock, renderContext, item);
-        text += renderContext.displayBlock.slice(cursor, range.start);
-        const isActive =
-            item === trackedItem ||
-            (item.clozeId != null &&
-                trackedItem.clozeId != null &&
-                item.clozeId === trackedItem.clozeId &&
-                item.span.startOffset === trackedItem.span.startOffset);
-        text += isActive ? `{{c1::${item.fingerprint}}}` : item.fingerprint;
-        cursor = range.end;
+    for (const range of ranges) {
+        text += renderContext.displayBlock.slice(cursor, range.fullStart);
+        if (isSameTrackedItem(range.item, trackedItem)) {
+            text += renderContext.displayBlock.slice(range.fullStart, range.contentStart);
+            text += `{{c1::${renderContext.displayBlock.slice(range.contentStart, range.contentEnd)}}}`;
+            text += renderContext.displayBlock.slice(range.contentEnd, range.fullEnd);
+        } else {
+            text += renderContext.displayBlock.slice(range.fullStart, range.fullEnd);
+        }
+        cursor = range.fullEnd;
     }
 
     text += renderContext.displayBlock.slice(cursor);
@@ -944,11 +1214,14 @@ function tryBuildLocatorRenderedFields(
         return null;
     }
 
-    let trackedItem = findTrackedItem(card, trackedFile);
+    const repairState = getLocatorRepairState(filePath, trackedFile, buildContext);
+    const effectiveTrackedFile = repairState.trackedFile ?? trackedFile;
+
+    let trackedItem = findTrackedItem(card, effectiveTrackedFile);
     let rendered = trackedItem
         ? buildLocatorRenderedFields(
               card,
-              trackedFile,
+              effectiveTrackedFile,
               trackedItem,
               fileText,
               filePath,
@@ -960,15 +1233,21 @@ function tryBuildLocatorRenderedFields(
         return rendered;
     }
 
-    trackedFile.syncNoteCardsIndex(fileText, buildContext.settings);
-    trackedItem = findTrackedItem(card, trackedFile);
+    if (repairState.resynced) {
+        return null;
+    }
+
+    effectiveTrackedFile.syncNoteCardsIndex(fileText, buildContext.settings);
+    repairState.resynced = true;
+    repairState.trackedFile = effectiveTrackedFile;
+    trackedItem = refindTrackedItem(card, effectiveTrackedFile, trackedItem);
     if (!trackedItem) {
         return null;
     }
 
     return buildLocatorRenderedFields(
         card,
-        trackedFile,
+        effectiveTrackedFile,
         trackedItem,
         fileText,
         filePath,
@@ -1103,6 +1382,12 @@ export function buildSyroAnkiCardSnapshotMap(
     const cards = deckTree.getFlattenedCardArray(CardListType.All, true);
     const result = new Map<string, BuiltSyroCardSnapshot>();
     const seenCards = new Set<Card>();
+    const scopedBuildContext = buildContext
+        ? {
+              ...buildContext,
+              locatorRepairCache: new Map(),
+          }
+        : undefined;
 
     for (const card of cards) {
         if (seenCards.has(card)) {
@@ -1119,7 +1404,7 @@ export function buildSyroAnkiCardSnapshotMap(
             card,
             itemStates[itemUuid],
             modelNames,
-            buildContext,
+            scopedBuildContext,
         );
         if (!payload) {
             continue;

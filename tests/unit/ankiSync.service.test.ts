@@ -3083,6 +3083,66 @@ describe("ankiSync service", () => {
         }
     });
 
+    it("renders a bold cloze with a trailing fullwidth colon without corrupting the markdown boundary", async () => {
+        const originalRender = (MarkdownRenderer as any).render;
+        (MarkdownRenderer as any).render = jest.fn(
+            async (_app: any, markdown: string, container: HTMLElement) => {
+                container.innerHTML = `<p>${markdown.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")}</p>`;
+            },
+        );
+
+        try {
+            const item = createItem();
+            const payload = {
+                itemUuid: item.uuid,
+                deckName: "Syro::Deck",
+                modelName: DEFAULT_ANKI_CLOZE_MODEL_NAME,
+                modelKind: "cloze",
+                filePath: "note.md",
+                front: "**{{c1::相关章节导航：}}**\n\n- Timeline：保存阅读位置与历史进度",
+                back: "",
+                context: "context",
+                breadcrumb: "Deck",
+                source: "note.md",
+                openLink: "",
+                exactLink: "",
+                lineNo: 33,
+                warnings: [],
+                renderSource: "locator",
+                mediaRefs: [],
+                cardHash: "card-hash",
+                snapshot: createReviewSnapshotFromItem(item),
+                fields: {
+                    Text: "**{{c1::相关章节导航：}}**\n\n- Timeline：保存阅读位置与历史进度",
+                    "Back Extra": "context",
+                    Source: "note.md",
+                    Breadcrumb: "Deck",
+                    OpenLink: "",
+                    ExactLink: "",
+                    syro_item_uuid: item.uuid,
+                    syro_file_path: "note.md",
+                    syro_card_hash: "card-hash",
+                    syro_snapshot: JSON.stringify(createReviewSnapshotFromItem(item)),
+                    syro_updated_at: String(createReviewSnapshotFromItem(item).updatedAt),
+                },
+            } as any;
+            const builtSnapshots = new Map([[item.uuid, { payload, card: {} as any }]]);
+            const plugin = createPlugin(item);
+            plugin.app = {};
+            const service = new AnkiSyncService(plugin, {
+                clientFactory: () => ({}) as any,
+                now: () => 3920,
+            });
+
+            await (service as any).renderSnapshotFields(builtSnapshots);
+
+            expect(payload.fields.Text).toContain("<strong>{{c1::相关章节导航：}}</strong>");
+            expect(payload.fields.Text).not.toContain("*{{c1::相关章节导航：}}：**");
+        } finally {
+            (MarkdownRenderer as any).render = originalRender;
+        }
+    });
+
     it("records detailed create failure reasons when Anki returns null", async () => {
         const item = createItem();
         const { deck } = createDeckWithCard(item);

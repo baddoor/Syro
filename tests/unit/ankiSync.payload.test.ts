@@ -141,7 +141,7 @@ describe("ankiSync payload", () => {
         expect(payload?.warnings).toEqual([]);
     });
 
-    it("keeps other clozes visible plain text when building a native cloze note", () => {
+    it("keeps other clozes wrapped in their original markers when building a native cloze note", () => {
         const noteText = "alpha ==first== beta ==second== gamma";
         const card = createCard({
             noteText,
@@ -189,7 +189,7 @@ describe("ankiSync payload", () => {
             fileTextByPath: new Map([["note.md", noteText]]),
         });
 
-        expect(payload?.fields.Text).toBe("alpha {{c1::first}} beta second gamma");
+        expect(payload?.fields.Text).toBe("alpha =={{c1::first}}== beta ==second== gamma");
     });
 
     it("builds a native cloze note for non-first bold clozes in a multiline block", () => {
@@ -282,8 +282,146 @@ describe("ankiSync payload", () => {
             fileTextByPath: new Map([["note.md", noteText]]),
         });
 
-        expect(payload?.fields.Text).toContain("{{c1::疑问}}");
+        expect(payload?.fields.Text).toContain("**{{c1::疑问}}**：");
         expect(payload?.fields.Text).toContain("后备兼容");
+    });
+
+    it("repairs bold cloze ranges locally when the stored span drifts by one character", () => {
+        const noteText = "**相关章节导航：**\n\n- Timeline：保存阅读位置与历史进度";
+        const card = createCard({
+            noteText,
+            questionType: CardType.Cloze,
+        });
+        card.repetitionItem!.ID = 301;
+        const fingerprint = "相关章节导航：";
+        const start = noteText.indexOf(fingerprint);
+        const trackedItem = new TrackedItem(
+            fingerprint,
+            33,
+            "",
+            CardType.Cloze,
+            {
+                startOffset: start + 1,
+                endOffset: start + 1 + fingerprint.length,
+                blockStartOffset: 0,
+                blockEndOffset: noteText.length,
+            },
+            "bd0",
+            301,
+        );
+        const trackedFile = createLocatorTrackedFile(noteText, trackedItem);
+        const syncSpy = jest.spyOn(trackedFile, "syncNoteCardsIndex");
+
+        const payload = buildSyroAnkiCardPayload(card, undefined, undefined, {
+            settings: DEFAULT_SETTINGS,
+            store: {
+                getTrackedFile: () => trackedFile,
+                getFileByID: () => trackedFile,
+            },
+            fileTextByPath: new Map([["note.md", noteText]]),
+        });
+
+        expect(payload?.fields.Text).toContain("**{{c1::相关章节导航：}}**");
+        expect(payload?.fields.Text).not.toContain("*{{c1::相关章节导航：}}：**");
+        expect(syncSpy).not.toHaveBeenCalled();
+    });
+
+    it("resyncs a broken file at most once when multiple cards from the same file have stale spans", () => {
+        const noteText = "**第一项：**\n\n**第二项：**";
+        const firstCard = createCard({
+            noteText,
+            questionType: CardType.Cloze,
+            filePath: "shared.md",
+        });
+        const secondCard = createCard({
+            noteText,
+            questionType: CardType.Cloze,
+            filePath: "shared.md",
+        });
+        firstCard.repetitionItem!.ID = 401;
+        secondCard.repetitionItem!.ID = 402;
+
+        const brokenFirst = new TrackedItem(
+            "第一项：",
+            10,
+            "",
+            CardType.Cloze,
+            {
+                startOffset: 0,
+                endOffset: 2,
+                blockStartOffset: 0,
+                blockEndOffset: 2,
+            },
+            "bd0",
+            401,
+        );
+        const brokenSecond = new TrackedItem(
+            "第二项：",
+            12,
+            "",
+            CardType.Cloze,
+            {
+                startOffset: 0,
+                endOffset: 2,
+                blockStartOffset: 0,
+                blockEndOffset: 2,
+            },
+            "bd1",
+            402,
+        );
+        const trackedFile = createLocatorTrackedFile(noteText, brokenFirst, "shared.md");
+        trackedFile.trackedItems = [brokenFirst, brokenSecond];
+
+        const repairedFirst = new TrackedItem(
+            "第一项：",
+            10,
+            "",
+            CardType.Cloze,
+            {
+                startOffset: noteText.indexOf("第一项："),
+                endOffset: noteText.indexOf("第一项：") + "第一项：".length,
+                blockStartOffset: 0,
+                blockEndOffset: noteText.length,
+            },
+            "bd0",
+            401,
+        );
+        const repairedSecond = new TrackedItem(
+            "第二项：",
+            12,
+            "",
+            CardType.Cloze,
+            {
+                startOffset: noteText.indexOf("第二项："),
+                endOffset: noteText.indexOf("第二项：") + "第二项：".length,
+                blockStartOffset: 0,
+                blockEndOffset: noteText.length,
+            },
+            "bd1",
+            402,
+        );
+        const syncSpy = jest
+            .spyOn(trackedFile, "syncNoteCardsIndex")
+            .mockImplementation((_fileText, _settings) => {
+                trackedFile.trackedItems = [repairedFirst, repairedSecond];
+                return { hasChange: false, removedIds: [] };
+            });
+        const buildContext = {
+            settings: DEFAULT_SETTINGS,
+            store: {
+                getTrackedFile: () => trackedFile,
+                getFileByID: () => trackedFile,
+            },
+            fileTextByPath: new Map([["shared.md", noteText]]),
+            locatorRepairCache: new Map(),
+        };
+
+        const firstPayload = buildSyroAnkiCardPayload(firstCard, undefined, undefined, buildContext);
+        const secondPayload = buildSyroAnkiCardPayload(secondCard, undefined, undefined, buildContext);
+
+        expect(syncSpy).toHaveBeenCalledTimes(1);
+        expect(firstPayload?.fields.Text).toContain("**{{c1::第一项：}}**");
+        expect(secondPayload?.fields.Text).toContain("**{{c1::第二项：}}**");
     });
 
     it("renders QA cards from locator blocks instead of legacy serialized content", () => {

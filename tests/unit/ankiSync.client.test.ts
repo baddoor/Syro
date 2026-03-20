@@ -105,7 +105,8 @@ describe("AnkiConnectClient", () => {
         expect(createParams.inOrderFields).toEqual(expect.arrayContaining(["Text", "Back Extra"]));
         expect(createParams.isCloze).toBe(true);
         expect(createParams.cardTemplates[0].Front).toContain("{{cloze:Text}}");
-        expect(createParams.cardTemplates[0].Back).toContain("{{Back Extra}}");
+        expect(createParams.cardTemplates[0].Back).toContain("{{cloze:Text}}");
+        expect(createParams.cardTemplates[0].Back).not.toContain("{{Back Extra}}");
     });
 
     it("ensures decks and ignores already-existing deck errors", async () => {
