@@ -6,10 +6,13 @@ import { CardQueue, RepetitionItem } from "src/dataStore/repetitionItem";
 import { SRSettings } from "src/settings";
 import { cyrb53, findLineIndexOfSearchStringIgnoringWs } from "src/util/utils";
 import {
+    AnkiModelKind,
     AnkiMediaFieldName,
     AnkiMediaReferenceCandidate,
     AnkiSyncItemState,
     BuiltSyroCardSnapshot,
+    DEFAULT_ANKI_BASIC_MODEL_NAME,
+    DEFAULT_ANKI_CLOZE_MODEL_NAME,
     DEFAULT_ANKI_MODEL_NAME,
     ReviewSnapshot,
     SyroAnkiCardPayload,
@@ -49,10 +52,15 @@ interface RenderedPayloadFields {
     renderSource: SyroAnkiRenderSource;
 }
 
+type AnkiPayloadModelNames =
+    | string
+    | Partial<Record<AnkiModelKind, string>>;
+
 interface BlockRenderContext {
     displayBlock: string;
     activeStart: number;
     activeEnd: number;
+    cleanOffset: number;
     filePath: string;
     lineNo: number | null;
 }
@@ -597,6 +605,7 @@ function createBlockRenderContext(
         displayBlock,
         activeStart: activeRange.start,
         activeEnd: activeRange.end,
+        cleanOffset,
         filePath,
         lineNo: trackedItem.lineNo ?? card.question?.lineNo ?? null,
     };
@@ -604,6 +613,24 @@ function createBlockRenderContext(
 
 function isClozeType(cardType: CardType | null | undefined): boolean {
     return cardType === CardType.Cloze || cardType === CardType.AnkiCloze;
+}
+
+function resolveModelKind(card: Card): AnkiModelKind {
+    return isClozeType(card.question?.questionType) ? "cloze" : "basic";
+}
+
+function resolveModelNames(modelNames?: AnkiPayloadModelNames): Record<AnkiModelKind, string> {
+    if (typeof modelNames === "string") {
+        return {
+            basic: modelNames,
+            cloze: DEFAULT_ANKI_CLOZE_MODEL_NAME,
+        };
+    }
+
+    return {
+        basic: modelNames?.basic || DEFAULT_ANKI_BASIC_MODEL_NAME,
+        cloze: modelNames?.cloze || DEFAULT_ANKI_CLOZE_MODEL_NAME,
+    };
 }
 
 function splitQuestionAnswer(
@@ -705,11 +732,10 @@ function extractAnkiClozeInfos(text: string): Array<{ id: number; content: strin
     return infos;
 }
 
-function renderAnkiClozeFields(
+function renderAnkiClozeText(
     renderContext: BlockRenderContext,
     trackedItem: TrackedItem,
-    settings: SRSettings,
-): { front: string; back: string } | null {
+): string | null {
     const clozeInfos = extractAnkiClozeInfos(renderContext.displayBlock);
     if (clozeInfos.length === 0) {
         return null;
@@ -720,62 +746,99 @@ function renderAnkiClozeFields(
         return null;
     }
 
-    let front = "";
-    let back = "";
+    let text = "";
     let lastEnd = 0;
     for (const info of clozeInfos) {
-        front += renderContext.displayBlock.slice(lastEnd, info.start);
-        back += renderContext.displayBlock.slice(lastEnd, info.start);
+        text += renderContext.displayBlock.slice(lastEnd, info.start);
 
         if (info.id === activeId) {
-            front += createMaskMarkup();
-            back += createAnswerMarkup(info.content);
-        } else if (shouldShowOtherAnkiClozeVisual(settings)) {
-            const markup = createInactiveAnkiClozeMarkup(info.content);
-            front += markup;
-            back += markup;
+            text += `{{c1::${info.content}}}`;
         } else {
-            front += info.content;
-            back += info.content;
+            text += info.content;
         }
 
         lastEnd = info.end;
     }
 
-    front += renderContext.displayBlock.slice(lastEnd);
-    back += renderContext.displayBlock.slice(lastEnd);
-
-    return {
-        front: front.trim(),
-        back: back.trim(),
-    };
+    text += renderContext.displayBlock.slice(lastEnd);
+    return text.trim();
 }
 
-function renderStandardClozeFields(
+function resolveSiblingClozeItems(
+    trackedFile: TrackedFile | null,
+    trackedItem: TrackedItem,
+): TrackedItem[] {
+    const siblings = (trackedFile?.trackedItems ?? []).filter((candidate) => {
+        if (!isClozeType(candidate.cardType)) {
+            return false;
+        }
+
+        return (
+            candidate.span.blockStartOffset === trackedItem.span.blockStartOffset &&
+            candidate.span.blockEndOffset === trackedItem.span.blockEndOffset
+        );
+    });
+
+    return siblings.sort((left, right) => left.span.startOffset - right.span.startOffset);
+}
+
+function resolveMarkerWrappedRange(
+    displayBlock: string,
     renderContext: BlockRenderContext,
-): { front: string; back: string } | null {
-    const answerText = renderContext.displayBlock.slice(
-        renderContext.activeStart,
-        renderContext.activeEnd,
-    );
-    if (!normalizeText(answerText)) {
-        return null;
+    trackedItem: TrackedItem,
+): { start: number; end: number } {
+    const localStart =
+        trackedItem.span.startOffset - trackedItem.span.blockStartOffset - renderContext.cleanOffset;
+    const localEnd =
+        trackedItem.span.endOffset - trackedItem.span.blockStartOffset - renderContext.cleanOffset;
+
+    let markerStart = localStart;
+    let markerEnd = localEnd;
+    const prefix = displayBlock.slice(Math.max(0, localStart - 2), localStart);
+    const suffix = displayBlock.slice(localEnd, Math.min(displayBlock.length, localEnd + 2));
+
+    if (trackedItem.clozeId?.startsWith("hl") && prefix === "==" && suffix === "==") {
+        markerStart -= 2;
+        markerEnd += 2;
+    } else if (trackedItem.clozeId?.startsWith("bd") && prefix === "**" && suffix === "**") {
+        markerStart -= 2;
+        markerEnd += 2;
     }
 
     return {
-        front: replaceRange(
-            renderContext.displayBlock,
-            renderContext.activeStart,
-            renderContext.activeEnd,
-            createMaskMarkup(),
-        ),
-        back: replaceRange(
-            renderContext.displayBlock,
-            renderContext.activeStart,
-            renderContext.activeEnd,
-            createAnswerMarkup(answerText),
-        ),
+        start: Math.max(0, markerStart),
+        end: Math.min(displayBlock.length, markerEnd),
     };
+}
+
+function renderStandardClozeText(
+    renderContext: BlockRenderContext,
+    trackedItem: TrackedItem,
+    siblingItems: TrackedItem[],
+): string | null {
+    if (!normalizeText(trackedItem.fingerprint)) {
+        return null;
+    }
+
+    const items = siblingItems.length > 0 ? siblingItems : [trackedItem];
+    let cursor = 0;
+    let text = "";
+
+    for (const item of items) {
+        const range = resolveMarkerWrappedRange(renderContext.displayBlock, renderContext, item);
+        text += renderContext.displayBlock.slice(cursor, range.start);
+        const isActive =
+            item === trackedItem ||
+            (item.clozeId != null &&
+                trackedItem.clozeId != null &&
+                item.clozeId === trackedItem.clozeId &&
+                item.span.startOffset === trackedItem.span.startOffset);
+        text += isActive ? `{{c1::${item.fingerprint}}}` : item.fingerprint;
+        cursor = range.end;
+    }
+
+    text += renderContext.displayBlock.slice(cursor);
+    return text.trim();
 }
 
 function renderQaFields(
@@ -820,6 +883,7 @@ function renderQaFields(
 
 function buildLocatorRenderedFields(
     card: Card,
+    trackedFile: TrackedFile,
     trackedItem: TrackedItem,
     fileText: string,
     filePath: string,
@@ -832,11 +896,18 @@ function buildLocatorRenderedFields(
     }
 
     const cardType = trackedItem.cardType ?? card.question?.questionType;
+    const siblingItems = resolveSiblingClozeItems(trackedFile, trackedItem);
     const rendered =
         cardType === CardType.AnkiCloze
-            ? renderAnkiClozeFields(renderContext, trackedItem, settings)
+            ? (() => {
+                  const text = renderAnkiClozeText(renderContext, trackedItem);
+                  return text ? { front: text, back: "" } : null;
+              })()
             : isClozeType(cardType)
-              ? renderStandardClozeFields(renderContext)
+              ? (() => {
+                    const text = renderStandardClozeText(renderContext, trackedItem, siblingItems);
+                    return text ? { front: text, back: "" } : null;
+                })()
               : renderQaFields(card, renderContext, settings, cardType);
     if (!rendered) {
         return null;
@@ -877,6 +948,7 @@ function tryBuildLocatorRenderedFields(
     let rendered = trackedItem
         ? buildLocatorRenderedFields(
               card,
+              trackedFile,
               trackedItem,
               fileText,
               filePath,
@@ -896,6 +968,7 @@ function tryBuildLocatorRenderedFields(
 
     return buildLocatorRenderedFields(
         card,
+        trackedFile,
         trackedItem,
         fileText,
         filePath,
@@ -937,7 +1010,7 @@ function renderVisibleFields(
 export function buildSyroAnkiCardPayload(
     card: Card,
     itemState?: AnkiSyncItemState,
-    modelName = DEFAULT_ANKI_MODEL_NAME,
+    modelNames: AnkiPayloadModelNames = DEFAULT_ANKI_MODEL_NAME,
     buildContext?: AnkiPayloadBuildContext,
 ): SyroAnkiCardPayload | null {
     const item = card.repetitionItem;
@@ -945,6 +1018,9 @@ export function buildSyroAnkiCardPayload(
         return null;
     }
 
+    const resolvedModelNames = resolveModelNames(modelNames);
+    const modelKind = resolveModelKind(card);
+    const modelName = resolvedModelNames[modelKind];
     const deckName = buildDeckName(card);
     const filePath = resolveFilePath(card, buildContext);
     const actualFilePath = resolveItemOwnerFilePath(card, buildContext);
@@ -971,6 +1047,7 @@ export function buildSyroAnkiCardPayload(
         itemUuid: item.uuid,
         deckName,
         modelName,
+        modelKind,
         filePath,
         front: renderedFields.front,
         back: renderedFields.back,
@@ -985,27 +1062,42 @@ export function buildSyroAnkiCardPayload(
         mediaRefs: [],
         cardHash,
         snapshot,
-        fields: {
-            Front: renderedFields.front,
-            Back: renderedFields.back,
-            Context: renderedFields.context,
-            Source: renderedFields.source,
-            Breadcrumb: renderedFields.breadcrumb,
-            OpenLink: renderedFields.openLink,
-            ExactLink: renderedFields.exactLink,
-            syro_item_uuid: item.uuid,
-            syro_file_path: filePath,
-            syro_card_hash: cardHash,
-            syro_snapshot: JSON.stringify(snapshot),
-            syro_updated_at: String(snapshot.updatedAt),
-        },
+        fields:
+            modelKind === "cloze"
+                ? {
+                      Text: renderedFields.front,
+                      "Back Extra": renderedFields.context,
+                      Source: renderedFields.source,
+                      Breadcrumb: renderedFields.breadcrumb,
+                      OpenLink: renderedFields.openLink,
+                      ExactLink: renderedFields.exactLink,
+                      syro_item_uuid: item.uuid,
+                      syro_file_path: filePath,
+                      syro_card_hash: cardHash,
+                      syro_snapshot: JSON.stringify(snapshot),
+                      syro_updated_at: String(snapshot.updatedAt),
+                  }
+                : {
+                      Front: renderedFields.front,
+                      Back: renderedFields.back,
+                      Context: renderedFields.context,
+                      Source: renderedFields.source,
+                      Breadcrumb: renderedFields.breadcrumb,
+                      OpenLink: renderedFields.openLink,
+                      ExactLink: renderedFields.exactLink,
+                      syro_item_uuid: item.uuid,
+                      syro_file_path: filePath,
+                      syro_card_hash: cardHash,
+                      syro_snapshot: JSON.stringify(snapshot),
+                      syro_updated_at: String(snapshot.updatedAt),
+                  },
     };
 }
 
 export function buildSyroAnkiCardSnapshotMap(
     deckTree: Deck,
     itemStates: Record<string, AnkiSyncItemState>,
-    modelName = DEFAULT_ANKI_MODEL_NAME,
+    modelNames: AnkiPayloadModelNames = DEFAULT_ANKI_MODEL_NAME,
     buildContext?: AnkiPayloadBuildContext,
 ): Map<string, BuiltSyroCardSnapshot> {
     const cards = deckTree.getFlattenedCardArray(CardListType.All, true);
@@ -1023,7 +1115,12 @@ export function buildSyroAnkiCardSnapshotMap(
             continue;
         }
 
-        const payload = buildSyroAnkiCardPayload(card, itemStates[itemUuid], modelName, buildContext);
+        const payload = buildSyroAnkiCardPayload(
+            card,
+            itemStates[itemUuid],
+            modelNames,
+            buildContext,
+        );
         if (!payload) {
             continue;
         }

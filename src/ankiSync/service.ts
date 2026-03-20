@@ -25,6 +25,7 @@ import {
     AnkiCardInfo,
     AnkiCardReview,
     AnkiInsertedReview,
+    AnkiModelKind,
     AnkiMediaFieldName,
     AnkiMediaReference,
     AnkiMediaReferenceCandidate,
@@ -39,10 +40,13 @@ import {
     AnkiSyncStateFile,
     BuiltSyroCardSnapshot,
     DEFAULT_ANKI_DELETE_POLICY,
+    DEFAULT_ANKI_BASIC_MODEL_NAME,
+    DEFAULT_ANKI_CLOZE_MODEL_NAME,
     DEFAULT_ANKI_MODEL_NAME,
     DEFAULT_ANKI_SYNC_ENDPOINT,
     PendingReviewWriteback,
     ReviewSnapshot,
+    SyroAnkiCardPayload,
     createEmptyRunResult,
 } from "src/ankiSync/types";
 
@@ -1368,12 +1372,42 @@ export class AnkiSyncService {
         }
     }
 
+    private getRenderedFieldNameForSide(payload: SyroAnkiCardPayload, side: "front" | "back" | "context"): AnkiMediaFieldName {
+        if (payload.modelKind === "cloze") {
+            return side === "front" ? "Text" : "Back Extra";
+        }
+
+        if (side === "front") {
+            return "Front";
+        }
+        if (side === "back") {
+            return "Back";
+        }
+
+        return "Context";
+    }
+
     private async renderSnapshotFields(builtSnapshots: Map<string, BuiltSyroCardSnapshot>): Promise<void> {
         for (const { payload } of builtSnapshots.values()) {
             const sourcePath = payload.filePath ?? "";
-            const front = await this.renderMarkdownField(payload.front, sourcePath, "front", "Front");
-            const back = await this.renderMarkdownField(payload.back, sourcePath, "back", "Back");
-            const context = await this.renderMarkdownField(payload.context, sourcePath, "context", "Context");
+            const front = await this.renderMarkdownField(
+                payload.front,
+                sourcePath,
+                "front",
+                this.getRenderedFieldNameForSide(payload, "front"),
+            );
+            const back = await this.renderMarkdownField(
+                payload.back,
+                sourcePath,
+                "back",
+                this.getRenderedFieldNameForSide(payload, "back"),
+            );
+            const context = await this.renderMarkdownField(
+                payload.context,
+                sourcePath,
+                "context",
+                this.getRenderedFieldNameForSide(payload, "context"),
+            );
 
             payload.front = front.html;
             payload.back = back.html;
@@ -1383,9 +1417,14 @@ export class AnkiSyncService {
             payload.mediaRefs = [...front.mediaRefs, ...back.mediaRefs, ...context.mediaRefs];
             payload.warnings.push(...front.warnings, ...back.warnings, ...context.warnings);
 
-            payload.fields.Front = payload.front;
-            payload.fields.Back = payload.back;
-            payload.fields.Context = payload.context;
+            if (payload.modelKind === "cloze") {
+                payload.fields.Text = payload.front;
+                payload.fields["Back Extra"] = payload.context;
+            } else {
+                payload.fields.Front = payload.front;
+                payload.fields.Back = payload.back;
+                payload.fields.Context = payload.context;
+            }
             payload.fields.Breadcrumb = payload.breadcrumb;
             payload.fields.Source = payload.source;
             payload.fields.OpenLink = payload.openLink;
@@ -2892,7 +2931,12 @@ export class AnkiSyncService {
 
         const settings = this.plugin.data.settings;
         const endpoint = settings.ankiSyncEndpoint || DEFAULT_ANKI_SYNC_ENDPOINT;
-        const modelName = settings.ankiSyncModelName || DEFAULT_ANKI_MODEL_NAME;
+        const basicModelName =
+            settings.ankiSyncBasicModelName ||
+            settings.ankiSyncModelName ||
+            DEFAULT_ANKI_BASIC_MODEL_NAME;
+        const clozeModelName =
+            settings.ankiSyncClozeModelName || DEFAULT_ANKI_CLOZE_MODEL_NAME;
         const deletePolicy = settings.ankiSyncDeletePolicy || DEFAULT_ANKI_DELETE_POLICY;
         const state = await this.getState();
         state.global.endpoint = endpoint;
@@ -2905,7 +2949,8 @@ export class AnkiSyncService {
             const version = await client.getVersion();
             state.global.connection.version = version;
             state.global.connection.lastVerifiedAt = this.now();
-            await client.ensureModel(modelName);
+            await client.ensureModel(basicModelName, "basic");
+            await client.ensureModel(clozeModelName, "cloze");
             state.global.connection.modelReady = true;
             const reviewHistorySyncReady = await this.supportsReviewHistorySync(client);
             reportProgress("prepare", 1, 1, "Anki 已连接");
@@ -2913,13 +2958,21 @@ export class AnkiSyncService {
             const fileTextByPath = await this.buildFileTextMap(deckTree);
             const vaultName = this.plugin.app?.vault?.getName?.() ?? "";
             const hasAdvancedUri = await this.hasAdvancedUriPlugin();
-            const builtSnapshots = buildSyroAnkiCardSnapshotMap(deckTree, state.items, modelName, {
-                settings,
-                store: this.plugin.store,
-                fileTextByPath,
-                vaultName,
-                hasAdvancedUri,
-            });
+            const builtSnapshots = buildSyroAnkiCardSnapshotMap(
+                deckTree,
+                state.items,
+                {
+                    basic: basicModelName,
+                    cloze: clozeModelName,
+                },
+                {
+                    settings,
+                    store: this.plugin.store,
+                    fileTextByPath,
+                    vaultName,
+                    hasAdvancedUri,
+                },
+            );
             await this.renderSnapshotFields(builtSnapshots);
             for (const [itemUuid, builtSnapshot] of builtSnapshots.entries()) {
                 for (const warning of builtSnapshot.payload.warnings) {

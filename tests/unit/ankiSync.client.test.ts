@@ -53,7 +53,7 @@ describe("AnkiConnectClient", () => {
         await expect(client.getVersion()).resolves.toBe(6);
     });
 
-    it("ensures the Syro model templates, fields, and media assets", async () => {
+    it("ensures the Syro basic model templates, fields, and media assets", async () => {
         mockedRequestUrl.mockResolvedValue({
             status: 200,
             headers: {},
@@ -63,7 +63,7 @@ describe("AnkiConnectClient", () => {
         } as any);
 
         const client = new AnkiConnectClient("http://127.0.0.1:8765");
-        await client.ensureModel("Syro::Card");
+        await client.ensureModel("Syro Card", "basic");
 
         const actions = mockedRequestUrl.mock.calls.map(
             (call) => JSON.parse((call[0] as any).body).action,
@@ -78,14 +78,33 @@ describe("AnkiConnectClient", () => {
             (call) => JSON.parse((call[0] as any).body).action === "createModel",
         );
         expect(createModelRequest).toBeDefined();
-        expect(
-            createModelRequest &&
-                JSON.parse((createModelRequest[0] as any).body).params.inOrderFields,
-        ).toEqual(expect.arrayContaining(["Breadcrumb", "OpenLink", "ExactLink"]));
-        expect(
-            createModelRequest &&
-                JSON.parse((createModelRequest[0] as any).body).params.cardTemplates[0].Front,
-        ).not.toContain("_syro_anki_sync.js");
+        const createParams = createModelRequest && JSON.parse((createModelRequest[0] as any).body).params;
+        expect(createParams.inOrderFields).toEqual(expect.arrayContaining(["Front", "Back", "Context"]));
+        expect(createParams.isCloze).toBe(false);
+        expect(createParams.cardTemplates[0].Front).not.toContain("_syro_anki_sync.js");
+    });
+
+    it("ensures the Syro cloze model with native cloze fields", async () => {
+        mockedRequestUrl.mockResolvedValue({
+            status: 200,
+            headers: {},
+            arrayBuffer: new ArrayBuffer(0),
+            json: { error: null, result: null },
+            text: JSON.stringify({ error: null, result: null }),
+        } as any);
+
+        const client = new AnkiConnectClient("http://127.0.0.1:8765");
+        await client.ensureModel("Syro Cloze", "cloze");
+
+        const createModelRequest = mockedRequestUrl.mock.calls.find(
+            (call) => JSON.parse((call[0] as any).body).action === "createModel",
+        );
+        expect(createModelRequest).toBeDefined();
+        const createParams = createModelRequest && JSON.parse((createModelRequest[0] as any).body).params;
+        expect(createParams.inOrderFields).toEqual(expect.arrayContaining(["Text", "Back Extra"]));
+        expect(createParams.isCloze).toBe(true);
+        expect(createParams.cardTemplates[0].Front).toContain("{{cloze:Text}}");
+        expect(createParams.cardTemplates[0].Back).toContain("{{Back Extra}}");
     });
 
     it("ensures decks and ignores already-existing deck errors", async () => {
@@ -138,7 +157,7 @@ describe("AnkiConnectClient", () => {
                 result: [
                     {
                         noteId: 10,
-                        modelName: "Syro::Card",
+                        modelName: "Syro Card",
                         cards: [20],
                         tags: ["syro-sync"],
                         mod: 123,
@@ -153,7 +172,7 @@ describe("AnkiConnectClient", () => {
                 result: [
                     {
                         noteId: 10,
-                        modelName: "Syro::Card",
+                        modelName: "Syro Card",
                         cards: [20],
                         tags: ["syro-sync"],
                         mod: 123,
@@ -171,7 +190,7 @@ describe("AnkiConnectClient", () => {
         expect(result).toEqual([
             {
                 noteId: 10,
-                modelName: "Syro::Card",
+                modelName: "Syro Card",
                 cards: [20],
                 tags: ["syro-sync"],
                 mod: 123,

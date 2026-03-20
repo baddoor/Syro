@@ -4,17 +4,15 @@ import {
     AnkiCanAddNoteResult,
     AnkiCardInfo,
     AnkiCardReview,
+    AnkiModelKind,
     AnkiInsertedReview,
     AnkiNoteInfo,
     DEFAULT_ANKI_MODEL_NAME,
     DEFAULT_ANKI_SYNC_ENDPOINT,
 } from "src/ankiSync/types";
 import {
-    buildSyroAnkiModelCss,
-    buildSyroAnkiTemplateBack,
-    buildSyroAnkiTemplateFront,
+    getSyroAnkiModelSpec,
     SYRO_ANKI_MEDIA_FILES,
-    SYRO_ANKI_MODEL_FIELDS,
 } from "src/ankiSync/template";
 
 interface AnkiInvokeResponse<T> {
@@ -195,25 +193,19 @@ export class AnkiConnectClient {
         }
     }
 
-    async ensureModel(modelName = DEFAULT_ANKI_MODEL_NAME): Promise<void> {
-        const fieldNames = SYRO_ANKI_MODEL_FIELDS;
-        const css = buildSyroAnkiModelCss();
-        const frontTemplate = buildSyroAnkiTemplateFront();
-        const backTemplate = buildSyroAnkiTemplateBack();
+    async ensureModel(
+        modelName = DEFAULT_ANKI_MODEL_NAME,
+        modelKind: AnkiModelKind = "basic",
+    ): Promise<void> {
+        const spec = getSyroAnkiModelSpec(modelKind);
 
         try {
             await this.invoke("createModel", {
                 modelName,
-                inOrderFields: fieldNames,
-                css,
-                isCloze: false,
-                cardTemplates: [
-                    {
-                        Name: "Card 1",
-                        Front: frontTemplate,
-                        Back: backTemplate,
-                    },
-                ],
+                inOrderFields: spec.fields,
+                css: spec.css,
+                isCloze: spec.isCloze,
+                cardTemplates: spec.templates,
             });
         } catch (error) {
             if (!String(error).includes("Model name already exists")) {
@@ -221,7 +213,7 @@ export class AnkiConnectClient {
             }
         }
 
-        for (const fieldName of fieldNames) {
+        for (const fieldName of spec.fields) {
             try {
                 await this.invoke("modelFieldAdd", {
                     modelName,
@@ -237,12 +229,15 @@ export class AnkiConnectClient {
         await this.invoke("updateModelTemplates", {
             model: {
                 name: modelName,
-                templates: {
-                    "Card 1": {
-                        Front: frontTemplate,
-                        Back: backTemplate,
-                    },
-                },
+                templates: Object.fromEntries(
+                    spec.templates.map((template) => [
+                        template.Name,
+                        {
+                            Front: template.Front,
+                            Back: template.Back,
+                        },
+                    ]),
+                ),
             },
         });
 
@@ -250,7 +245,7 @@ export class AnkiConnectClient {
             await this.invoke("updateModelStyling", {
                 model: {
                     name: modelName,
-                    css,
+                    css: spec.css,
                 },
             });
         } catch (error) {

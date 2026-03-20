@@ -22,6 +22,11 @@ import { t } from "src/lang/helpers";
 import { algorithms } from "./algorithms/algorithms_switch";
 import { DataLocation } from "./dataStore/dataLocation";
 import { DEFAULT_responseOptionBtnsText } from "./settings/algorithmSetting";
+import {
+    DEFAULT_ANKI_BASIC_MODEL_NAME,
+    DEFAULT_ANKI_CLOZE_MODEL_NAME,
+    DEFAULT_ANKI_SYNC_ENDPOINT,
+} from "./ankiSync/types";
 import { pathMatchesPattern } from "src/utils/fs";
 
 // ============ Status Bar Animation ===========
@@ -86,7 +91,9 @@ export interface SRSettings {
     ankiSyncEnabled: boolean;
     ankiSyncEndpoint: string;
     ankiSyncDeletePolicy: AnkiDeletePolicySetting;
-    ankiSyncModelName: string;
+    ankiSyncModelName: string; // Legacy compatibility field retained as the basic model name
+    ankiSyncBasicModelName: string;
+    ankiSyncClozeModelName: string;
     cardBlockID: boolean;
     randomizeCardOrder: boolean;
     flashcardCardOrder: string;
@@ -242,9 +249,11 @@ export const DEFAULT_SETTINGS: SRSettings = {
     autoIncrementalSync: true,
     syncProgressDisplayMode: "always",
     ankiSyncEnabled: false,
-    ankiSyncEndpoint: "http://127.0.0.1:8765",
+    ankiSyncEndpoint: DEFAULT_ANKI_SYNC_ENDPOINT,
     ankiSyncDeletePolicy: "delete",
-    ankiSyncModelName: "Syro::Card",
+    ankiSyncModelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
+    ankiSyncBasicModelName: DEFAULT_ANKI_BASIC_MODEL_NAME,
+    ankiSyncClozeModelName: DEFAULT_ANKI_CLOZE_MODEL_NAME,
     cardBlockID: false,
     randomizeCardOrder: null,
     flashcardCardOrder: "DueFirstRandom",
@@ -455,16 +464,23 @@ export function upgradeSettings(settings: SRSettings) {
     }
 
     if (!settings.ankiSyncEndpoint) {
-        settings.ankiSyncEndpoint = "http://127.0.0.1:8765";
+        settings.ankiSyncEndpoint = DEFAULT_ANKI_SYNC_ENDPOINT;
     }
 
     if (settings.ankiSyncDeletePolicy === undefined) {
         settings.ankiSyncDeletePolicy = "delete";
     }
 
-    if (!settings.ankiSyncModelName) {
-        settings.ankiSyncModelName = "Syro::Card";
+    if (!settings.ankiSyncBasicModelName) {
+        settings.ankiSyncBasicModelName =
+            settings.ankiSyncModelName || DEFAULT_ANKI_BASIC_MODEL_NAME;
     }
+
+    if (!settings.ankiSyncClozeModelName) {
+        settings.ankiSyncClozeModelName = DEFAULT_ANKI_CLOZE_MODEL_NAME;
+    }
+
+    settings.ankiSyncModelName = settings.ankiSyncBasicModelName;
 
     if (settings.showRuntimeDebugMessages === undefined) {
         settings.showRuntimeDebugMessages = false;

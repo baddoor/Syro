@@ -1,3 +1,5 @@
+import { AnkiModelKind } from "src/ankiSync/types";
+
 export const SYRO_ANKI_MEDIA_FILES: Record<string, string> = {
     "_syro_anki_sync.css": `
 :root {
@@ -146,7 +148,8 @@ export const SYRO_ANKI_MEDIA_FILES: Record<string, string> = {
     height: auto;
 }
 
-.syro-answer-panel {
+.syro-answer-panel,
+.syro-meta-panel {
     margin-top: 28px;
     padding-top: 24px;
     border-top: 1px solid var(--line);
@@ -189,10 +192,7 @@ mark,
 `,
 };
 
-export const SYRO_ANKI_MODEL_FIELDS = [
-    "Front",
-    "Back",
-    "Context",
+const SHARED_FIELDS = [
     "Source",
     "Breadcrumb",
     "OpenLink",
@@ -204,6 +204,20 @@ export const SYRO_ANKI_MODEL_FIELDS = [
     "syro_updated_at",
 ];
 
+export const SYRO_ANKI_BASIC_MODEL_FIELDS = ["Front", "Back", "Context", ...SHARED_FIELDS];
+export const SYRO_ANKI_CLOZE_MODEL_FIELDS = ["Text", "Back Extra", ...SHARED_FIELDS];
+
+export interface SyroAnkiModelSpec {
+    fields: string[];
+    css: string;
+    isCloze: boolean;
+    templates: Array<{
+        Name: string;
+        Front: string;
+        Back: string;
+    }>;
+}
+
 export function buildSyroAnkiModelCss(): string {
     return `
 .card {
@@ -213,7 +227,7 @@ export function buildSyroAnkiModelCss(): string {
 `;
 }
 
-export function buildSyroAnkiTemplateFront(): string {
+function buildHeaderShell(body: string): string {
     return `
 <link rel="stylesheet" href="_syro_anki_sync.css">
 <div class="syro-container">
@@ -223,13 +237,19 @@ export function buildSyroAnkiTemplateFront(): string {
     </div>
 
     <div class="syro-body">
+        ${body}
+    </div>
+</div>
+`;
+}
+
+export function buildSyroAnkiTemplateFront(): string {
+    return buildHeaderShell(`
         <div class="syro-front-content" id="syro-front-content">
             {{Front}}
         </div>
         <div class="syro-answer-panel" id="syro-answer-region" hidden></div>
-    </div>
-</div>
-`;
+    `);
 }
 
 export function buildSyroAnkiTemplateBack(): string {
@@ -280,4 +300,61 @@ export function buildSyroAnkiTemplateBack(): string {
     })();
 </script>
 `;
+}
+
+export function buildSyroAnkiClozeTemplateFront(): string {
+    return buildHeaderShell(`
+        <div class="syro-front-content">
+            {{cloze:Text}}
+        </div>
+    `);
+}
+
+export function buildSyroAnkiClozeTemplateBack(): string {
+    return buildHeaderShell(`
+        <div class="syro-front-content">
+            {{cloze:Text}}
+        </div>
+        {{#Back Extra}}
+        <div class="syro-meta-panel">
+            {{Back Extra}}
+        </div>
+        {{/Back Extra}}
+        {{#Source}}
+        <div class="syro-meta-panel">
+            {{Source}}
+        </div>
+        {{/Source}}
+    `);
+}
+
+export function getSyroAnkiModelSpec(modelKind: AnkiModelKind): SyroAnkiModelSpec {
+    const css = buildSyroAnkiModelCss();
+    if (modelKind === "cloze") {
+        return {
+            fields: SYRO_ANKI_CLOZE_MODEL_FIELDS,
+            css,
+            isCloze: true,
+            templates: [
+                {
+                    Name: "Card 1",
+                    Front: buildSyroAnkiClozeTemplateFront(),
+                    Back: buildSyroAnkiClozeTemplateBack(),
+                },
+            ],
+        };
+    }
+
+    return {
+        fields: SYRO_ANKI_BASIC_MODEL_FIELDS,
+        css,
+        isCloze: false,
+        templates: [
+            {
+                Name: "Card 1",
+                Front: buildSyroAnkiTemplateFront(),
+                Back: buildSyroAnkiTemplateBack(),
+            },
+        ],
+    };
 }

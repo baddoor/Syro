@@ -1,7 +1,9 @@
 import { CardQueue, FsrsReviewEvent } from "src/dataStore/repetitionItem";
 
 export const ANKI_SYNC_STATE_VERSION = 1;
-export const DEFAULT_ANKI_MODEL_NAME = "Syro::Card";
+export const DEFAULT_ANKI_BASIC_MODEL_NAME = "Syro Card";
+export const DEFAULT_ANKI_CLOZE_MODEL_NAME = "Syro Cloze";
+export const DEFAULT_ANKI_MODEL_NAME = DEFAULT_ANKI_BASIC_MODEL_NAME;
 export const DEFAULT_ANKI_SYNC_ENDPOINT = "http://127.0.0.1:8765";
 export const DEFAULT_ANKI_DELETE_POLICY: AnkiDeletePolicy = "delete";
 
@@ -9,7 +11,8 @@ export type AnkiDeletePolicy = "delete" | "detach";
 export type ReviewSnapshotSource = "syro" | "anki-card" | "anki-hidden";
 export type AnkiOperationType = "create" | "update" | "delete" | "detach" | "noop";
 export type SyroAnkiRenderSource = "locator" | "fallback";
-export type AnkiMediaFieldName = "Front" | "Back" | "Context";
+export type AnkiMediaFieldName = "Front" | "Back" | "Context" | "Text" | "Back Extra";
+export type AnkiModelKind = "basic" | "cloze";
 export type AnkiSyncPhase =
     | "prepare"
     | "writeback"
@@ -123,6 +126,7 @@ export interface SyroAnkiCardPayload {
     itemUuid: string;
     deckName: string;
     modelName: string;
+    modelKind: AnkiModelKind;
     filePath: string;
     front: string;
     back: string;

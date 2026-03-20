@@ -7,6 +7,11 @@
 
 
 
+import {
+    DEFAULT_ANKI_BASIC_MODEL_NAME,
+    DEFAULT_ANKI_CLOZE_MODEL_NAME,
+    DEFAULT_ANKI_SYNC_ENDPOINT,
+} from "../../ankiSync/types";
 import { SRSettings, DEFAULT_PROGRESS_BAR_STYLE, syncDefaultClozePatterns } from "../../settings";
 import { DataLocation } from "../../dataStore/dataLocation";
 import { UISettingsState } from "../types/settingsTypes";
@@ -31,9 +36,14 @@ export function settingsToUIState(settings: SRSettings): UISettingsState {
         autoIncrementalSync: settings.autoIncrementalSync ?? true,
         syncProgressDisplayMode: settings.syncProgressDisplayMode ?? "always",
         ankiSyncEnabled: settings.ankiSyncEnabled ?? false,
-        ankiSyncEndpoint: settings.ankiSyncEndpoint ?? "http://127.0.0.1:8765",
+        ankiSyncEndpoint: settings.ankiSyncEndpoint ?? DEFAULT_ANKI_SYNC_ENDPOINT,
         ankiSyncDeletePolicy: settings.ankiSyncDeletePolicy ?? "delete",
-        ankiSyncModelName: settings.ankiSyncModelName ?? "Syro::Card",
+        ankiSyncBasicModelName:
+            settings.ankiSyncBasicModelName ??
+            settings.ankiSyncModelName ??
+            DEFAULT_ANKI_BASIC_MODEL_NAME,
+        ankiSyncClozeModelName:
+            settings.ankiSyncClozeModelName ?? DEFAULT_ANKI_CLOZE_MODEL_NAME,
         parseClozesInCodeBlocks: settings.parseClozesInCodeBlocks ?? false,
         codeContextLines: settings.codeContextLines ?? 15,
         clozeContextMode: settings.clozeContextMode ?? "single",
@@ -146,8 +156,12 @@ export function mergeUIStateToSettings(
         merged.ankiSyncEndpoint = uiChanges.ankiSyncEndpoint;
     if (uiChanges.ankiSyncDeletePolicy !== undefined)
         merged.ankiSyncDeletePolicy = uiChanges.ankiSyncDeletePolicy;
-    if (uiChanges.ankiSyncModelName !== undefined)
-        merged.ankiSyncModelName = uiChanges.ankiSyncModelName;
+    if (uiChanges.ankiSyncBasicModelName !== undefined) {
+        merged.ankiSyncBasicModelName = uiChanges.ankiSyncBasicModelName;
+        merged.ankiSyncModelName = uiChanges.ankiSyncBasicModelName;
+    }
+    if (uiChanges.ankiSyncClozeModelName !== undefined)
+        merged.ankiSyncClozeModelName = uiChanges.ankiSyncClozeModelName;
     if (uiChanges.parseClozesInCodeBlocks !== undefined)
         merged.parseClozesInCodeBlocks = uiChanges.parseClozesInCodeBlocks;
     if (uiChanges.codeContextLines !== undefined)

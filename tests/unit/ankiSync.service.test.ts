@@ -54,6 +54,7 @@ function createPlugin(
     settingsOverrides: Record<string, unknown> = {},
 ) {
     const items = Array.isArray(item) ? item : [item];
+    const legacyModelName = (settingsOverrides.ankiSyncModelName as string | undefined) ?? "Syro Card";
     return {
         data: {
             settings: {
@@ -61,7 +62,9 @@ function createPlugin(
                 ankiSyncEnabled: true,
                 ankiSyncEndpoint: "http://127.0.0.1:8765",
                 ankiSyncDeletePolicy: "delete",
-                ankiSyncModelName: "Syro::Card",
+                ankiSyncModelName: legacyModelName,
+                ankiSyncBasicModelName: legacyModelName,
+                ankiSyncClozeModelName: "Syro Cloze",
                 ...settingsOverrides,
             },
         },
@@ -811,7 +814,7 @@ describe("ankiSync service", () => {
                 {
                     noteId: 30,
                     cards: [40],
-                    modelName: "Syro::Card",
+                    modelName: "Syro Card",
                     tags: ["syro-sync"],
                     mod: 10,
                     fields: {

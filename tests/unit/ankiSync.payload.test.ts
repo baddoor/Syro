@@ -131,11 +131,64 @@ describe("ankiSync payload", () => {
         });
 
         expect(payload?.renderSource).toBe("locator");
-        expect(payload?.fields.Front).toContain("[...]");
-        expect(payload?.fields.Front).not.toContain("legacy-front");
-        expect(payload?.fields.Back).toContain('class="syro-anki-answer"');
-        expect(payload?.fields.Back).not.toContain("legacy-back");
+        expect(payload?.modelKind).toBe("cloze");
+        expect(payload?.modelName).toBe("Syro Cloze");
+        expect(payload?.fields.Text).toContain("{{c1::");
+        expect(payload?.fields.Text).toContain(answerText);
+        expect(payload?.fields.Text).not.toContain("legacy-front");
+        expect(payload?.fields["Back Extra"]).toContain(noteText);
         expect(payload?.warnings).toEqual([]);
+    });
+
+    it("keeps other clozes visible plain text when building a native cloze note", () => {
+        const noteText = "alpha ==first== beta ==second== gamma";
+        const card = createCard({
+            noteText,
+            questionType: CardType.Cloze,
+        });
+        const trackedItems = [
+            new TrackedItem(
+                "first",
+                10,
+                "",
+                CardType.Cloze,
+                {
+                    startOffset: noteText.indexOf("first"),
+                    endOffset: noteText.indexOf("first") + "first".length,
+                    blockStartOffset: 0,
+                    blockEndOffset: noteText.length,
+                },
+                "hl0",
+                card.repetitionItem!.ID,
+            ),
+            new TrackedItem(
+                "second",
+                10,
+                "",
+                CardType.Cloze,
+                {
+                    startOffset: noteText.indexOf("second"),
+                    endOffset: noteText.indexOf("second") + "second".length,
+                    blockStartOffset: 0,
+                    blockEndOffset: noteText.length,
+                },
+                "hl1",
+                999,
+            ),
+        ];
+        const trackedFile = createLocatorTrackedFile(noteText, trackedItems[0]);
+        trackedFile.trackedItems = trackedItems;
+
+        const payload = buildSyroAnkiCardPayload(card, undefined, undefined, {
+            settings: DEFAULT_SETTINGS,
+            store: {
+                getTrackedFile: () => trackedFile,
+                getFileByID: () => trackedFile,
+            },
+            fileTextByPath: new Map([["note.md", noteText]]),
+        });
+
+        expect(payload?.fields.Text).toBe("alpha {{c1::first}} beta second gamma");
     });
 
     it("renders QA cards from locator blocks instead of legacy serialized content", () => {
@@ -174,6 +227,7 @@ describe("ankiSync payload", () => {
         });
 
         expect(payload?.renderSource).toBe("locator");
+        expect(payload?.modelKind).toBe("basic");
         expect(payload?.fields.Front).toBe("问题");
         expect(payload?.fields.Back).toBe("答案");
     });

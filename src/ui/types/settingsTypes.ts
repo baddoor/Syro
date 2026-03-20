@@ -33,7 +33,8 @@ export interface UISettingsState {
     ankiSyncEnabled: boolean;
     ankiSyncEndpoint: string;
     ankiSyncDeletePolicy: "delete" | "detach";
-    ankiSyncModelName: string;
+    ankiSyncBasicModelName: string;
+    ankiSyncClozeModelName: string;
     parseClozesInCodeBlocks: boolean; // Parse {{c1::...}} cloze syntax in code blocks
     codeContextLines: number; // code context lines
     clozeContextMode: string;
