@@ -1221,6 +1221,30 @@ export class AnkiSyncService {
         return normalized;
     }
 
+    private protectNativeClozeMarkers(markdown: string): {
+        markdown: string;
+        restore: (value: string) => string;
+    } {
+        const markers: string[] = [];
+        const protectedMarkdown = markdown.replace(
+            /\{\{c\d+(?:::|锛氾細)(.*?)(?:(?:::|锛氾細).*?)?\}\}/giu,
+            (match) => {
+                const token = `SR_NATIVE_CLOZE_TOKEN_${markers.length}__`;
+                markers.push(match);
+                return token;
+            },
+        );
+
+        return {
+            markdown: protectedMarkdown,
+            restore: (value: string) =>
+                markers.reduce(
+                    (result, marker, index) => result.split(`SR_NATIVE_CLOZE_TOKEN_${index}__`).join(marker),
+                    value,
+                ),
+        };
+    }
+
     private renderFallbackHtml(markdown: string): string {
         return escapeHtml(markdown)
             .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
@@ -1372,6 +1396,46 @@ export class AnkiSyncService {
         }
     }
 
+    private async renderNativeClozeTextField(markdown: string, sourcePath: string): Promise<RenderedFieldResult> {
+        const trimmed = markdown.trim();
+        if (!trimmed) {
+            return { html: "", mediaRefs: [], warnings: [] };
+        }
+
+        const { markdown: protectedMarkdown, restore } = this.protectNativeClozeMarkers(trimmed);
+        const mediaCandidates = extractMarkdownMediaReferenceCandidates(protectedMarkdown, "Text");
+        const app = this.plugin.app;
+        if (!app || typeof document === "undefined") {
+            return {
+                html: restore(this.renderFallbackHtml(protectedMarkdown)),
+                mediaRefs: [],
+                warnings:
+                    mediaCandidates.length > 0
+                        ? [`[media:Text] media rendering unavailable for ${sourcePath || "unknown"}`]
+                        : [],
+            };
+        }
+
+        try {
+            const container = document.createElement("div");
+            await MarkdownRenderer.render(app as any, protectedMarkdown, container, sourcePath, this.plugin as any);
+            const rendered = await this.rewriteRenderedMedia(container, "Text", sourcePath, mediaCandidates);
+            return {
+                ...rendered,
+                html: restore(rendered.html),
+            };
+        } catch {
+            return {
+                html: restore(this.renderFallbackHtml(protectedMarkdown)),
+                mediaRefs: [],
+                warnings:
+                    mediaCandidates.length > 0
+                        ? [`[media:Text] media rendering failed for ${sourcePath || "unknown"}`]
+                        : [],
+            };
+        }
+    }
+
     private getRenderedFieldNameForSide(payload: SyroAnkiCardPayload, side: "front" | "back" | "context"): AnkiMediaFieldName {
         if (payload.modelKind === "cloze") {
             return side === "front" ? "Text" : "Back Extra";
@@ -1390,12 +1454,15 @@ export class AnkiSyncService {
     private async renderSnapshotFields(builtSnapshots: Map<string, BuiltSyroCardSnapshot>): Promise<void> {
         for (const { payload } of builtSnapshots.values()) {
             const sourcePath = payload.filePath ?? "";
-            const front = await this.renderMarkdownField(
-                payload.front,
-                sourcePath,
-                "front",
-                this.getRenderedFieldNameForSide(payload, "front"),
-            );
+            const front =
+                payload.modelKind === "cloze"
+                    ? await this.renderNativeClozeTextField(payload.front, sourcePath)
+                    : await this.renderMarkdownField(
+                          payload.front,
+                          sourcePath,
+                          "front",
+                          this.getRenderedFieldNameForSide(payload, "front"),
+                      );
             const back = await this.renderMarkdownField(
                 payload.back,
                 sourcePath,
