@@ -217,21 +217,11 @@ export interface SyroAnkiModelSpec {
 }
 
 export function buildSyroAnkiModelCss(): string {
-    return `
-.card {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    text-align: left;
-}
-`;
-}
-
-function buildInlineStyleTag(): string {
-    return `<style>\n${SYRO_ANKI_SHARED_CSS}\n</style>`;
+    return SYRO_ANKI_SHARED_CSS;
 }
 
 function buildHeaderShell(body: string): string {
     return `
-${buildInlineStyleTag()}
 <div class="syro-container">
     <div class="syro-header">
         <div class="syro-path">{{Breadcrumb}}</div>

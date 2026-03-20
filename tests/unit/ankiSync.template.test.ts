@@ -30,7 +30,7 @@ describe("ankiSync template", () => {
         const front = buildSyroAnkiClozeTemplateFront();
         const back = buildSyroAnkiClozeTemplateBack();
 
-        expect(front).toContain("<style>");
+        expect(front).not.toContain("<style>");
         expect(front).not.toContain('<link rel="stylesheet" href="_syro_anki_sync.css">');
         expect(front).toContain('<div class="syro-container">');
         expect(front).toContain('<div class="syro-front-content">');

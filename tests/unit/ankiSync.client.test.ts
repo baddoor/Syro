@@ -82,9 +82,11 @@ describe("AnkiConnectClient", () => {
         const createParams = createModelRequest && JSON.parse((createModelRequest[0] as any).body).params;
         expect(createParams.inOrderFields).toEqual(expect.arrayContaining(["Front", "Back", "Context"]));
         expect(createParams.isCloze).toBe(false);
-        expect(createParams.cardTemplates[0].Front).toContain("<style>");
+        expect(createParams.cardTemplates[0].Front).not.toContain("<style>");
         expect(createParams.cardTemplates[0].Front).not.toContain('_syro_anki_sync.css');
         expect(createParams.cardTemplates[0].Front).not.toContain("_syro_anki_sync.js");
+        expect(createParams.css).toContain("--font-mono");
+        expect(createParams.css).toContain(".syro-container");
     });
 
     it("ensures the Syro cloze model with native cloze fields", async () => {
@@ -106,11 +108,13 @@ describe("AnkiConnectClient", () => {
         const createParams = createModelRequest && JSON.parse((createModelRequest[0] as any).body).params;
         expect(createParams.inOrderFields).toEqual(expect.arrayContaining(["Text", "Back Extra"]));
         expect(createParams.isCloze).toBe(true);
-        expect(createParams.cardTemplates[0].Front).toContain("<style>");
+        expect(createParams.cardTemplates[0].Front).not.toContain("<style>");
         expect(createParams.cardTemplates[0].Front).toContain("{{cloze:Text}}");
         expect(createParams.cardTemplates[0].Back).toContain("{{cloze:Text}}");
         expect(createParams.cardTemplates[0].Back).not.toContain('_syro_anki_sync.css');
         expect(createParams.cardTemplates[0].Back).not.toContain("{{Back Extra}}");
+        expect(createParams.css).toContain("--font-mono");
+        expect(createParams.css).toContain(".syro-container");
     });
 
     it("ensures decks and ignores already-existing deck errors", async () => {
