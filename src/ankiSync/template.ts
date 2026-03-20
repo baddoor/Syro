@@ -315,16 +315,6 @@ export function buildSyroAnkiClozeTemplateBack(): string {
         <div class="syro-front-content">
             {{cloze:Text}}
         </div>
-        {{#Back Extra}}
-        <div class="syro-meta-panel">
-            {{Back Extra}}
-        </div>
-        {{/Back Extra}}
-        {{#Source}}
-        <div class="syro-meta-panel">
-            {{Source}}
-        </div>
-        {{/Source}}
     `);
 }
 

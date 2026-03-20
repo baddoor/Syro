@@ -35,7 +35,9 @@ describe("ankiSync template", () => {
         expect(front).toContain('<div class="syro-front-content">');
         expect(front).toContain("{{cloze:Text}}");
         expect(back).toContain("{{cloze:Text}}");
-        expect(back).toContain("{{Back Extra}}");
+        expect(back).not.toContain("{{Back Extra}}");
+        expect(back).not.toContain("{{Source}}");
+        expect(back).not.toContain("syro-meta-panel");
         expect(front).not.toContain("syro-answer-region");
         expect(back).not.toContain("syro-back-payload");
     });
