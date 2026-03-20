@@ -12,11 +12,11 @@ const SYRO_ANKI_SHARED_CSS = `
 }
 
 .nightMode {
-    --bg: #121212;
+    --bg: #333333;
     --fg: #efefef;
-    --line: #333333;
+    --line: #555555;
     --badge-bg: #262626;
-    --badge-fg: #888888;
+    --badge-fg: #cccccc;
 }
 
 .card {
@@ -39,22 +39,31 @@ const SYRO_ANKI_SHARED_CSS = `
 .syro-header {
     display: flex;
     justify-content: space-between;
-    align-items: stretch;
+    align-items: center;
     gap: 16px;
     border-bottom: 2px solid var(--fg);
     font-family: var(--font-mono);
     font-size: 11px;
     text-transform: uppercase;
-    margin-bottom: 40px;
+    margin-bottom: 20px;
+}
+
+.nightMode .syro-header {
+    border-bottom: 2px solid #888888;
 }
 
 .syro-path {
-    padding: 8px 0;
+    padding: 4px 0;
     letter-spacing: 0.08em;
     opacity: 0.5;
     flex-grow: 1;
     min-width: 0;
     word-break: break-word;
+}
+
+.nightMode .syro-path {
+    opacity: 1;
+    color: #bbbbbb;
 }
 
 .syro-path a {
@@ -68,7 +77,7 @@ const SYRO_ANKI_SHARED_CSS = `
 }
 
 .syro-brand {
-    padding: 6px 14px;
+    padding: 2px 8px;
     background-color: var(--badge-bg);
     color: var(--badge-fg);
     font-size: 13px;
@@ -81,6 +90,29 @@ const SYRO_ANKI_SHARED_CSS = `
     font-size: 20px;
     line-height: 1.8;
     letter-spacing: 0.02em;
+}
+
+@media screen and (max-width: 600px) {
+    .card {
+        padding: 10px 12px;
+        font-size: 16px;
+    }
+
+    .syro-header {
+        gap: 8px;
+        margin-bottom: 12px;
+    }
+
+    .syro-path {
+        font-size: 10px;
+        padding: 2px 0;
+        line-height: 1.4;
+    }
+
+    .syro-brand {
+        font-size: 11px;
+        padding: 2px 6px;
+    }
 }
 
 .syro-front-content,
