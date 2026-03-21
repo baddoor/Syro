@@ -228,6 +228,8 @@ export default class SRPlugin extends Plugin {
     private lastSyncCompletedAt = 0;
     private lastSuccessfulSyncStartedAt = 0;
     private lastSyncReviewMode: FlashcardReviewMode | null = null;
+    private lastSuccessfulCardCaptureSignature = "";
+    private pendingCardCapturePromptSignature = "";
     private lastSemanticChangeAt = 0;
     private noteReviewRefreshLock = false;
     private noteReviewRefreshPending = false;
@@ -872,6 +874,58 @@ export default class SRPlugin extends Plugin {
             codeContextLines: settings.codeContextLines,
         };
         return JSON.stringify(signature);
+    }
+
+    public getCardCaptureSignature(settings: SRSettings = this.data.settings): string {
+        const signature = {
+            singleLineCardSeparator: settings.singleLineCardSeparator,
+            singleLineReversedCardSeparator: settings.singleLineReversedCardSeparator,
+            multilineCardSeparator: settings.multilineCardSeparator,
+            multilineReversedCardSeparator: settings.multilineReversedCardSeparator,
+            multilineCardEndMarker: settings.multilineCardEndMarker,
+            clozePatterns: settings.clozePatterns,
+            convertHighlightsToClozes: settings.convertHighlightsToClozes,
+            convertBoldTextToClozes: settings.convertBoldTextToClozes,
+            convertCurlyBracketsToClozes: settings.convertCurlyBracketsToClozes,
+            convertAnkiClozesToClozes: settings.convertAnkiClozesToClozes,
+            parseClozesInCodeBlocks: settings.parseClozesInCodeBlocks,
+            multiClozeCard: settings.multiClozeCard,
+        };
+        return JSON.stringify(signature);
+    }
+
+    public markCardCaptureSettingsChange(
+        previousSettings: SRSettings,
+        nextSettings: SRSettings,
+    ): void {
+        const previousSignature = this.getCardCaptureSignature(previousSettings);
+        const nextSignature = this.getCardCaptureSignature(nextSettings);
+        if (previousSignature === nextSignature) {
+            return;
+        }
+
+        this.pendingCardCapturePromptSignature = nextSignature;
+    }
+
+    public consumePendingCardCaptureRebuildPrompt(
+        settings: SRSettings = this.data.settings,
+    ): boolean {
+        const currentSignature = this.getCardCaptureSignature(settings);
+        if (!this.pendingCardCapturePromptSignature) {
+            return false;
+        }
+
+        if (this.pendingCardCapturePromptSignature !== currentSignature) {
+            return false;
+        }
+
+        if (this.lastSuccessfulCardCaptureSignature === currentSignature) {
+            this.pendingCardCapturePromptSignature = "";
+            return false;
+        }
+
+        this.pendingCardCapturePromptSignature = "";
+        return true;
     }
 
     private getNoteCacheStorePath(): string {
@@ -1528,6 +1582,10 @@ export default class SRPlugin extends Plugin {
             this.lastSuccessfulSyncStartedAt = syncStartedAt;
             this.lastSyncCompletedAt = Date.now();
             this.lastSyncReviewMode = reviewMode;
+            this.lastSuccessfulCardCaptureSignature = this.getCardCaptureSignature(settings);
+            if (this.pendingCardCapturePromptSignature === this.lastSuccessfulCardCaptureSignature) {
+                this.pendingCardCapturePromptSignature = "";
+            }
             this.syncEvents.emit("sync-complete");
         } catch (error) {
             console.error("[SR-Sync] sync failed:", error);
