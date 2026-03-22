@@ -1,4 +1,6 @@
 import { SyncEvents } from "../Events/SyncEvents";
+import { Card } from "../Card";
+import { Deck } from "../Deck";
 import { RepetitionItem } from "./repetitionItem";
 
 export interface DeckStats {
@@ -64,7 +66,7 @@ export class DeckStatsService {
     }
 
     public recalculateDeck(
-        deck: any,
+        deck: Deck | null | undefined,
         learnAheadMillis: number = 0,
         now: number = Date.now(),
     ): void {
@@ -77,8 +79,8 @@ export class DeckStatsService {
                   ? deck.getTopicPath().path.join("/")
                   : deck.deckName;
         const items = [...deck.newFlashcards, ...deck.dueFlashcards, ...deck.learningFlashcards]
-            .map((c: any) => c.repetitionItem)
-            .filter((i: any) => i);
+            .map((card: Card) => card.repetitionItem)
+            .filter((item): item is RepetitionItem => Boolean(item));
 
         this.calculateDeckStats(deckName, items, learnAheadMillis, now);
     }

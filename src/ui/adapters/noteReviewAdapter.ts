@@ -157,14 +157,14 @@ export function reviewDeckToSections(deck: ReviewDeck, plugin: SRPlugin): NoteRe
             if (!dayGroups.has(nDays)) {
                 dayGroups.set(nDays, []);
             }
-            dayGroups.get(nDays)!.push(schedNoteToItem(sNote, i, plugin));
+            dayGroups.get(nDays).push(schedNoteToItem(sNote, i, plugin));
         }
 
         // 按天数排序并创建分组
         const sortedDays = Array.from(dayGroups.keys()).sort((a, b) => a - b);
 
         for (const nDays of sortedDays) {
-            const items = dayGroups.get(nDays)!;
+            const items = dayGroups.get(nDays);
             const groupInfo = getDaysGroupInfo(nDays);
 
             sections.push({

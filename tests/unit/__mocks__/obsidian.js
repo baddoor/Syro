@@ -1,3 +1,5 @@
+const realMoment = require("moment");
+
 class Plugin {}
 
 class ItemView {
@@ -129,9 +131,9 @@ module.exports = new Proxy(
         TFile,
         WorkspaceLeaf,
         getAllTags: jest.fn(() => []),
-        moment: {
+        moment: Object.assign(realMoment, {
             locale: jest.fn(() => "en"),
-        },
+        }),
         setTooltip: jest.fn(),
     },
     {

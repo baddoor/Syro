@@ -1,5 +1,5 @@
 /**
- * [辅助] 计算笔记重要性（PageRank），用于笔记复习的排序。
+ * [杈呭姪] 璁＄畻绗旇閲嶈鎬э紙PageRank锛夛紝鐢ㄤ簬绗旇澶嶄範鐨勬帓搴忋€?
  */
 import { MetadataCache, TFile } from "obsidian";
 import { NoteEaseList } from "src/NoteEaseList";
@@ -11,6 +11,10 @@ export interface LinkStat {
     sourcePath: string;
     linkCount: number;
 }
+
+type BaseEaseSettings = {
+    baseEase?: number;
+};
 
 export class LinkRank {
     settings: SRSettings;
@@ -42,13 +46,15 @@ export class LinkRank {
      * @returns
      */
     getContribution(note: TFile, easeByPath: NoteEaseList) {
-        console.log("[SR Debug LinkRank] ===== getContribution called =====");
-        console.log("[SR Debug LinkRank] note.path:", note.path);
-        console.log("[SR Debug LinkRank] settings.noteAlgorithm:", this.settings.noteAlgorithm);
-        console.log("[SR Debug LinkRank] algorithmSettings:", this.settings.algorithmSettings);
+        console.debug("[SR Debug LinkRank] ===== getContribution called =====");
+        console.debug("[SR Debug LinkRank] note.path:", note.path);
+        console.debug("[SR Debug LinkRank] settings.noteAlgorithm:", this.settings.noteAlgorithm);
+        console.debug("[SR Debug LinkRank] algorithmSettings:", this.settings.algorithmSettings);
 
-        const algoSettings = this.settings.algorithmSettings[this.settings.noteAlgorithm];
-        console.log("[SR Debug LinkRank] algoSettings:", algoSettings);
+        const algoSettings = this.settings.algorithmSettings[
+            this.settings.noteAlgorithm
+        ] as BaseEaseSettings | undefined;
+        console.debug("[SR Debug LinkRank] algoSettings:", algoSettings);
 
         if (!algoSettings) {
             console.error("[SR Debug LinkRank] ERROR: algoSettings is undefined!");
@@ -60,11 +66,13 @@ export class LinkRank {
         }
 
         const baseEase = algoSettings.baseEase;
-        console.log("[SR Debug LinkRank] baseEase:", baseEase);
+        console.debug("[SR Debug LinkRank] baseEase:", baseEase);
 
         if (baseEase === undefined || isNaN(baseEase)) {
             console.error("[SR Debug LinkRank] ERROR: baseEase is", baseEase);
-            throw new Error(`baseEase is ${baseEase} for algorithm ${this.settings.noteAlgorithm}`);
+            throw new Error(
+                `baseEase is ${String(baseEase)} for algorithm ${String(this.settings.noteAlgorithm)}`,
+            );
         }
 
         let linkTotal = 0,
@@ -108,7 +116,7 @@ export class LinkRank {
         }
         ease = Math.round(ease * 100) / 100;
 
-        console.log("[SR Debug LinkRank] Calculated ease:", ease);
+        console.debug("[SR Debug LinkRank] Calculated ease:", ease);
 
         if (isNaN(ease)) {
             console.error("[SR Debug LinkRank] ERROR: Final ease is NaN!");
@@ -161,3 +169,4 @@ export class LinkRank {
         });
     }
 }
+

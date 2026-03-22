@@ -1,7 +1,7 @@
-import { Card } from "src/Card";
+﻿import { Card } from "src/Card";
 import { CardListType, Deck } from "src/Deck";
 import { NoteCardScheduleParser } from "src/CardSchedule";
-import { MarkdownRenderer, TFile } from "obsidian";
+import { App, Component, MarkdownRenderer, TFile } from "obsidian";
 import deepcopy from "deepcopy";
 import * as tsfsrs from "ts-fsrs";
 import { FsrsData } from "src/algorithms/fsrs";
@@ -59,19 +59,7 @@ const ANKI_USER_BURIED_QUEUE = -3;
 
 export interface AnkiSyncPluginAdapter {
     data: { settings: SRSettings };
-    app?: {
-        vault?: {
-            getName?: () => string;
-            configDir?: string;
-            getAbstractFileByPath?: (path: string) => unknown;
-            adapter?: {
-                readBinary?: (path: string) => Promise<ArrayBuffer>;
-            };
-        };
-        metadataCache?: {
-            getFirstLinkpathDest?: (linkpath: string, sourcePath: string) => TFile | null;
-        };
-    };
+    app?: App;
     manifest: { dir?: string };
     store: DataStore;
 }
@@ -203,7 +191,7 @@ function truncateText(value: string, maxLength = 80): string {
         return normalized;
     }
 
-    return `${normalized.slice(0, Math.max(0, maxLength - 1))}…`;
+    return `${normalized.slice(0, Math.max(0, maxLength - 1))}...`;
 }
 
 function chunkArray<T>(values: T[], chunkSize = 25): T[][] {
@@ -223,7 +211,7 @@ function isRemoteUrl(value: string): boolean {
 }
 
 function normalizeVaultPath(value: string): string {
-    const normalized = value.replace(/\\/g, "/");
+    const normalized = value.replaceAll("\\", "/");
     const segments = normalized
         .split("/")
         .map((segment) => segment.trim())
@@ -250,11 +238,15 @@ function dirname(filePath: string): string {
 }
 
 function joinVaultPath(baseDir: string, target: string): string {
-    const normalizedTarget = target.replace(/\\/g, "/");
+    const normalizedTarget = target.replaceAll("\\", "/");
     if (normalizedTarget.startsWith("/")) {
         return normalizeVaultPath(normalizedTarget.slice(1));
     }
-    return normalizeVaultPath(baseDir ? `${baseDir}/${normalizedTarget}` : normalizedTarget);
+    let joinedPath = normalizedTarget;
+    if (baseDir.length > 0) {
+        joinedPath = baseDir + "/" + normalizedTarget;
+    }
+    return normalizeVaultPath(joinedPath);
 }
 
 function getAbstractPath(value: unknown): string | null {
@@ -267,11 +259,19 @@ function getAbstractPath(value: unknown): string | null {
 }
 
 function toCardQueue(value: number): CardQueue {
-    if (value === CardQueue.Learn || value === CardQueue.Review || value === ANKI_SUSPENDED_QUEUE) {
+    if (
+        value === Number(CardQueue.Learn) ||
+        value === Number(CardQueue.Review) ||
+        value === ANKI_SUSPENDED_QUEUE
+    ) {
         return value as CardQueue;
     }
 
     return CardQueue.New;
+}
+
+function isCardQueueValue(value: number | null | undefined, queue: CardQueue): boolean {
+    return Number(value) === Number(queue);
 }
 
 function escapeHtml(value: string): string {
@@ -313,7 +313,7 @@ export class AnkiSyncService {
 
     private logRuntimeDebug(...args: unknown[]): void {
         if (this.plugin.data.settings.showRuntimeDebugMessages) {
-            console.log(...args);
+            console.debug(...args);
         }
     }
 
@@ -332,9 +332,9 @@ export class AnkiSyncService {
             lapses: snapshot.lapses,
             updatedAt: snapshot.updatedAt,
             dueValue: snapshot.dueValue ?? null,
-            rawQueue: toNumber((raw as Record<string, unknown>).queue, Number.NaN),
-            rawType: toNumber((raw as Record<string, unknown>).type, Number.NaN),
-            rawDue: toNumber((raw as Record<string, unknown>).due, Number.NaN),
+            rawQueue: toNumber((raw).queue, Number.NaN),
+            rawType: toNumber((raw).type, Number.NaN),
+            rawDue: toNumber((raw).due, Number.NaN),
         };
     }
 
@@ -500,10 +500,9 @@ export class AnkiSyncService {
                 continue;
             }
 
-            card = deepcopy(next.card) as FsrsData;
+            card = deepcopy(next.card);
             card.stability = Number(card.stability.toFixed(5));
             card.difficulty = Number(card.difficulty.toFixed(5));
-            card.elapsed_days = Number(card.elapsed_days.toFixed(3));
         }
 
         return {
@@ -677,25 +676,25 @@ export class AnkiSyncService {
         }
 
         if (row.candidateReason === "missing-baseline-next-review") {
-            analysis.push("reviewDueOffset 缺少可用 baseline，review due 天数无法可靠换算。");
+            analysis.push("reviewDueOffset is missing a usable baseline, so review due days cannot be converted reliably.");
         }
         if (row.remoteSnapshotSource === "anki-hidden") {
-            analysis.push("远端隐藏 snapshot 被选为最新状态，可能覆盖了 cardSnapshot。");
+            analysis.push("The hidden Anki snapshot was selected as the latest state and may have overwritten cardSnapshot.");
         }
         if (row.decision === "stale-pull-cursor") {
-            analysis.push("远端更新被 lastPullCursor 跳过。");
+            analysis.push("The remote update was skipped because it fell behind lastPullCursor.");
         }
         if (row.decision === "remote-not-newer-than-local-baseline") {
-            analysis.push("远端更新未超过本地 baseline.updatedAt。");
+            analysis.push("The remote update was not newer than the local baseline.updatedAt value.");
         }
         if (row.decision === "local-item-missing") {
-            analysis.push("本地 item 未找到，无法将远端状态应用到 Syro。");
+            analysis.push("The local item was not found, so the remote state could not be applied to Syro.");
         }
         if (row.applied && row.syroNextReview !== null && row.syroNextReview > 0 && row.ankiDue !== row.syroDue) {
-            analysis.push("本地 nextReview 已更新，但最终 due 判定仍与 Anki 不一致。");
+            analysis.push("The local nextReview was updated, but the final due calculation still differs from Anki.");
         }
         if (analysis.length === 0) {
-            analysis.push("未命中已知异常路径，需要继续检查该卡的 schedule 计算。");
+            analysis.push("No known mismatch path matched. This card's schedule calculation needs deeper inspection.");
         }
 
         return analysis;
@@ -715,8 +714,6 @@ export class AnkiSyncService {
             analysis.push("single-card review freshness tied, so the local state was kept.");
         }
         if (row.candidateReason === "missing-baseline-next-review") {
-            analysis.push("reviewDueOffset 缺少可用 baseline");
-            analysis.push("reviewDueOffset 缂哄皯鍙敤 baseline");
             analysis.push("reviewDueOffset is unresolved because no review baseline is available.");
         } else if (row.candidateReason === "review-log-available") {
             analysis.push("review log provided the fallback calibration for this review card.");
@@ -827,7 +824,7 @@ export class AnkiSyncService {
             if (!groupedRows.has(deckName)) {
                 groupedRows.set(deckName, []);
             }
-            groupedRows.get(deckName)!.push(row);
+            groupedRows.get(deckName).push(row);
         }
 
         for (const [deckName, deckRows] of groupedRows.entries()) {
@@ -979,7 +976,7 @@ export class AnkiSyncService {
                     decision: row.decision,
                 });
                 result.errors.push(
-                    `[compare-card:${deckName}] direction=${row.direction} authority=${row.authority} localReviewFreshness=${row.localReviewFreshness} remoteReviewFreshness=${row.remoteReviewFreshness} lastMergedUpdatedAt=${row.lastMergedUpdatedAt} lastRemoteUpdatedAt=${row.lastRemoteUpdatedAt} remoteChangedAt=${row.remoteChangedAt} file=${row.card.filePath} uuid=${row.card.itemUuid} cardId=${row.card.cardId} front=${row.card.frontPreview} ankiDue=${row.ankiDue} syroDue=${row.syroDue} candidateReason=${row.candidateReason ?? "none"} missingBaselineState=${row.missingBaselineState ?? "none"} reviewLogState=${row.reviewLogState ?? "none"} latestReviewId=${row.latestReviewId ?? "null"} latestReviewInterval=${row.latestReviewInterval ?? "null"} remoteSnapshotSource=${row.remoteSnapshotSource ?? "none"} decision=${row.decision} reviewDueOffset=${row.reviewDueOffset ?? "null"}`,
+                    `[compare-card:${deckName}] direction=${row.direction} authority=${row.authority} localReviewFreshness=${row.localReviewFreshness} remoteReviewFreshness=${row.remoteReviewFreshness} lastMergedUpdatedAt=${row.lastMergedUpdatedAt} lastRemoteUpdatedAt=${row.lastRemoteUpdatedAt} remoteChangedAt=${row.remoteChangedAt} file=${row.card.filePath} uuid=${row.card.itemUuid} cardId=${row.card.cardId} front=${row.card.frontPreview} ankiDue=${String(row.ankiDue)} syroDue=${String(row.syroDue)} candidateReason=${row.candidateReason ?? "none"} missingBaselineState=${row.missingBaselineState ?? "none"} reviewLogState=${row.reviewLogState ?? "none"} latestReviewId=${row.latestReviewId ?? "null"} latestReviewInterval=${row.latestReviewInterval ?? "null"} remoteSnapshotSource=${row.remoteSnapshotSource ?? "none"} decision=${row.decision} reviewDueOffset=${row.reviewDueOffset ?? "null"}`,
                 );
             }
         }
@@ -1006,8 +1003,8 @@ export class AnkiSyncService {
         const allLookNew = existingSnapshots.every((snapshot) => {
             const rawQueue = toNumber(snapshot.raw?.queue, snapshot.queue);
             return (
-                snapshot.queue === CardQueue.New &&
-                rawQueue === CardQueue.New &&
+                isCardQueueValue(snapshot.queue, CardQueue.New) &&
+                isCardQueueValue(rawQueue, CardQueue.New) &&
                 snapshot.nextReview <= 0 &&
                 snapshot.reps <= 0 &&
                 snapshot.timesReviewed <= 0
@@ -1178,35 +1175,35 @@ export class AnkiSyncService {
             links.push(`<a href="${escapeHtml(exactLink)}">Locate line</a>`);
         }
 
-        const actions = links.length > 0 ? ` <span class="syro-anki-source-links">(${links.join(" · ")})</span>` : "";
+        const actions = links.length > 0 ? ` <span class="syro-anki-source-links">(${links.join(" 璺?")})</span>` : "";
         return `${safeLabel}${actions}`.trim();
     }
 
     private normalizeLegacyClozeMarkers(markdown: string, side: "front" | "back" | "context"): string {
         let normalized = markdown.replace(/<!--SR_CODE_CLOZE:\d+:\d+-->\r?\n?/g, "");
-        normalized = normalized.replace(/芦芦SR_H:([^禄]+)禄禄/g, (_match, encoded) => {
+        normalized = normalized.replace(/<!--SR_H:([^>]+)-->/g, (_match, encoded: string) => {
             try {
                 return createMaskMarkup(decodeURIComponent(encoded));
             } catch {
                 return createMaskMarkup();
             }
         });
-        normalized = normalized.replace(/芦芦SR_S:([^禄]+)禄禄/g, (_match, encoded) => {
+        normalized = normalized.replace(/<!--SR_S:([^>]+)-->/g, (_match, encoded: string) => {
             try {
                 return createAnswerMarkup(decodeURIComponent(encoded));
             } catch {
                 return createAnswerMarkup(encoded);
             }
         });
-        normalized = normalized.replace(/««SR_CLOZE_FRONT»»/g, createMaskMarkup());
-        normalized = normalized.replace(/««SR_CLOZE_BACK:([^»]+)»»/g, (_match, encoded) => {
+        normalized = normalized.replace(/\{\{SR_CLOZE_FRONT\}\}/g, createMaskMarkup());
+        normalized = normalized.replace(/\{\{SR_CLOZE_BACK:([^}]+)\}\}/g, (_match, encoded: string) => {
             try {
                 return createAnswerMarkup(decodeURIComponent(encoded));
             } catch {
                 return createAnswerMarkup(encoded);
             }
         });
-        normalized = normalized.replace(/««SR_CLOZE:([^»]+)»»/g, (_match, encoded) => {
+        normalized = normalized.replace(/\{\{SR_CLOZE:([^}]+)\}\}/g, (_match, encoded: string) => {
             try {
                 return side === "front"
                     ? createMaskMarkup()
@@ -1215,8 +1212,9 @@ export class AnkiSyncService {
                 return side === "front" ? createMaskMarkup() : createAnswerMarkup(encoded);
             }
         });
-        normalized = normalized.replace(/\{\{c\d+(?:::|：：)(.*?)(?:(?:::|：：).*?)?\}\}/giu, (_match, content) =>
-            createAnswerMarkup(content),
+        normalized = normalized.replace(
+            /\{\{c\d+::(.*?)(?:::(.*?))?\}\}/giu,
+            (_match, content: string) => createAnswerMarkup(content),
         );
         return normalized;
     }
@@ -1227,7 +1225,7 @@ export class AnkiSyncService {
     } {
         const markers: string[] = [];
         const protectedMarkdown = markdown.replace(
-            /\{\{c\d+(?:::|锛氾細)(.*?)(?:(?:::|锛氾細).*?)?\}\}/giu,
+            /\{\{c\d+::(.*?)(?:::(.*?))?\}\}/giu,
             (match) => {
                 const token = `SRNATIVECLOZETOKEN${markers.length}PLACEHOLDER`;
                 markers.push(match);
@@ -1260,7 +1258,7 @@ export class AnkiSyncService {
             return null;
         }
 
-        const app = this.plugin.app as any;
+        const app = this.plugin.app;
         const metadataCache = app?.metadataCache;
         const vault = app?.vault;
         const cleanedPath = normalizedPath.replace(/^app:\/\/local\//i, "").replace(/^app:\/\/obsidian\.md\//i, "");
@@ -1314,12 +1312,12 @@ export class AnkiSyncService {
         }
     }
 
-    private async rewriteRenderedMedia(
+    private rewriteRenderedMedia(
         container: HTMLElement,
         fieldName: AnkiMediaFieldName,
         sourcePath: string,
         candidates: AnkiMediaReferenceCandidate[],
-    ): Promise<RenderedFieldResult> {
+    ): RenderedFieldResult {
         const mediaRefs: AnkiMediaReference[] = [];
         const warnings: string[] = [];
         const images = Array.from(container.querySelectorAll("img"));
@@ -1357,6 +1355,24 @@ export class AnkiSyncService {
         };
     }
 
+    private async renderMarkdownIntoContainer(
+        app: App,
+        markdown: string,
+        container: HTMLElement,
+        sourcePath: string,
+    ): Promise<void> {
+        const owner = new Component();
+        const load = (owner as { load?: () => void }).load;
+        const unload = (owner as { unload?: () => void }).unload;
+        load?.call(owner);
+
+        try {
+            await MarkdownRenderer.render(app, markdown, container, sourcePath, owner);
+        } finally {
+            unload?.call(owner);
+        }
+    }
+
     private async renderMarkdownField(
         markdown: string,
         sourcePath: string,
@@ -1383,7 +1399,7 @@ export class AnkiSyncService {
 
         try {
             const container = document.createElement("div");
-            await MarkdownRenderer.render(app as any, normalized, container, sourcePath, this.plugin as any);
+            await this.renderMarkdownIntoContainer(app, normalized, container, sourcePath);
             return this.rewriteRenderedMedia(container, fieldName, sourcePath, mediaCandidates);
         } catch {
             return {
@@ -1419,8 +1435,8 @@ export class AnkiSyncService {
 
         try {
             const container = document.createElement("div");
-            await MarkdownRenderer.render(app as any, protectedMarkdown, container, sourcePath, this.plugin as any);
-            const rendered = await this.rewriteRenderedMedia(container, "Text", sourcePath, mediaCandidates);
+            await this.renderMarkdownIntoContainer(app, protectedMarkdown, container, sourcePath);
+            const rendered = this.rewriteRenderedMedia(container, "Text", sourcePath, mediaCandidates);
             return {
                 ...rendered,
                 html: restore(rendered.html),
@@ -1536,7 +1552,7 @@ export class AnkiSyncService {
         }
 
         await client.ensureBinaryMediaFiles(assets, (current, total, filename) =>
-            onProgress?.(current, total, `正在上传 Anki 图片媒体 (${current}/${total}): ${filename}`),
+            onProgress?.(current, total, `濮濓絽婀稉濠佺炊 Anki 閸ュ墽澧栨刊鎺嶇秼 (${current}/${total}): ${filename}`),
         );
     }
 
@@ -1606,9 +1622,7 @@ export class AnkiSyncService {
         noteInput: Record<string, unknown>,
     ): Promise<string | null> {
         try {
-            const detail = (await client.canAddNotesWithErrorDetail([noteInput]))[0] as
-                | AnkiCanAddNoteResult
-                | undefined;
+            const detail = (await client.canAddNotesWithErrorDetail([noteInput]))[0];
             return detail?.canAdd === false ? detail.error ?? "cannot add note" : null;
         } catch (error) {
             return `failed to diagnose addNote: ${String(error)}`;
@@ -1868,10 +1882,10 @@ export class AnkiSyncService {
         latestReview: AnkiCardReview | null,
     ): ReviewDueOffsetCandidateResult {
         const reviewLogState = this.resolveReviewLogState(latestReview);
-        if (cardInfo.queue !== CardQueue.Review || cardInfo.due === null) {
+        if (!isCardQueueValue(cardInfo.queue, CardQueue.Review) || cardInfo.due === null) {
             return {
                 candidate: null,
-                reason: cardInfo.queue !== CardQueue.Review ? "not-review-queue" : "missing-due",
+                reason: !isCardQueueValue(cardInfo.queue, CardQueue.Review) ? "not-review-queue" : "missing-due",
                 calibrationSource: 0,
                 calibrationSourceLabel: null,
                 baselineDue: null,
@@ -2595,7 +2609,7 @@ export class AnkiSyncService {
                     this.logRuntimeDebug("[Syro-Anki][Pull][Diagnosis] remote review due unresolved", {
                         itemUuid,
                         message:
-                            "首次远端复习缺少可用 review baseline，无法可靠换算 review due day。",
+                            "Remote review due state is unresolved because no usable review baseline could be converted into review due days.",
                         currentIsDue: remoteRecord.cardSnapshot.nextReview <= 0,
                         card: this.summarizeCardInfo(cardInfo),
                         latestReview: this.summarizeCardReview(latestReview),
@@ -2789,7 +2803,7 @@ export class AnkiSyncService {
                 onProgress?.(
                     processed,
                     mappedEntries.length,
-                    `正在拉取 Anki 远端变更 (${processed}/${mappedEntries.length})...`,
+                    `濮濓絽婀幏澶婂絿 Anki 鏉╂粎顏崣妯绘纯 (${processed}/${mappedEntries.length})...`,
                 );
             }
         }
@@ -2844,11 +2858,11 @@ export class AnkiSyncService {
             onProgress?.(
                 processed,
                 createOps.length,
-                `Anki 预检跳过 ${processed} 张卡片 (${processed}/${createOps.length})...`,
+                `Anki 妫板嫭顥呯捄瀹犵箖 ${processed} 瀵姴宕遍悧?(${processed}/${createOps.length})...`,
             );
         }
         if (preparedNotes.length === 0) {
-            onProgress?.(createOps.length, createOps.length, "Anki 建卡预检后无可创建卡片");
+            onProgress?.(createOps.length, createOps.length, "Anki card creation skipped because all prepared notes were filtered out.");
             return;
         }
 
@@ -2875,7 +2889,7 @@ export class AnkiSyncService {
                     onProgress?.(
                         processed,
                         createOps.length,
-                        `正在创建 Anki 卡片 (${processed}/${createOps.length})...`,
+                        `濮濓絽婀崚娑樼紦 Anki 閸楋紕澧?(${processed}/${createOps.length})...`,
                     );
                 }
             } catch (error) {
@@ -2885,7 +2899,7 @@ export class AnkiSyncService {
                     onProgress?.(
                         processed,
                         createOps.length,
-                        `正在创建 Anki 卡片 (${processed}/${createOps.length})...`,
+                        `濮濓絽婀崚娑樼紦 Anki 閸楋紕澧?(${processed}/${createOps.length})...`,
                     );
                 }
             }
@@ -2908,21 +2922,21 @@ export class AnkiSyncService {
         let processed = 0;
         for (const op of updateOps) {
             try {
-                await client.updateNoteFields(op.mapping!.noteId, op.payload!.fields);
-                if (op.mapping!.deckName !== op.payload!.deckName) {
-                    await client.changeDeck([op.mapping!.cardId], op.payload!.deckName);
+                await client.updateNoteFields(op.mapping.noteId, op.payload.fields);
+                if (op.mapping.deckName !== op.payload.deckName) {
+                    await client.changeDeck([op.mapping.cardId], op.payload.deckName);
                 }
 
                 const itemState = ensureAnkiSyncItemState(state, op.itemUuid);
                 itemState.mapping = {
-                    ...op.mapping!,
-                    deckName: op.payload!.deckName,
-                    filePath: op.payload!.filePath,
-                    cardHash: op.payload!.cardHash,
-                    modelName: op.payload!.modelName,
+                    ...op.mapping,
+                    deckName: op.payload.deckName,
+                    filePath: op.payload.filePath,
+                    cardHash: op.payload.cardHash,
+                    modelName: op.payload.modelName,
                 };
-                itemState.lastKnownCardHash = op.payload!.cardHash;
-                itemState.lastKnownFilePath = op.payload!.filePath;
+                itemState.lastKnownCardHash = op.payload.cardHash;
+                itemState.lastKnownFilePath = op.payload.filePath;
                 result.updated += 1;
             } catch (error) {
                 result.errors.push(`[update:${op.itemUuid}] ${String(error)}`);
@@ -2931,7 +2945,7 @@ export class AnkiSyncService {
                 onProgress?.(
                     processed,
                     updateOps.length,
-                    `正在更新 Anki 卡片 (${processed}/${updateOps.length})...`,
+                    `濮濓絽婀弴瀛樻煀 Anki 閸楋紕澧?(${processed}/${updateOps.length})...`,
                 );
             }
         }
@@ -2967,7 +2981,7 @@ export class AnkiSyncService {
 
         let processed = 0;
         for (const op of destructiveOps) {
-            const mapping = op.mapping!;
+            const mapping = op.mapping;
             const itemState = ensureAnkiSyncItemState(state, op.itemUuid);
             try {
                 if (op.type === "delete" || op.type === "recreate") {
@@ -2994,7 +3008,7 @@ export class AnkiSyncService {
                 onProgress?.(
                     processed,
                     destructiveOps.length,
-                    `正在清理 Anki 卡片 (${processed}/${destructiveOps.length})...`,
+                    `濮濓絽婀〒鍛倞 Anki 閸楋紕澧?(${processed}/${destructiveOps.length})...`,
                 );
             }
         }
@@ -3019,7 +3033,7 @@ export class AnkiSyncService {
         state.global.endpoint = endpoint;
         state.global.connection.endpoint = endpoint;
         const reportProgress = this.createProgressReporter(options);
-        reportProgress("prepare", 0, 1, "正在准备 Anki 同步...");
+        reportProgress("prepare", 0, 1, "濮濓絽婀崙鍡楊槵 Anki 閸氬本顒?..");
 
         try {
             const client = this.clientFactory(endpoint);
@@ -3030,7 +3044,7 @@ export class AnkiSyncService {
             await client.ensureModel(clozeModelName, "cloze");
             state.global.connection.modelReady = true;
             const reviewHistorySyncReady = await this.supportsReviewHistorySync(client);
-            reportProgress("prepare", 1, 1, "Anki 已连接");
+            reportProgress("prepare", 1, 1, "Anki models are ready.");
 
             const fileTextByPath = await this.buildFileTextMap(deckTree);
             const vaultName = this.plugin.app?.vault?.getName?.() ?? "";
@@ -3089,7 +3103,7 @@ export class AnkiSyncService {
                             "ensure-decks",
                             current,
                             total,
-                            `正在确保 Anki 牌组 (${current}/${total}): ${deckName}`,
+                            `濮濓絽婀涵顔荤箽 Anki 閻楀瞼绮?(${current}/${total}): ${deckName}`,
                         ),
                 );
                 result.errors.push(
@@ -3098,7 +3112,7 @@ export class AnkiSyncService {
                     ),
                 );
             } else {
-                reportProgress("ensure-decks", 0, 0, "无需创建 Anki 牌组");
+                reportProgress("ensure-decks", 0, 0, "No Anki decks needed to be created.");
             }
 
             await this.uploadSnapshotMedia(client, builtSnapshots, result, (current, total, message) =>
@@ -3116,7 +3130,7 @@ export class AnkiSyncService {
             await this.removeNotes(client, ops, state, result, (current, total, message) =>
                 reportProgress("delete", current, total, message),
             );
-            reportProgress("finalize", 0, 1, "正在完成 Anki 同步...");
+            reportProgress("finalize", 0, 1, "濮濓絽婀€瑰本鍨?Anki 閸氬本顒?..");
 
             for (const op of ops) {
                 if (op.type !== "noop") {
@@ -3148,10 +3162,11 @@ export class AnkiSyncService {
             state.global.retry.lastFailureMessage = String(error);
             result.errors.push(String(error));
             await this.persistState();
-            reportProgress("finalize", 1, 1, "Anki 同步失败");
+            reportProgress("finalize", 1, 1, "Anki 閸氬本顒炴径杈Е");
             console.warn("[Syro-Anki] Sync skipped due to Anki error:", error);
         }
 
         return result;
     }
 }
+

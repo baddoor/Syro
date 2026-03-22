@@ -1,0 +1,35 @@
+@keyframes syro-breathe {
+    0% {
+        opacity: 0.6;
+    }
+
+    50% {
+        opacity: 1;
+    }
+
+    100% {
+        opacity: 0.6;
+    }
+}
+
+.syro-status-note.is-due {
+    color: var(--syro-note-status-color, var(--text-normal));
+    animation:
+        var(--syro-note-status-animation, none)
+        var(--syro-note-status-period, 2s)
+        infinite
+        ease-in-out;
+}
+
+.syro-status-card.is-due {
+    color: var(--syro-card-status-color, var(--text-normal));
+    animation:
+        var(--syro-card-status-animation, none)
+        var(--syro-card-status-period, 2s)
+        infinite
+        ease-in-out;
+}
+
+.syro-sb-sep {
+    opacity: 0.7;
+}

@@ -150,6 +150,7 @@ export interface SRSettings {
     // React UI Specific
     reactFlashcardWidth: number;
     reactFlashcardHeight: number;
+    reactDeckTreeWidth?: number;
     flashcardEasyText: string;
     flashcardGoodText: string;
     flashcardHardText: string;
@@ -187,8 +188,7 @@ export interface SRSettings {
     repeatItems: boolean;
     trackedNoteToDecks: boolean;
     untrackWithReviewTag: boolean;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    algorithmSettings: any;
+    algorithmSettings: Record<string, unknown>;
 
     // Deck option presets
     deckOptionsPresets: DeckOptionsPreset[]; // All presets, where index 0 is the default preset
@@ -310,6 +310,7 @@ export const DEFAULT_SETTINGS: SRSettings = {
     flashcardWidthPercentage: Platform.isMobile ? 100 : 40,
     reactFlashcardWidth: 720,
     reactFlashcardHeight: 600,
+    reactDeckTreeWidth: 860,
     flashcardEasyText: t("EASY"),
     flashcardGoodText: t("GOOD"),
     flashcardHardText: t("HARD"),
@@ -428,7 +429,7 @@ export function upgradeSettings(settings: SRSettings) {
         settings.flashcardCardOrder == null &&
         settings.flashcardDeckOrder == null
     ) {
-        console.log(`loadPluginData: Upgrading settings: ${settings.randomizeCardOrder}`);
+        console.debug(`loadPluginData: Upgrading settings: ${String(settings.randomizeCardOrder)}`);
         settings.flashcardCardOrder = settings.randomizeCardOrder
             ? "DueFirstRandom"
             : "DueFirstSequential";
@@ -518,11 +519,11 @@ export function upgradeSettings(settings: SRSettings) {
     // Upgrade legacy single-algorithm settings to separate card and note algorithms.
     if (!settings.cardAlgorithm) {
         settings.cardAlgorithm = settings.algorithm || "Fsrs";
-        console.log("Upgrading to dual algorithm: cards=" + settings.cardAlgorithm);
+        console.debug("Upgrading to dual algorithm: cards=" + settings.cardAlgorithm);
     }
     if (!settings.noteAlgorithm) {
         settings.noteAlgorithm = "WeightedMultiplier";
-        console.log("Upgrading to dual algorithm: notes=" + settings.noteAlgorithm);
+        console.debug("Upgrading to dual algorithm: notes=" + settings.noteAlgorithm);
     }
 
     // Create algorithm settings storage when upgrading old settings.
@@ -546,12 +547,12 @@ export function upgradeSettings(settings: SRSettings) {
 
     // Keep data in the plugin folder; the old track-file mode is no longer supported.
     if (settings.dataLocation !== DataLocation.PluginFolder) {
-        console.log(`Upgrading dataLocation from ${settings.dataLocation} to PluginFolder`);
+        console.debug(`Upgrading dataLocation from ${settings.dataLocation} to PluginFolder`);
         settings.dataLocation = DataLocation.PluginFolder;
     }
 
     if (settings.cardBlockID) {
-        console.log("Disabling legacy cardBlockID setting");
+        console.debug("Disabling legacy cardBlockID setting");
         settings.cardBlockID = false;
     }
 
@@ -610,3 +611,4 @@ export class SettingsUtil {
         return false;
     }
 }
+

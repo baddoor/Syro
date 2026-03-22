@@ -270,7 +270,7 @@ export class ClozePopoverManager {
                 onMergeAll: () => this.handleMergeAll(),
                 onClose: () => this.close(),
                 renderMarkdown: (text, el) => {
-                    MarkdownRenderer.render(this.app, text, el, "", this.renderComponent);
+                    void MarkdownRenderer.render(this.app, text, el, "", this.renderComponent);
                 },
             }),
         );

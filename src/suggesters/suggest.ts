@@ -132,8 +132,7 @@ export abstract class TextInputSuggest<T> implements ISuggestOwner<T> {
 
         if (suggestions.length > 0) {
             this.suggest.setSuggestions(suggestions);
-            // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-            //@ts-ignore
+            // @ts-expect-error Obsidian injects appContainerEl on the DOM app shell at runtime.
             this.open(Iadapter.instance.app.dom.appContainerEl, this.inputEl);
         } else {
             this.close();
@@ -144,6 +143,7 @@ export abstract class TextInputSuggest<T> implements ISuggestOwner<T> {
         Iadapter.instance.app.keymap.pushScope(this.scope);
 
         container.appendChild(this.suggestEl);
+        // eslint-disable-next-line obsidianmd/prefer-abstract-input-suggest -- This legacy suggester uses a custom Popper layout that is not covered by AbstractInputSuggest.
         this.popper = createPopper(inputEl, this.suggestEl, {
             placement: "bottom-start",
             modifiers: [
@@ -160,7 +160,7 @@ export abstract class TextInputSuggest<T> implements ISuggestOwner<T> {
                             return;
                         }
                         state.styles.popper.width = targetWidth;
-                        instance.update();
+                        void instance.update();
                     },
                     phase: "beforeWrite",
                     requires: ["computeStyles"],

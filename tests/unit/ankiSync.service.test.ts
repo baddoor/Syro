@@ -1214,7 +1214,7 @@ describe("ankiSync service", () => {
 
     it("pulls reviewed remote cards correctly when reviewDueOffset is calibrated from the first mapped card", async () => {
         const nowSpy = jest.spyOn(Date, "now").mockReturnValue(20 * DAY_MS);
-        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+            const logSpy = jest.spyOn(console, "debug").mockImplementation(() => undefined);
         try {
             const item = createItem();
             item.nextReview = 10 * DAY_MS;
@@ -1315,7 +1315,7 @@ describe("ankiSync service", () => {
     });
 
     it("uses review logs to clear due when a newly reviewed card has no review baseline", async () => {
-        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        const logSpy = jest.spyOn(console, "debug").mockImplementation(() => undefined);
         const nowSpy = jest.spyOn(Date, "now").mockReturnValue(20 * DAY_MS);
         try {
             const item = createItem();
@@ -1580,7 +1580,7 @@ describe("ankiSync service", () => {
     });
 
     it("keeps unresolved diagnostics when a newly reviewed card has no baseline and no usable review log", async () => {
-        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+            const logSpy = jest.spyOn(console, "debug").mockImplementation(() => undefined);
         const nowSpy = jest.spyOn(Date, "now").mockReturnValue(20 * DAY_MS);
         try {
             const item = createItem();
@@ -1703,7 +1703,7 @@ describe("ankiSync service", () => {
     });
 
     it("uses a calibrated offset from another mapped card before building a newly reviewed card snapshot", async () => {
-        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+            const logSpy = jest.spyOn(console, "debug").mockImplementation(() => undefined);
         try {
             const newlyReviewedItem = createItem();
             newlyReviewedItem.queue = CardQueue.New;
@@ -1882,7 +1882,7 @@ describe("ankiSync service", () => {
     });
 
     it("reports only the mismatched card when one mapped card disagrees between Anki and Syro", async () => {
-        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+            const logSpy = jest.spyOn(console, "debug").mockImplementation(() => undefined);
         const nowSpy = jest.spyOn(Date, "now").mockReturnValue(20 * DAY_MS);
         try {
             const mismatchedItem = createItem();
@@ -2057,7 +2057,9 @@ describe("ankiSync service", () => {
             expect(debugOutput).toContain("\"itemUuid\":\"uuid-2\"");
             expect(debugOutput).toContain("\"direction\":\"anki-not-due_syro-due\"");
             expect(debugOutput).toContain("\"direction\":\"anki-due_syro-not-due\"");
-            expect(debugOutput).toContain("reviewDueOffset 缺少可用 baseline");
+            expect(debugOutput).toContain(
+                "reviewDueOffset is unresolved because no review baseline is available.",
+            );
             expect(debugOutput).toContain("[Syro-Anki][Compare][ReviewAuthority]");
             const compareCardWarnings = result.errors.filter((message) => message.startsWith("[compare-card:1]"));
             expect(compareCardWarnings).toHaveLength(1);
@@ -2333,7 +2335,7 @@ describe("ankiSync service", () => {
     });
 
     it("pulls only the remotely newer mapped card and keeps the locally newer card untouched", async () => {
-        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+            const logSpy = jest.spyOn(console, "debug").mockImplementation(() => undefined);
         const nowSpy = jest.spyOn(Date, "now").mockReturnValue(20 * DAY_MS);
         try {
             const remoteItem = createItem();
@@ -2525,7 +2527,7 @@ describe("ankiSync service", () => {
     });
 
     it("applies a remotely newer card even when lastPullCursor is already ahead", async () => {
-        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+            const logSpy = jest.spyOn(console, "debug").mockImplementation(() => undefined);
         const nowSpy = jest.spyOn(Date, "now").mockReturnValue(20 * DAY_MS);
         try {
             const item = createItem();
@@ -2641,7 +2643,7 @@ describe("ankiSync service", () => {
     });
 
     it("treats bookkeeping timestamps as diagnostic only when Anki reviewed most recently", async () => {
-        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+            const logSpy = jest.spyOn(console, "debug").mockImplementation(() => undefined);
         const nowSpy = jest.spyOn(Date, "now").mockReturnValue(20 * DAY_MS);
         try {
             const item = createItem();
@@ -2768,7 +2770,7 @@ describe("ankiSync service", () => {
     });
 
     it("keeps the local state when local and remote review freshness tie", async () => {
-        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+            const logSpy = jest.spyOn(console, "debug").mockImplementation(() => undefined);
         const nowSpy = jest.spyOn(Date, "now").mockReturnValue(20 * DAY_MS);
         try {
             const item = createItem();
@@ -3137,7 +3139,7 @@ describe("ankiSync service", () => {
             await (service as any).renderSnapshotFields(builtSnapshots);
 
             expect(payload.fields.Text).toContain("<strong>{{c1::相关章节导航：}}</strong>");
-            expect(payload.fields.Text).not.toContain("*{{c1::相关章节导航：}}：**");
+            expect(payload.fields.Text).not.toContain("*{{c1::相关章节导航：}}�?*");
         } finally {
             (MarkdownRenderer as any).render = originalRender;
         }

@@ -75,7 +75,7 @@ function isInsideLatexFormula(text: string, position: number): boolean {
 /**
  * 获取当前位置所在的"卡片上下文"（段落边界）
  */
-function getCardContext(doc: any, pos: number): { from: number; to: number; text: string } {
+function getCardContext(doc: { toString(): string }, pos: number): { from: number; to: number; text: string } {
     const docText = doc.toString();
     let from = pos;
     while (from > 0) {
@@ -191,7 +191,7 @@ export const clozeDecorationPlugin = ViewPlugin.fromClass(
             const cursorFrom = selection.from;
             const cursorTo = selection.to;
 
-            const decorations: { from: number; to: number; decoration: any }[] = [];
+            const decorations: Array<{ from: number; to: number; decoration: Decoration }> = [];
 
             for (const { from, to } of view.visibleRanges) {
                 const text = doc.sliceString(from, to);

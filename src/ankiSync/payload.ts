@@ -274,7 +274,7 @@ function createBreadcrumbField(filePath: string, lineNo: number | null): string 
         .map((part) => part.trim())
         .filter(Boolean);
     const label = parts.length > 0 ? parts.join(" / ") : filePath;
-    return displayLine != null ? `${label} · L${displayLine}` : label;
+    return displayLine != null ? `${label} 璺?L${displayLine}` : label;
 }
 
 function createLinkFields(
@@ -402,7 +402,7 @@ function escapeHtml(value: string): string {
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
         .replace(/>/g, "&gt;")
-        .replace(/\"/g, "&quot;")
+        .replace(/"/g, "&quot;")
         .replace(/'/g, "&#39;");
 }
 
@@ -774,7 +774,7 @@ function shouldShowOtherAnkiClozeVisual(settings: SRSettings): boolean {
 
 function extractAnkiClozeInfos(text: string): Array<{ id: number; content: string; start: number; end: number }> {
     const infos: Array<{ id: number; content: string; start: number; end: number }> = [];
-    const regex = /\{\{c(\d+)(?:::|：：)/gi;
+    const regex = /\{\{c(\d+)::/gi;
 
     let match: RegExpExecArray | null;
     while ((match = regex.exec(text)) !== null) {
@@ -799,7 +799,7 @@ function extractAnkiClozeInfos(text: string): Array<{ id: number; content: strin
         if (end !== -1) {
             infos.push({
                 id,
-                content: text.slice(contentStart, end - 2).replace(/(?:::|：：)[^:：]*$/u, ""),
+                content: text.slice(contentStart, end - 2).replace(/::[^:]*$/u, ""),
                 start,
                 end,
             });

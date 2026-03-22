@@ -270,7 +270,7 @@ export function serializeNote(note: Note): SerializedNote {
 export function deserializeNote(data: SerializedNote, file: ISRFile): Note {
     const questions = (data.questions ?? []).map((questionData): Question => {
         const parsedQuestionInfo = new ParsedQuestionInfo(
-            questionData.parsedQuestionInfo.cardType as any,
+            questionData.parsedQuestionInfo.cardType as ConstructorParameters<typeof ParsedQuestionInfo>[0],
             questionData.parsedQuestionInfo.text,
             questionData.parsedQuestionInfo.firstLineNum,
             questionData.parsedQuestionInfo.lastLineNum,

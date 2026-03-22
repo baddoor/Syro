@@ -1,4 +1,4 @@
-import { App, Modal, ButtonComponent, MarkdownRenderer } from "obsidian";
+import { App, Modal, ButtonComponent, Component, MarkdownRenderer } from "obsidian";
 import SRPlugin from "src/main";
 
 // 确认回调函数类型定义
@@ -13,6 +13,7 @@ type ConfirmCallback = (confirmed: boolean) => void;
  */
 export default class ConfirmModal {
     private plugin: SRPlugin;
+    private readonly markdownOwner: Component;
     message: string;
     callback: ConfirmCallback;
     modal: Modal;
@@ -22,6 +23,8 @@ export default class ConfirmModal {
         this.message = message;
         // 创建一个空的 Modal 实例
         this.modal = new Modal(plugin.app);
+        this.markdownOwner = new Component();
+        this.markdownOwner.load();
         this.callback = callback;
     }
 
@@ -32,7 +35,7 @@ export default class ConfirmModal {
         const { contentEl } = this.modal;
 
         // 使用 MarkdownRenderer 渲染消息内容，这样可以在确认框里显示加粗、链接等格式
-        MarkdownRenderer.render(this.plugin.app, this.message, contentEl, "", this.plugin);
+        void MarkdownRenderer.render(this.plugin.app, this.message, contentEl, "", this.markdownOwner);
 
         // 创建按钮容器
         const buttonDiv = contentEl.createDiv("srs-flex-row");
@@ -65,5 +68,6 @@ export default class ConfirmModal {
      */
     close() {
         this.modal.close();
+        this.markdownOwner.unload();
     }
 }

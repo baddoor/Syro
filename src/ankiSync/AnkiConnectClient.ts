@@ -253,7 +253,7 @@ export class AnkiConnectClient {
     ): Promise<Array<{ deckName: string; error: string }>> {
         const uniqueDecks = Array.from(
             new Set(deckNames.map((deckName) => deckName?.trim()).filter(Boolean)),
-        ) as string[];
+        );
         const errors: Array<{ deckName: string; error: string }> = [];
 
         for (let index = 0; index < uniqueDecks.length; index += 1) {
